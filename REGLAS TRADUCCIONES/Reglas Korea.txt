@@ -1,0 +1,119 @@
+
+# REGLAS Y LÓGICA DE EXTRACCIÓN Y TRADUCCIÓN - LICENCIA DE CONDUCIR DE COREA DEL SUR
+
+## 1. CONTEXTO
+- **País de Origen**: Corea del Sur (República de Corea / South Korea).
+- **Idioma Original de la Licencia**: Coreano (Hangul) con nombres e información personal transliterada al inglés/alfabeto latino.
+- **Idioma de Destino de la Extracción/Traducción**: Inglés (English) / Estándar para tramitación oficial de conversión de licencias en la UK / Reino Unido.
+
+---
+
+## 2. CAMPOS EXACTOS (ESTRUCTURA DE DATOS JSON)
+
+| Nombre del Campo (`Key`) | Descripción / Significado |
+| :--- | :--- |
+| `surname` | Apellidos de la persona en caracteres latinos/inglés. |
+| `firstName` | Primer nombre de pila en inglés. |
+| `middleName` | Nombres de pila secundarios o restantes en inglés. |
+| `firstNames` | Concatenación de `firstName` y `middleName`. |
+| `fullName` | Nombre completo ordenado (`surname` + `firstName` + `middleName`). |
+| `licenseNumber` | Número principal de la licencia de conducir coreana (ej. `11-12-345678-90`). |
+| `assignedNumber` | Número de referencia/expediente asignado internamente para el trámite. |
+| `dateOfBirth` | Fecha de nacimiento extraída del número de residente y formateada a `DD Month YYYY`. |
+| `registration` | Segunda parte del Número de Registro de Residente (los 7 dígitos tras el guion). |
+| `serial` | Código alfanumérico impreso directamente debajo de la foto del titular (ej. `9X69J5`). |
+| `period` | Rango del periodo de examen de aptitud (`적성검사` + `기간`) unificado con `" to "`. |
+| `placeOfBirth` | Lugar de nacimiento traducido al inglés. |
+| `issueDate` | Fecha de expedición del documento en formato `DD Month YYYY`. |
+| `expiryDate` | Fecha de vencimiento o expiración en formato `DD Month YYYY`. |
+| `address` | Dirección de residencia traducida o transliterada al inglés. |
+| `nationality` | Nacionalidad del titular (ej. `South Korean`). |
+| `gender` | Género del titular (`Male` / `Female`). |
+| `class` | Categorías o tipos de vehículos autorizados (ej. `Class 1 Ordinary`). |
+| `codes` | Códigos o restricciones numéricas. |
+| `authority` | Organismo emisor en inglés con el país añadido (ej. `Seoul Metropolitan Police Agency, South Korea`). |
+| `categoriesDates` | Fechas de obtención por cada categoría. |
+| `explicacionCodigos` | Explicación detallada en inglés de las restricciones o condiciones especiales. |
+
+---
+
+## 3. REGLAS DE TRADUCCIÓN Y FORMATO
+
+1. **Formato Obligatorio de Fechas**:
+   - Todas las fechas deben convertirse al formato inglés extendido: `DD Month YYYY` (ej. `27 February 1984`, `15 August 2023`).
+   - Nunca usar formatos numéricos simples como `27/02/1984` o `1984-02-27`.
+
+2. **Cálculo de `dateOfBirth` y `registration` (Número de Residente Coreano - 주민등록번호)**:
+   - Formato estándar de la segunda línea: `AABBCC-XYYYYYY` (13 dígitos).
+   - Los primeros 6 dígitos (`AABBCC`) corresponden a Año (`AA`), Mes (`BB`) y Día (`CC`).
+   - **Regla del Siglo (Dígito `X` tras el guion)**:
+     - `1` o `2` = Nacido entre 1900 y 1999 (`1`: Hombre, `2`: Mujer).
+     - `3` o `4` = Nacido entre 2000 y 2099 (`3`: Hombre, `4`: Mujer).
+     - `5` o `6` = Extranjero nacido entre 1900 y 1999.
+     - `7` o `8` = Extranjero nacido entre 2000 y 2099.
+   - **`dateOfBirth`**: Extraer `CC` + Nombre del Mes en inglés + Año completo `YYYY` determinado por `X`.
+     * *Ejemplo*: `840227-1031213` $\rightarrow$ `dateOfBirth`: `"27 February 1984"`.
+   - **`registration`**: Corresponde a los 7 dígitos exactos tras el guion.
+     * *Ejemplo*: `840227-1031213` $\rightarrow$ `registration`: `"1031213"`.
+
+3. **Número de Serie (`serial`)**:
+   - Ubicar el código alfanumérico corto que aparece justo debajo de la fotografía del titular (ej. `"9X69J5"`).
+
+4. **Periodo de Aptitud (`period`)**:
+   - Ubicar la sección que contiene `"적성검사"` (Examen de aptitud) y `"기간"` (Periodo).
+   - Formatear ambas fechas al estándar `DD Month YYYY` y unirlas con la palabra `" to "`.
+   - *Ejemplo*: `"01 January 2027 to 31 December 2027"`.
+
+5. **Traducción de Autoridad Emisora (`authority`)**:
+   - Traducir la Agencia de Policía Provincial emitora al inglés y sufijar siempre con `", South Korea"`.
+   - *Ejemplos*:
+     - `서울지방경찰청장` $\rightarrow$ `"Seoul Metropolitan Police Agency, South Korea"`
+     - `경기남부지방경찰청장` $\rightarrow$ `"Gyeonggi Nambu Provincial Police Agency, South Korea"`
+     - `부산지방경찰청장` $\rightarrow$ `"Busan Metropolitan Police Agency, South Korea"`
+
+6. **Traducción de Categorías de Conducir (`class`)**:
+   - `1종 보통` $\rightarrow$ `"Class 1 Ordinary"`
+   - `1종 대형` $\rightarrow$ `"Class 1 Large"`
+   - `1종 특수` $\rightarrow$ `"Class 1 Special"`
+   - `2종 보통` $\rightarrow$ `"Class 2 Ordinary"`
+   - `2종 소형` $\rightarrow$ `"Class 2 Small"`
+   - `2종 원동기장치자전거` $\rightarrow$ `"Class 2 Motorized Bicycle"`
+
+---
+
+## 4. CASOS ESPECIALES Y EXCEPCIONES
+
+1. **Datos Ausentes o Ilegibles**:
+   - Si un campo no está presente o no es legible en la foto, asignar una cadena vacía `""`. Nunca devolver `"null"`, `"N/A"`, `"undefined"` ni valores inferidos sin certeza.
+2. **Nombres en Caracteres Latines**:
+   - Utilizar la versión oficial transliterada al inglés impreso en la tarjeta. Si solo figura en Hangul, utilizar el sistema de Romanización Revisada (RR System).
+3. **Restricciones y Condiciones (`explicacionCodigos` / `codes`)**:
+   - Si se detectan letras de condición en el frente o reverso:
+     - `A`: Automatic Transmission only (Solo transmisión automática).
+     - `B`: Adaptation for physical disabilities / Prosthetic limb.
+     - `C`: Hearing aid required (Audífono requerido).
+4. **Contexto de Referencia**:
+   - Si se incluye un documento de referencia previo, mantener la ortografía exacta de los nombres propios para garantizar consistencia administrativa.
+
+---
+
+## 5. SYSTEM PROMPT SUGERIDO PARA LA API DE GEMINI
+
+```text
+You are an expert OCR and official translation assistant specializing in South Korean Driver's Licenses.
+Analyze the provided front and back images of the South Korean driver's license and extract the data strictly into valid JSON matching the schema below.
+
+EXTRACTION & FORMATTING RULES:
+1. "dateOfBirth": Extract from the first 6 digits of the Resident Registration Number (주민등록번호, e.g., "840227-1031213"). Convert "840227" into "27 February 1984" using the rule: 7th digit '1' or '2' = 1900s, '3' or '4' = 2000s. Format as "DD Month YYYY".
+2. "registration": Extract the 7 digits AFTER the hyphen from the Resident Registration Number (e.g., "1031213").
+3. "serial": Extract the alphanumeric code directly BELOW the photo (e.g., "9X69J5").
+4. "period": Locate the Aptitude Test Period ("적성검사" and "기간"). Extract start and end dates, format both as "DD Month YYYY", and join them with " to " (e.g., "01 January 2027 to 31 December 2027").
+5. "surname", "firstName", "middleName": Extract English transliterated names from the card.
+6. "fullName": Combine surname, firstName, and middleName with single spaces.
+7. "licenseNumber": Extract the primary license number at the top.
+8. "issueDate": Extract issue date and convert to "DD Month YYYY".
+9. "authority": Translate the issuing police authority to English and append ", South Korea" (e.g., "Seoul Metropolitan Police Agency, South Korea").
+10. "class": Extract driver categories and translate to English (e.g., "1종 보통" -> "Class 1 Ordinary").
+11. "explicacionCodigos": Translate any restriction/condition codes to clear English explanations.
+
+All dates MUST strictly follow the "DD Month YYYY" format in English. Return ONLY raw valid JSON matching the schema without markdown wrappers.

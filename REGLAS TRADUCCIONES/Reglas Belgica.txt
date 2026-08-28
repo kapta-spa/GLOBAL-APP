@@ -1,0 +1,32 @@
+# Especificación Técnica de Extracción y Traducción de Licencias de Conducir (Francia -> UK)
+
+## 1. Contexto
+- **País de Origen:** Francia (République Française - Permis de Conduire)
+- **Idioma Original:** Francés
+- **Idioma y Propósito Destino:** Inglés (Traducción y homologación oficial para el Reino Unido / UK)
+
+---
+
+## 2. Campos Exactos (Estructura de Datos JSON)
+La estructura de salida debe responder estrictamente al siguiente esquema JSON:
+
+```json
+{
+  "surname": "string (Apellidos / Nom)",
+  "firstName": "string (Nombres / Prénom)",
+  "dateOfBirth": "string (Fecha de Nacimiento - Campo 3)",
+  "placeOfBirth": "string (Lugar de Nacimiento - Campo 3)",
+  "issueDate": "string (Fecha de Expedición - Campo 4a)",
+  "expiryDate": "string (Fecha de Vencimiento - Campo 4b)",
+  "authority": "string (Autoridad Emisora - Campo 4c)",
+  "licenseNumber": "string (Número de Licencia - Campo 5)",
+  "address": "string (Dirección / Adresse - Campo 8)",
+  "categories": [
+    {
+      "category": "string (Categoría del vehículo, ej. A, B, C, D, AM)",
+      "validFrom": "string (Fecha Desde - Campo 10)",
+      "validTo": "string (Fecha Hasta - Campo 11)",
+      "code": "string (Códigos / Restricciones - Campo 12)"
+    }
+  ]
+}

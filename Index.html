@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="es">
+  <head>
+    <base target="_top">
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <title>Global Translations</title>
+    <style>
+      :root { --ink:#172235; --blue:#1455c0; --green:#18864b; --red:#b3261e; --line:#d8dfeb; --soft:#f3f6fb; --muted:#617086; --gold:#f6b51d; }
+      * { box-sizing:border-box; }
+      body { margin:0; background:var(--soft); color:var(--ink); font:15px/1.45 Arial,sans-serif; }
+      main { width:min(1100px,calc(100% - 28px)); margin:22px auto 40px; }
+      .card { background:#fff; border:1px solid var(--line); border-radius:16px; padding:22px; box-shadow:0 8px 30px #1f356110; }
+      h1 { margin:0 0 4px; font-size:27px; } h2 { margin:0; font-size:19px; }
+      p { color:var(--muted); margin:5px 0 0; }
+      .top { display:flex; align-items:flex-start; justify-content:space-between; gap:18px; margin-bottom:18px; }
+      .pill { border-radius:999px; padding:7px 12px; font-weight:700; font-size:13px; white-space:nowrap; background:#eef2f7; color:#52627a; }
+      .pill.on { background:#e9f8ef; color:#176d3e; } .pill.off { background:#fff4df; color:#815900; }
+      .notice { border-left:4px solid var(--gold); background:#fff9e9; padding:11px 14px; margin:0 0 18px; color:#674c00; }
+      .toolbar { display:flex; flex-wrap:wrap; gap:9px; margin-bottom:20px; }
+      button { border:0; border-radius:9px; background:var(--blue); color:#fff; padding:11px 15px; font-weight:700; cursor:pointer; }
+      button.secondary { background:#e9eef7; color:#26364e; } button.green { background:var(--green); }
+      button.red { background:#fff0ef; color:var(--red); } button:disabled { opacity:.55; cursor:wait; }
+      .metrics { display:grid; grid-template-columns:repeat(4,1fr); gap:11px; margin-bottom:21px; }
+      .metric { border:1px solid var(--line); border-radius:11px; padding:13px; } .metric strong { display:block; font-size:25px; } .metric span { color:var(--muted); font-size:13px; }
+      .section-head { display:flex; align-items:center; justify-content:space-between; gap:12px; margin:5px 0 12px; }
+      .select-all { display:flex; align-items:center; gap:8px; color:var(--muted); font-size:14px; }
+      .orders { display:grid; gap:12px; }
+      .order { border:1px solid var(--line); border-radius:12px; padding:15px; display:grid; grid-template-columns:auto 1fr auto; gap:13px; align-items:start; }
+      .order.selected { border-color:#75a5ee; box-shadow:0 0 0 2px #1455c01a; }
+      input[type="checkbox"] { width:19px; height:19px; accent-color:var(--blue); margin-top:3px; }
+      .order-title { font-weight:700; font-size:16px; word-break:break-word; } .order-subject { color:var(--muted); font-size:13px; margin-top:3px; word-break:break-word; }
+      .details { display:flex; flex-wrap:wrap; gap:6px 15px; margin-top:9px; font-size:13px; color:#40516a; }
+      .details span { white-space:nowrap; } .details b { color:var(--ink); }
+      .order-actions { display:flex; align-items:center; gap:7px; flex-wrap:wrap; justify-content:flex-end; }
+      .number { width:95px; padding:10px 8px; border:1px solid #aebbd0; border-radius:8px; font-weight:700; text-align:center; font-size:15px; }
+      .status { min-height:24px; color:var(--muted); margin:9px 0 15px; } .error { color:var(--red); font-weight:700; }
+      .empty { border:1px dashed #aebbd0; border-radius:11px; padding:28px 15px; text-align:center; color:var(--muted); }
+      .footer { margin-top:18px; color:var(--muted); font-size:12px; }
+      @media (max-width:760px) { .metrics { grid-template-columns:repeat(2,1fr); } .order { grid-template-columns:auto 1fr; } .order-actions { grid-column:2; justify-content:flex-start; } .top { flex-direction:column; } }
+      @media (max-width:480px) { main { width:min(100% - 16px,1100px); margin:10px auto 25px; } .card { padding:16px; border-radius:13px; } h1 { font-size:23px; } .toolbar button { flex:1 1 45%; } .number { width:84px; } }
+    </style>
+  </head>
+  <body>
+    <main>
+      <section class="card">
+        <div class="top">
+          <div><h1>Global Translations</h1><p>Control de pedidos y etiquetas de Gmail</p></div>
+          <div id="automationPill" class="pill">Cargando…</div>
+        </div>
+
+        <div class="notice"><strong>Destino:</strong> los pedidos procesados se guardarán en <strong>0. Work/0. 1 HOUR/0. DL IN PROGRESS</strong>. Después se archivarán de Inbox, sin eliminarse.</div>
+
+        <div class="toolbar">
+          <button class="secondary" id="refresh" onclick="loadApp()">Actualizar</button>
+          <button class="green" id="activate" onclick="runAction('activateAutomation','Automatización activada.')">Activar automatización</button>
+          <button class="red" id="deactivate" onclick="runAction('deactivateAutomation','Automatización desactivada.')">Desactivar automatización</button>
+          <button id="processAll" onclick="processAll()">Procesar todos</button>
+          <button class="secondary" id="dryTest" onclick="runAction('runDryTest','Prueba terminada. No se hicieron cambios.')">Ejecutar prueba</button>
+        </div>
+
+        <div class="metrics">
+          <div class="metric"><strong id="pendingCount">—</strong><span>Pedidos pendientes</span></div>
+          <div class="metric"><strong id="processedCount">—</strong><span>Procesados última revisión</span></div>
+          <div class="metric"><strong id="lastReview">—</strong><span>Última revisión</span></div>
+          <div class="metric"><strong id="account">—</strong><span>Cuenta autorizada</span></div>
+        </div>
+
+        <div id="status" class="status"></div>
+        <div id="error" class="status error" role="alert"></div>
+
+        <div class="section-head">
+          <h2>Pedidos pendientes</h2>
+          <label class="select-all"><input type="checkbox" id="selectAll" onchange="toggleAll(this.checked)"> Seleccionar todos</label>
+        </div>
+        <div id="orders" class="orders"><div class="empty">Cargando pedidos…</div></div>
+        <div class="footer">Puedes corregir el consecutivo antes de procesar. Formato sugerido: B####.</div>
+        <div class="section-head">
+          <h2>Carpetas en Progreso</h2>
+        </div>
+        <div id="inProgress" class="orders"><div class="empty">Cargando carpetas…</div></div>
+      </section>
+    </main>
+
+    <script>
+      const $ = id => document.getElementById(id);
+      let orders = [];
+      let busy = false;
+
+      function setBusy(value, message='') {
+        busy = value;
+        ['refresh','activate','deactivate','processAll','dryTest'].forEach(id => $(id).disabled = value);
+        $('status').textContent = message;
+      }
+      function fail(error) { setBusy(false); $('error').textContent = error && error.message ? error.message : String(error); }
+      function clearError() { $('error').textContent = ''; }
+      function callServer(name, args, success) {
+        let runner = google.script.run.withSuccessHandler(success).withFailureHandler(fail);
+        runner[name](...(args || []));
+      }
+      function loadApp() {
+        clearError(); setBusy(true, 'Cargando información…');
+        callServer('getAppData', [], data => {
+          $('pendingCount').textContent = data.pendingCount;
+          $('processedCount').textContent = data.lastCount || 0;
+          $('lastReview').textContent = data.lastReview || '—';
+          $('account').textContent = data.account || 'Cuenta autorizada';
+          const pill = $('automationPill');
+          pill.textContent = data.active ? 'Automatización activa' : 'Automatización apagada';
+          pill.className = 'pill ' + (data.active ? 'on' : 'off');
+          renderOrders(data.orders || []);
+          renderInProgress(data.inProgressFolders || []);
+          setBusy(false, data.status || 'Información actualizada.');
+        });
+      }
+      function renderOrders(items) {
+        orders = items;
+        $('selectAll').checked = false;
+        const root = $('orders'); root.innerHTML = '';
+        if (!items.length) { root.innerHTML = '<div class="empty">No hay pedidos pendientes en el Inbox.</div>'; return; }
+        items.forEach(order => {
+          const article = document.createElement('article'); article.className = 'order'; article.dataset.id = order.messageId;
+          article.innerHTML = `
+            <input type="checkbox" class="order-check" aria-label="Seleccionar pedido">
+            <div>
+              <div class="order-title">${esc(order.fullName)} <span>· ${esc(order.type)}</span></div>
+              <div class="order-subject">${esc(order.subject)}</div>
+              <div class="details">
+                <span><b>Email:</b> ${esc(order.email)}</span>
+                <span><b>País:</b> ${esc(order.country || 'No indicado')}</span>
+                <span><b>Idioma:</b> ${esc(order.language || 'No indicado')}</span>
+                <span><b>Importe:</b> ${order.amount ? 'NZ$' + Number(order.amount).toFixed(2) : 'No detectado'}</span>
+                <span><b>Pago:</b> ${esc(order.paymentStatus)}</span>
+                <span><b>Recibido:</b> ${esc(order.receivedAt)}</span>
+              </div>
+              <div class="order-body" style="display: none; margin-top: 10px; padding: 10px; background: #f0f4f8; border-radius: 8px; font-size: 13px; white-space: pre-wrap; color: #333; max-height: 250px; overflow-y: auto;">${esc(order.bodySnippet || '')}</div>
+              <a href="#" class="toggle-body" style="font-size: 12px; color: var(--blue); text-decoration: none; margin-top: 8px; display: inline-block;">Ver más del correo</a>
+            </div>
+            <div class="order-actions">
+              <input class="number" value="${esc(order.suggestedConsecutive)}" aria-label="Consecutivo">
+              <button onclick="processOne(this)">Procesar</button>
+            </div>`;
+          article.querySelector('.order-check').addEventListener('change', e => article.classList.toggle('selected', e.target.checked));
+          const toggleBtn = article.querySelector('.toggle-body');
+          const bodyDiv = article.querySelector('.order-body');
+          if (toggleBtn && bodyDiv) {
+            toggleBtn.addEventListener('click', e => {
+              e.preventDefault();
+              if (bodyDiv.style.display === 'none') {
+                bodyDiv.style.display = 'block';
+                toggleBtn.textContent = 'Ocultar correo';
+              } else {
+                bodyDiv.style.display = 'none';
+                toggleBtn.textContent = 'Ver más del correo';
+              }
+            });
+          }
+          root.appendChild(article);
+        });
+      }
+      function toggleAll(checked) { document.querySelectorAll('.order').forEach(card => { card.querySelector('.order-check').checked = checked; card.classList.toggle('selected', checked); }); }
+      function selectedCards() { return [...document.querySelectorAll('.order')].filter(card => card.querySelector('.order-check').checked); }
+      function processOne(button) {
+        if (busy) return;
+        const card = button.closest('.order'); const item = orders.find(o => o.messageId === card.dataset.id); if (!item) return;
+        const consecutive = card.querySelector('.number').value.trim();
+        if (!/^B\d+$/i.test(consecutive)) { $('error').textContent = 'El consecutivo debe tener el formato B####.'; return; }
+        if (!confirm(`¿Procesar ${item.fullName} con el consecutivo ${consecutive}?`)) return;
+        clearError(); setBusy(true, 'Procesando pedido…');
+        callServer('processSelectedOrder', [item.messageId, consecutive, item.fullName], result => { setBusy(false, result.message || 'Pedido procesado.'); loadApp(); });
+      }
+      function processAll() {
+        if (busy) return;
+        const cards = selectedCards();
+        if (!cards.length) { $('error').textContent = 'Selecciona al menos un pedido.'; return; }
+        const payload = cards.map(card => ({ messageId:card.dataset.id, consecutive:card.querySelector('.number').value.trim(), fullName:orders.find(o => o.messageId === card.dataset.id).fullName }));
+        if (payload.some(x => !/^B\d+$/i.test(x.consecutive))) { $('error').textContent = 'Revisa los consecutivos. Todos deben tener el formato B####.'; return; }
+        if (!confirm(`¿Procesar ${payload.length} pedido(s) seleccionado(s)?`)) return;
+        clearError(); setBusy(true, 'Procesando pedidos seleccionados…');
+        callServer('processSelectedOrders', [payload], result => { setBusy(false, result.message || 'Pedidos procesados.'); loadApp(); });
+      }
+      function renderInProgress(items) {
+        const root = $('inProgress'); root.innerHTML = '';
+        if (!items.length) { root.innerHTML = '<div class="empty">No hay carpetas en progreso.</div>'; return; }
+        items.forEach(folder => {
+          const article = document.createElement('article'); article.className = 'order';
+          article.innerHTML = `
+            <div></div>
+            <div>
+              <div class="order-title">${esc(folder.shortName)}</div>
+            </div>
+            <div class="order-actions">
+              <button onclick="processFolder('${esc(folder.fullName)}')">Procesar</button>
+            </div>`;
+          root.appendChild(article);
+        });
+      }
+      function processFolder(folderName) {
+        alert('Próximamente: Se abrirá el editor de imágenes para ' + folderName);
+      }
+      function runAction(name, message) { if (busy) return; clearError(); setBusy(true, 'Ejecutando…'); callServer(name, [], () => { setBusy(false, message); loadApp(); }); }
+      function esc(value) { return String(value == null ? '' : value).replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c])); }
+      loadApp();
+    </script>
+  </body>
+</html>

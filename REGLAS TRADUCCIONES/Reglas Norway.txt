@@ -1,0 +1,116 @@
+# DOCUMENTACIÓN DE REGLAS Y LÓGICA DE EXTRACCIÓN - NORWAY FULL / EU LICENSES
+
+## 1. Contexto
+- **País de Origen:** Licencias de conducir del Espacio Económico Europeo (Francia, Noruega, etc.).
+- **Idioma de Entrada:** Francés / Noruego / Lenguas Oficiales UE.
+- **Idioma de Salida (Traducción):** Inglés.
+- **Propósito:** Extracción mediante visión multimodal (Gemini API) y poblamiento automatizado de plantillas de documentos Word (.docx).
+
+---
+
+## 2. Campos Exactos (Estructura de Datos)
+
+| Campo | Tipo | Ubicación / Regla |
+|---|---|---|
+| `surname` | String | Apellido(s) principal(es) [Punto 1]. |
+| `firstName` | String | ÚNICAMENTE el primer nombre propio de la lista de nombres [Punto 2]. |
+| `middleName` | String | TODOS los demás nombres propios restantes después del primero [Punto 2]. Si solo hay un nombre, dejar vacío. |
+| `firstNames` | String | Todos los nombres propios juntos. |
+| `fullName` | String | Nombre completo concatenado: `Surname + First Name + Middle Name`. |
+| `licenseNumber` | String | Número principal de la licencia [Punto 5]. Extraer ÚNICAMENTE caracteres alfanuméricos. |
+| `assignedNumber` | String | Número de control/referencia personal [Punto 4d]. |
+| `dateOfBirth` | String | Fecha de nacimiento [Punto 3]. Formato `DD Month YYYY`. |
+| `placeOfBirth` | String | Lugar de nacimiento [Punto 3]. TRADUCIR AL INGLÉS. |
+| `issueDate` | String | Fecha de expedición/emisión [Punto 4a]. Formato `DD Month YYYY`. |
+| `expiryDate` | String | Fecha de caducidad/vencimiento [Punto 4b]. Formato `DD Month YYYY`. |
+| `authority` | String | Autoridad emisora [Punto 4c]. TRADUCIR AL INGLÉS y añadir SIEMPRE el nombre del país en inglés al final (ej. "... France"). |
+| `class` | String | Lista de todas las categorías presentes en la parte FRONTAL [Punto 9], separadas por comas. |
+| `categoriesDates` | String | Fechas de categorías de la tabla del REVERSO (Columna 10). Agrupar categorías con la misma fecha. Cada grupo en un renglón nuevo. |
+| `codes` | String | Serie de 3 cadenas ubicadas en la ESQUINA SUPERIOR IZQUIERDA del reverso. |
+| `explicacionCodigos` | String | Interpretación de códigos especiales de la Columna 12 (Reverso). |
+| `code106From` | String | Fecha de inicio del periodo de prueba si existe el Código 106. |
+| `code106To` | String | Fecha de fin del periodo de prueba si existe el Código 106. |
+| `classDescriptions` | String | Descripción en inglés para cada categoría presente en Punto 9. Cada categoría en un renglón nuevo: `CÓDIGO - Descripción`. |
+
+---
+
+## 3. Reglas de Traducción y Formato
+
+1. **Idioma Global de Salida:** Todos los valores de texto devueltos deben estar estrictamente en **INGLÉS**.
+2. **Formato de Fechas:** Todas las fechas se deben formatear como `DD Month YYYY` (ejemplo: `01 January 2000`, `15 March 2021`).
+3. **Formato de `categoriesDates`:**
+   - Agrupar categorías que comparten la misma fecha de validez.
+   - Formato exacto: `CÓDIGO1, CÓDIGO2: DD Month YYYY`
+   - **Regla estricta:** Cada grupo debe ir en una línea separada. NO poner todas las categorías en un solo renglón.
+   - Ejemplo:
+     AM: 01 January 2000
+     B1, B: 03 February 2001
+     C1, C: 01 March 2002
+4. **Formato de `classDescriptions`:**
+   - Mapear las categorías de la parte frontal con sus descripciones estándar en inglés:
+     - `AM`: 2-wheel, 3-wheel vehicles and light quadricycles with a maximum design speed of not more than 45 km/h.
+     - `A1`: light motorcycles with a cylinder capacity not more than 125 cubic centimetres and a power rating less than 11 kW.
+     - `A2`: motorcycles with a power rating under 35 kW.
+     - `A`: heavy motorcycles without power restrictions.
+     - `B`: passenger vehicles weighing up to 3,500 kg and seating not more than eight passengers.
+     - `BE`: vehicle of category B towing a heavy trailer of under 3,500 kg.
+     - `B1`: quadricycles.
+     - `C1`: goods vehicles between 3,500 kg and 7,500 kg and for up to eight passengers.
+     - `C1E`: vehicle of category C1 or B towing a heavy trailer; with a combined mass of up to 12,000 kg.
+     - `C`: goods vehicles weighing more than 3,500 kg and seating not more than eight passengers.
+     - `CE`: vehicle of category C towing a heavy trailer.
+     - `D1`: passenger vehicles built for fewer than 16 passengers and that is no longer than 8 m.
+     - `D1E`: vehicle of category D1 towing a heavy trailer.
+     - `D`: passenger vehicles for more than eight passengers.
+     - `DE`: vehicle of category D towing a heavy trailer.
+     - `M`: 2-wheel moped.
+     - `T`: Tractor maximum design speeds of 40 km/h.
+     - `S`: Snowmobile with or without a trailer sledge.
+
+---
+
+## 4. Casos Especiales y Excepciones
+
+1. **Códigos 70 y 71:**
+   - Si se detecta el código `70` o `71` en la columna 12 del reverso, extraer **ÚNICAMENTE** el número de licencia que le sigue (ejemplo: si aparece `71. 123456.ML`, el resultado debe ser `123456.ML`).
+2. **Código 01 / 01.06:**
+   - `01`: `"01- Vision correction and/or protection"`
+   - `01.06`: `"01.06- Prescribed spectacles or contact lenses"`
+3. **Código 106:**
+   - Texto a generar: `"106- Subject to the application of article R. 413-5 during probationary period from [DateFrom] to [DateTo] (Speed limits: 110km/h in Freeways where limit is 130km/h, 100km/h in freeways with lower speed limit or double roads, 80 km/h on other roads.)"`
+4. **Prohibición de Citas y Fuentes:**
+   - **ESTRICTAMENTE PROHIBIDO** incluir textos de fuentes, enlaces de búsqueda o URLs externas (ej. `https://www.vegvesen.no...`). Extraer únicamente la información visible en el documento.
+
+---
+
+## 5. System Prompt Sugerido para la API de Gemini
+
+You are an expert OCR and translation system for official driver's licenses. Analyze the provided front and back images of the driver's license.
+
+CRITICAL INSTRUCTIONS:
+1. ALL OUTPUT VALUES MUST BE IN ENGLISH.
+2. DO NOT include any URLs, web citations, or external sources (e.g. no vegvesen.no links).
+3. Format all dates strictly as "DD Month YYYY" (e.g., "01 January 2020").
+
+EXTRACTION RULES:
+- surname: Family name (Point 1).
+- firstName: ONLY the first given name (Point 2).
+- middleName: ALL remaining given names after the first (Point 2). Leave empty if only one name.
+- licenseNumber: Point 5 identification number (alphanumeric only).
+- assignedNumber: Point 4d personal reference number.
+- dateOfBirth: Point 3 date.
+- placeOfBirth: Point 3 location translated into English.
+- issueDate: Point 4a date.
+- expiryDate: Point 4b date.
+- authority: Point 4c authority translated to English, appending country name in English at the end.
+- class: All category codes listed on Front (Point 9), comma-separated.
+- categoriesDates: Back table Column 10. Group categories with identical dates in format: "CODE1, CODE2: DD Month YYYY". Each date group MUST be on a NEW LINE.
+- codes: Top-left corner of the back.
+- explicacionCodigos: Column 12 (Back). Rules:
+  - Code 70 or 71: Return ONLY the license number following the code (e.g. "123456.ML").
+  - Code 01: "01- Vision correction and/or protection"
+  - Code 01.06: "01.06- Prescribed spectacles or contact lenses"
+  - Code 106: "106- Subject to the application of article R. 413-5 during probationary period from [DateFrom] to [DateTo] (Speed limits: 110km/h in Freeways where limit is 130km/h, 100km/h in freeways with lower speed limit or double roads, 80 km/h on other roads.)"
+- classDescriptions: Standard English descriptions for each category in Point 9, formatted as "CODE - Description", one per line.
+
+Return valid JSON adhering to the specified schema.

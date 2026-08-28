@@ -1,0 +1,106 @@
+# DOCUMENTACIÓN DE REGLAS DE EXTRACCIÓN Y TRADUCCIÓN (CNH BRASIL → UK)
+
+## 1. Contexto
+- **País de Origen:** Brasil 🇧🇷
+- **Documento:** Carteira Nacional de Habilitação (CNH)
+- **Idioma de la Licencia:** Portugués
+- **Idioma de Salida / Traducción Target:** Inglés (Reino Unido - UK)
+
+---
+
+## 2. Campos Exactos (Estructura de Datos)
+Los campos definidos en la interfaz `ExtractedData` y procesados por el motor son:
+
+1. `surname`: Apellidos de familia (Family name).
+2. `firstName`: Primer nombre únicamente (Very first given name).
+3. `middleName`: Nombres secundarios / restantes (Remaining given names).
+4. `firstNames`: Combinación de `firstName` + `middleName`.
+5. `fullName`: Nombre completo (`surname` + `firstName` + `middleName`).
+6. `licenseNumber`: Número de Registro central (Nº Registro - campo central).
+7. `cardNumber`: Número de Espelho / Serial vertical (borde lateral izquierdo).
+8. `idDocument`: Documento de Identidad (Sección 4c / Doc. Identidade, ej. `392634570 SSP SP`).
+9. `cpf`: Número de CPF (Sección 4d / CPF, ej. `437.361.038-08`).
+10. `parents`: Nombres de los padres (Sección "Filiação").
+11. `dateOfBirth`: Fecha de nacimiento (Sección 3).
+12. `placeOfBirth`: Lugar y Estado de nacimiento traducido al inglés (Sección 3 / Localidade).
+13. `issueDate`: Fecha de expedición (Sección 4a / Data de Emissão).
+14. `expiryDate`: Fecha de vencimiento (Sección 4b / Data de Validade).
+15. `firstObtained`: Fecha de primera habilitación (Sección 4b inferior / 1ª Habilitação).
+16. `authority`: Autoridad emisora del Estado (ej. `DETRAN SP`, `DETRAN RJ`).
+17. `class`: Categorías de vehículos autorizadas (Sección 9 / Categoria, ej. `A`, `B`, `AB`, `C`, `D`, `E`).
+18. `categoriesDates`: Fechas específicas de validez/expedición asociadas a las categorías.
+19. `codes`: Códigos numéricos/alfanuméricos adicionales de la categoría.
+20. `conditions`: Observaciones / Restricciones médicas o laborales (Sección 12 - Observações).
+21. `assignedNumber`: Identificador personalizado asignado manualmente para nombrar el archivo de salida (ej. `B1234`).
+22. `address`: Dirección de residencia (si aparece visible en la versión CNH o "Not provided").
+23. `nationality`: Nacionalidad (por defecto `"Brazilian"`).
+24. `gender`: Género (`"Male"` / `"Female"`).
+
+---
+
+## 3. Reglas de Traducción y Formato
+- **Idioma Mandatorio de Salida:** Todos los valores textuales descriptivos (como observaciones, lugares, meses, autoridades y parentesco) deben traducirse al **inglés**.
+- **Formato Estándar de Fechas:** 
+  - Toda fecha extraída debe convertirse obligatoriamente al formato **`DD Month YYYY`** (ejemplos: `15 July 1985`, `04 March 2028`, `01 December 2010`).
+- **Desglose de Nombres:**
+  - `surname` debe contener estrictamente los apellidos familiares.
+  - `firstName` debe aislar el **primer nombre**.
+  - `middleName` agrupa el segundo nombre y nombres subsiguientes.
+  - `firstNames` guarda la combinación de nombres sin apellido.
+- **Traducción e Interpretación de Restricciones (Sección 12 - Observações):**
+  - Los códigos nativos de Brasil deben traducirse explicativamente al inglés:
+    - **`A`**: Prescribed spectacles / Corrective lenses (Uso obligatorio de lentes de contacto o gafas).
+    - **`EAR`**: Exercises remunerated activity (Ejerce actividad remunerada / Conductores profesionales).
+    - **`B`**: Hearing aid mandatory (Uso obligatorio de prótesis auditiva).
+    - **`C`**: Helmet / Protection mandatory.
+- **Identificadores Numéricos:**
+  - Mantener los separadores de formato original en el `cpf` (`XXX.XXX.XXX-XX`).
+  - Preservar la sigla del órgano emisor estatal en `idDocument` (ej. `SSP SP`, `DETRAN RJ`).
+
+---
+
+## 4. Casos Especiales y Excepciones
+- **Campos No Detectados o Ausentes:** Retornar cadena vacía `""` o `"Not provided"` en lugar de `null` o `undefined` para evitar rupturas al renderizar plantillas Word.
+- **Dualidad de Identificadores en CNH Brasil:**
+  - La CNH contiene dos números clave: el **Nº Registro** (central) y el **Nº Espelho** (código de seguridad serial impreso verticalmente en el margen izquierdo). Ambos se extraen por separado (`licenseNumber` y `cardNumber`).
+- **Integración de Imágenes:**
+  - Las fotos del frente y del reverso de la CNH se codifican en Base64 y se envían a la plantilla `.docx` asociándolas a los tokens `{{foto_frente}}`, `{{foto_reverso}}`, `{{license_front}}` y `{{license_back}}`.
+
+---
+
+## 5. System Prompt Sugerido para la API de Gemini
+
+```text
+You are an expert OCR and translation engine specializing in official identification and driving documents.
+Analyze these two images corresponding to the Front and Back of a Brazilian Driver's License (Carteira Nacional de Habilitação - CNH).
+
+CRITICAL REQUIREMENTS:
+1. ALL TEXT OUTPUT VALUES MUST BE TRANSLATED INTO ENGLISH.
+2. ALL DATES MUST BE FORMATTED AS "DD Month YYYY" (e.g., "15 July 1985").
+
+EXTRACT DATA INTO THE FOLLOWING JSON SCHEMA:
+{
+  "surname": "Family name(s)",
+  "firstName": "ONLY the very first given name",
+  "middleName": "Remaining given name(s)",
+  "firstNames": "Combination of firstName + middleName",
+  "fullName": "Full name (surname + firstName + middleName)",
+  "licenseNumber": "Main central registration number (Nº Registro)",
+  "cardNumber": "Vertical serial number on the left border (Nº Espelho)",
+  "idDocument": "Identity document number and issuing body (Section 4c - Doc. Identidade)",
+  "cpf": "Taxpayer number (Section 4d - CPF)",
+  "parents": "Parents' names listed in 'Filiação'",
+  "dateOfBirth": "Date of birth formatted as DD Month YYYY",
+  "placeOfBirth": "Place/City and State of birth in English",
+  "issueDate": "Issue date formatted as DD Month YYYY",
+  "expiryDate": "Expiration date formatted as DD Month YYYY",
+  "firstObtained": "First license date formatted as DD Month YYYY",
+  "authority": "Issuing authority (e.g., DETRAN SP)",
+  "class": "Vehicle categories (e.g., A, B, AB, C, D, E)",
+  "conditions": "Section 12 (Observações). Translate Brazilian codes to clear English (e.g., 'A' -> 'Prescribed spectacles', 'EAR' -> 'Exercises remunerated activity')",
+  "address": "Residential address if visible, or 'Not provided'",
+  "nationality": "Nationality ('Brazilian')",
+  "gender": "Gender ('Male' or 'Female')"
+}
+
+Output strictly valid JSON matching this schema without markdown codeblocks or surrounding conversational text.

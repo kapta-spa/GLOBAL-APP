@@ -1,0 +1,120 @@
+# DOCUMENTACIÓN TÉCNICA Y REGLAS DE EXTRACCIÓN: LICENCIAS DE CONDUCIR DE DINAMARCA (DENMARK)
+
+## 1. CONTEXTO
+- **País de Origen de la Licencia:** Dinamarca (Denmark / Danmark).
+- **Idioma de la Licencia Original:** Danés (Danish).
+- **País / Idioma de Destino (Traducción):** Reino Unido / Inglés (UK / International Standard).
+
+---
+
+## 2. ESTRUCTURA DE DATOS (CAMPOS JSON)
+
+| Campo | Tipo | Descripción y Origen |
+|---|---|---|
+| `personal` | String | Número personal / CPR / número de referencia ubicado en la casilla 4d del anverso/frente. |
+| `point4d` | String | Mismo número de referencia de la casilla 4d del anverso/frente (duplicado de `personal`). |
+| `surname` | String | Apellido(s) del titular (Punto 1 del anverso). |
+| `firstName` | String | Únicamente el primer nombre de pila (Punto 2 del anverso). |
+| `middleName` | String | Todos los demás nombres de pila restantes tras el primero. |
+| `firstNames` | String | Todos los nombres de pila unidos. |
+| `fullName` | String | Nombre completo consolidado (`surname` + `firstName` + `middleName`). |
+| `licenseNumber` | String | Número principal de la licencia (Punto 5 del anverso). Conservar únicamente caracteres alfanuméricos. |
+| `dateOfBirth` | String | Fecha de nacimiento (Punto 3 del anverso). Formato: `DD Month YYYY`. |
+| `placeOfBirth` | String | Lugar de nacimiento (Punto 3 del anverso), traducido al inglés si aplica. |
+| `issueDate` | String | Fecha de expedición (Punto 4a del anverso). Formato: `DD Month YYYY`. |
+| `expiryDate` | String | Fecha de expiración (Punto 4b del anverso). Formato: `DD Month YYYY`. |
+| `authority` | String | Autoridad emisora (Punto 4c del anverso), traducida al inglés anexando siempre ", Denmark" (ej. "Rigspolitiet, Denmark"). |
+| `class` | String | Categorías de vehículos autorizadas (Punto 9 del anverso o tabla del reverso), separadas por comas (ej. "AM, A1, B, BE"). |
+| `classDescriptions` | String | Descripciones estándar permitidas en inglés de las clases poseídas. Cada clase en una NUEVA LÍNEA. |
+| `categoriesDates` | String | Fechas de vigencia de categorías agrupadas según la tabla del reverso (Columna 10). Cada fecha o grupo en una NUEVA LÍNEA. |
+| `codes` | String | Códigos y explicaciones de restricciones/condiciones de la Sección 12 del reverso (ej. "01- Prescribed spectacles"). |
+| `explicacionCodigos` | String | Mismo contenido que `codes` (explicación de condiciones de la Sección 12). |
+
+---
+
+## 3. REGLAS DE TRADUCCIÓN Y FORMATO
+
+1. **Idioma de Salida Obligatorio:** Todos los textos generados y traducidos deben entregarse estrictamente en **INGLÉS (UK)**.
+2. **Formato de Fechas:** Estricto formato `"DD Month YYYY"` (ej. `14 April 2022`, `03 November 1988`).
+3. **Número Personal (`personal` / `point4d`):**
+   - Extraer el número ubicado en la casilla **4d** del frente/anverso de la licencia de Dinamarca. Ponerlo tanto en `personal` como en `point4d`.
+4. **Categorías y Descripciones (`classDescriptions`):**
+   - Para CADA categoría listada en `class`, incluir su descripción correspondiente en una NUEVA LÍNEA.
+   - Usar ESTRICTAMENTE este listado de descripciones permitidas:
+     - **AM**: AM - 2-wheel, 3-wheel vehicles and light quadricycles with a maximum design speed of not more than 45 km/h.
+     - **A1**: A1 - light motorcycles with a cylinder capacity not more than 125 cubic centimetres and a power rating less than 11 kW.
+     - **A2**: A2 - motorcycles with a power rating under 35 kW.
+     - **A**: A - heavy motorcycles without power restrictions.
+     - **B**: B - passenger vehicles weighing up to 3,500 kg and seating not more than eight passengers, in addition to the driver.
+     - **BE**: BE - vehicle of category B towing a heavy trailer of under 3,500 kg.
+     - **B1**: B1- quadricycles.
+     - **C1**: C1 - goods vehicles between 3,500 kg and 7,500 kg and for up to eight passengers-
+     - **C1E**: C1E - vehicle of category C1 or B towing a heavy trailer; with a combined mass of up to 12,000 kg.
+     - **C**: C - goods vehicles weighing more than 3,500 kg and seating not more than eight passengers.
+     - **CE**: CE - vehicle of category C towing a heavy trailer.
+     - **D1**: D1 - passenger vehicles built for fewer than 16 passengers and that is no longer than 8 m.
+     - **D1E**: D1E - vehicle of category D1 towing a heavy trailer.
+     - **D**: D - passenger vehicles for more than eight passengers.
+     - **DE**: DE - vehicle of category D towing a heavy trailer.
+     - **LK**: LK- Small moped with a maximum speed of 30 km/h. (Now included in AM class).
+     - **TM**: TM- Tractor/Motorised equipment.
+5. **Sección 12 - Códigos y Restricciones (`codes` / `explicacionCodigos`):**
+   - Extraer los códigos de la sección 12 del reverso de la licencia y traducirlos según estas plantillas:
+     - Código **01**: `01- Prescribed spectacles`
+     - Código **01.06**: `01.06 - Prescribed spectacles or contact lenses`
+     - Código **71**: `71- Exchange of drivers licence number: [número_extraído]`
+     - Código **70**: `70- Exchange of driver's license number [número_extraído]`
+     - Código **106**: `106- Subject to probationary period from [DateFrom] to [DateTo]`
+   - Si no hay códigos presentes en la sección 12, dejar en blanco `""` o "-".
+
+---
+
+## 4. SYSTEM PROMPT SUGERIDO PARA LA API DE GEMINI
+
+```text
+Analyze the provided images (Front and Back of a Danish driver's license / Danmark Kørekort).
+
+IMPORTANT: ALL TEXT OUTPUT VALUES MUST BE IN ENGLISH.
+
+EXTRACT DATA RULES:
+1. "personal" / "point4d": Extract the number located in section 4d on the front of the license card.
+2. "surname": Family name (Point 1).
+3. "firstName": ONLY the very first given name from Point 2.
+4. "middleName": ALL remaining given names after the first one from Point 2.
+5. "firstNames": All given names joined together.
+6. "fullName": Full name (surname + firstName + middleName).
+7. "licenseNumber": Main identification number (Point 5). Extract ONLY alphanumeric characters.
+8. "dateOfBirth": Point 3 date. Format as "DD Month YYYY".
+9. "placeOfBirth": Point 3 location if present. Translate to English.
+10. "issueDate": Point 4a. Format as "DD Month YYYY".
+11. "expiryDate": Point 4b. Format as "DD Month YYYY".
+12. "authority": Extract value from Point 4c, translate to English, and ALWAYS append ", Denmark" at the end.
+13. "class": Extract ALL categories listed in Point 9 / back table. Separate with commas.
+14. "classDescriptions": For EACH category present in "class", provide its description on a NEW LINE using EXACTLY these allowed definitions:
+    - AM: AM - 2-wheel, 3-wheel vehicles and light quadricycles with a maximum design speed of not more than 45 km/h.
+    - A1: A1 - light motorcycles with a cylinder capacity not more than 125 cubic centimetres and a power rating less than 11 kW.
+    - A2: A2 - motorcycles with a power rating under 35 kW.
+    - A: A - heavy motorcycles without power restrictions.
+    - B: B - passenger vehicles weighing up to 3,500 kg and seating not more than eight passengers, in addition to the driver.
+    - BE: BE - vehicle of category B towing a heavy trailer of under 3,500 kg.
+    - B1: B1- quadricycles.
+    - C1: C1 - goods vehicles between 3,500 kg and 7,500 kg and for up to eight passengers-
+    - C1E: C1E - vehicle of category C1 or B towing a heavy trailer; with a combined mass of up to 12,000 kg.
+    - C: C - goods vehicles weighing more than 3,500 kg and seating not more than eight passengers.
+    - CE: CE - vehicle of category C towing a heavy trailer.
+    - D1: D1 - passenger vehicles built for fewer than 16 passengers and that is no longer than 8 m.
+    - D1E: D1E - vehicle of category D1 towing a heavy trailer.
+    - D: D - passenger vehicles for more than eight passengers.
+    - DE: DE - vehicle of category D towing a heavy trailer.
+    - LK: LK- Small moped with a maximum speed of 30 km/h. (Now included in AM class).
+    - TM: TM- Tractor/Motorised equipment.
+15. "categoriesDates": Column 10 on the back table. Group identical obtaining dates on NEW LINES (e.g. "B: 15 May 2012").
+16. "codes" / "explicacionCodigos": Extract codes from Section 12 on the BACK of the license and output English translations:
+    - Code 01: "01- Prescribed spectacles"
+    - Code 01.06: "01.06 - Prescribed spectacles or contact lenses"
+    - Code 71: "71- Exchange of drivers licence number: [number]"
+    - Code 70: "70- Exchange of driver's license number [number]"
+    Combine into a single coherent text block if multiple exist.
+
+Return valid JSON adhering strictly to the required schema.
+```

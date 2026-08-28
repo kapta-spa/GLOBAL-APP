@@ -1,0 +1,72 @@
+===================================================================
+REGLAS DE EXTRACCIÓN Y TRADUCCIÓN DE LICENCIAS (SPAIN FULL)
+===================================================================
+
+1. Nº DE EXPEDIENTE / ASSIGNED NUMBER
+   - Variable en plantilla Word: {{assignedNumber}}
+   - Regla: Número asignado manualmente por el usuario en la interfaz (ej: B-2025-001).
+
+2. APELLIDOS / SURNAME
+   - Variable en plantilla Word: {{surname}}
+   - Regla: Extraído de la Casilla 1 de la licencia. Mantiene el formato original.
+
+3. NOMBRE PRINCIPAL / FIRST NAME
+   - Variable en plantilla Word: {{firstName}}
+   - Regla: Extraído de la Casilla 2. Solo incluye el primer nombre de la persona.
+
+4. OTROS NOMBRES / MIDDLE NAMES
+   - Variable en plantilla Word: {{middleName}}
+   - Regla: Extraído de la Casilla 2. Incluye el segundo nombre y nombres subsiguientes si existen.
+
+5. NÚMERO DE LICENCIA / LICENSE NUMBER
+   - Variable en plantilla Word: {{licenseNumber}}
+   - Regla: Extraído de la Casilla 4d / Casilla 5 (DNI, NIE o Número de Documento).
+
+6. FECHA DE NACIMIENTO / DATE OF BIRTH
+   - Variable en plantilla Word: {{dateOfBirth}}
+   - Regla: Extraído de la Casilla 3. Formato traducido en inglés: "DD Month YYYY" (ej: 14 March 1988).
+
+7. LUGAR DE NACIMIENTO / PLACE OF BIRTH
+   - Variable en plantilla Word: {{placeOfBirth}}
+   - Regla: Extraído de la Casilla 3. Traducido al inglés (ej: "Madrid, Spain").
+
+8. FECHA DE EXPEDICIÓN / ISSUE DATE
+   - Variable en plantilla Word: {{issueDate}}
+   - Regla: Extraído de la Casilla 4a. Formato traducido en inglés: "DD Month YYYY".
+
+9. AUTORIDAD DE EXPEDICIÓN / AUTHORITY
+   - Variable en plantilla Word: {{authority}}
+   - Regla: Extraído de la Casilla 4c. Los códigos provinciales o de la Jefatura de Tráfico se traducen al nombre oficial de la provincia/ciudad en inglés (ej: "08" -> "Barcelona, Spain", "28" -> "Madrid, Spain").
+
+10. FECHAS DE CATEGORÍAS / CATEGORIES DATES
+    - Variable en plantilla Word: {{categoriesDates}}
+    - Regla: Extraídas de la tabla del reverso (Columna 10). Las categorías con la misma fecha de validez se agrupan en una sola línea (ej: "A1, A2, B: 12 June 2015").
+
+11. CÓDIGOS DE SERIE / DOCUMENT SERIES
+    - Variable en plantilla Word: {{codes}}
+    - Regla: Ubicados en la esquina superior izquierda del reverso de la tarjeta.
+
+12. RESTRICCIONES Y CÓDIGOS ADICIONALES / RESTRICTIONS & CODES
+    - Variable en plantilla Word: {{explicacionCodigos}}
+    - Regla: Traducidos e interpretados al inglés desde la Columna 12 del reverso.
+      • Código 70: "70. Exchange of driver's license number [número]"
+      • Código 106: "106. Special restriction / condition"
+      • Código 01 / 01.01: "01. Sight correction and/or protection (Glasses or contact lenses)"
+      • Código 78: "78. Restricted to vehicles with automatic transmission"
+      • NOTA: Sin enlaces web, URLs ni citas de documentos externos.
+
+13. VIGENCIA DEL CÓDIGO 106 / CODE 106 DATES
+    - Variables en plantilla Word: {{code106From}} y {{code106To}}
+    - Regla: Fechas "Desde" y "Hasta" asociadas a la validez del código 106 si aplican.
+
+14. FECHA DE CADUCIDAD / EXPIRY DATE
+    - Variable en plantilla Word: {{expiryDate}}
+    - Regla: Extraído de la Casilla 4b. Formato traducido en inglés: "DD Month YYYY".
+
+15. CATEGORÍAS / CATEGORIES CLASS
+    - Variable en plantilla Word: {{class}}
+    - Regla: Extraído de la Casilla 9 del frente de la tarjeta (ej: "AM, B, C1").
+
+===================================================================
+FORMATO GLOBAL DE FECHAS: "DD Month YYYY" (ej: "05 January 2024")
+===================================================================

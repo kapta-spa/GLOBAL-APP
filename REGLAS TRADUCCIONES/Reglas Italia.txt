@@ -1,0 +1,142 @@
+# REGLAS Y LÓGICAS DE EXTRACCIÓN Y TRADUCCIÓN: LICENCIA DE CONDUCIR DE ITALIA (PATENTE DI GUIDA)
+
+## 1. CONTEXTO
+- **País de Origen:** Italia (República Italiana)
+- **Documento:** Licencia de Conducir (Patente di Guida - Formato Estándar Unión Europea)
+- **Idioma del Documento:** Italiano
+- **Idioma de Salida / Traducción Target:** Inglés (UK / International Standard)
+
+---
+
+## 2. ESTRUCTURA DE DATOS (CAMPOS EXACTOS)
+La API de Gemini debe responder en un objeto JSON estructurado con los siguientes nombres exactos de clave:
+
+| Campo | Tipo | Descripción / Origen |
+| :--- | :--- | :--- |
+| `surname` | String | Apellido principal (Cognome - Punto 1 del frente). |
+| `firstName` | String | Únicamente el PRIMER nombre de pila (Punto 2 del frente). |
+| `middleName` | String | Todos los nombres de pila restantes a partir del segundo. Si solo hay uno, se deja vacío. |
+| `firstNames` | String | Todos los nombres de pila completos concatenados. |
+| `fullName` | String | Nombre completo concatenado (`surname` + `firstName` + `middleName`). |
+| `licenseNumber` | String | Número principal de licencia (Punto 5 del frente). Solo caracteres alfanuméricos. |
+| `dateOfBirth` | String | Fecha de nacimiento (Punto 3). Formato: `DD Month YYYY`. |
+| `placeOfBirth` | String | Lugar de nacimiento (Punto 3). Traducido al inglés (ej. "ROME (ITALY)"). |
+| `issueDate` | String | Fecha de expedición / emisión (Punto 4a). Formato: `DD Month YYYY`. |
+| `expiryDate` | String | Fecha de vencimiento / caducidad (Punto 4b). Formato: `DD Month YYYY`. |
+| `authority` | String | Autoridad expedidora (Punto 4c). Traducido al inglés agregando siempre "ITALY" al final. |
+| `class` | String | Categorías autorizadas del frente (Punto 9), separadas por comas (ej. "AM, B1, B"). |
+| `classDescriptions` | String | Descripción estándar en inglés para cada categoría de `class`. Cada categoría en una NUEVA LÍNEA. |
+| `categoriesDates` | String | Agrupación de categorías por fecha de inicio (Punto 10 del reverso). Cada grupo en una NUEVA LÍNEA. |
+| `codes` | String | Código de serie alfanumérico ubicado en la esquina inferior derecha del reverso (ej. "AP 0451798"). |
+| `explicacionCodigos` | String | Explicación y traducción de las observaciones/códigos de la Sección 12 (reverso). |
+| `code106From` | String | Fecha de inicio del período de prueba (si aplica el código 106). |
+| `code106To` | String | Fecha de fin del período de prueba (si aplica el código 106). |
+
+---
+
+## 3. REGLAS DE TRADUCCIÓN Y FORMATO
+1. **Idioma Global de Salida:** Todo texto extraído y traducido DEBE ser devuelto en **INGLÉS**.
+2. **Formato Estricto de Fechas:** `DD Month YYYY` (ejemplo: `01 January 2000`, `15 May 1985`, `22 December 2030`).
+3. **Regla de Separación de Nombres de Pila:**
+   - `firstName`: Corresponde ESTRICTAMENTE al primer nombre del Punto 2 del frente.
+   - `middleName`: Corresponde a TODOS los nombres siguientes del Punto 2 del frente. Si no hay más nombres, queda en blanco (`""`).
+4. **Regla para la Autoridad (`authority`):**
+   - Extraer el valor del Punto 4c (ej. "UCO", "MIT-UCO", "MC-ROMA").
+   - Traducir al inglés e incluir SIEMPRE la palabra del país al final (ej. `MINISTRY OF INFRASTRUCTURE AND TRANSPORT ITALY` o `UCO ITALY`).
+5. **Formato de Categorías y Descripciones (`classDescriptions`):**
+   - Formato exacto por renglón: `**CATEGORÍA** - Descripción`
+   - NO incluir textos extra, referencias legales, fuentes externas ni enlaces (como eur-lex.europa.eu).
+   - Diccionario de descripciones obligatorias:
+     - **AM**: 2-wheel, 3-wheel vehicles and light quadricycles with a maximum design speed of not more than 45 km/h.
+     - **A1**: light motorcycles with a cylinder capacity not more than 125 cubic centimetres and a power rating less than 11 kW.
+     - **A2**: motorcycles with a power rating under 35 kW.
+     - **A**: heavy motorcycles without power restrictions.
+     - **B1**: heavy motorized quadricycle whose empty weight is a maximum of 450 kg if it is intended for the transport of persons, and 600 kg if it is intended for the transport of goods.
+     - **B**: passenger vehicles weighing up to 3,500 kg and seating not more than eight passengers, in addition to the driver.
+     - **BE**: vehicle of category B towing a heavy trailer of under 3,500 kg.
+     - **C1**: goods vehicles between 3,500 kg and 7,500 kg and for up to eight passengers-
+     - **C1E**: vehicle of category C1 or B towing a heavy trailer; with a combined mass of up to 12,000 kg.
+     - **C**: goods vehicles weighing more than 3,500 kg and seating not more than eight passengers.
+     - **CE**: vehicle of category C towing a heavy trailer.
+     - **D1**: passenger vehicles built for fewer than 16 passengers and that is no longer than 8 m.
+     - **D1E**: vehicle of category D1 towing a heavy trailer.
+     - **D**: passenger vehicles for more than eight passengers.
+     - **DE**: vehicle of category D towing a heavy trailer.
+
+6. **Formato de Fechas por Categoría (`categoriesDates`):**
+   - Analizar la tabla del reverso (Columna 10 - Fecha de validez inicial).
+   - Agrupar aquellas categorías que compartan la misma fecha exacta.
+   - **CADA GRUPO DEBE IR EN UN RENGLÓN / RENGLONES SEPARADOS (NUEVA LÍNEA). NO poner todo en un mismo renglón.**
+   - Ejemplo de salida correcta:
+     ```text
+     AM: 01 January 2000
+     B1, B: 03 February 2001
+     C1, C: 01 March 2002
+     ```
+
+---
+
+## 4. CASOS ESPECIALES Y EXCEPCIONES
+1. **Sección 12 (Observaciones y Restricciones EU / Nacionales):**
+   - Si se detecta el código `71`: `"71- Duplicate of licence number: [número de licencia extraído]"`
+   - Si se detecta el código `01` o `01.06`: `"01- Prescribed spectacles"`
+   - Si se detecta el código `70`: `"70- Exchange of driver's license number [número extraído]"`
+   - Si se detecta el código `106`: `"106- Subject to the application of article R. 413-5 during probationary period from [code106From] to [code106To] (Speed limits: 110km/h in Freeways where limit is 130km/h, 100km/h in freeways with lower speed limit or double roads, 80 km/h on other roads.)"`
+   - Combinar todas las explicaciones en un solo párrafo coherente. Si no hay códigos en la Sección 12, dejar vacío.
+2. **Dato ilegible o faltante:** Devolver una cadena vacía `""` sin inventar ni simular información.
+3. **Número de Licencia (`licenseNumber`):** Limpiar caracteres para conservar únicamente el código alfanumérico visible del Punto 5 del frente.
+
+---
+
+## 5. SYSTEM PROMPT SUGERIDO PARA GEMINI API
+
+```text
+Analyze these two images (Front and Back of an Italian driver's license / Patente di Guida).
+
+IMPORTANT: ALL TEXT OUTPUT VALUES MUST BE IN ENGLISH.
+
+EXTRACT DATA RULES:
+1. "surname": Family name (Point 1 on front).
+2. "firstName": ONLY the very first name from the given names list (Point 2 on front).
+3. "middleName": ALL remaining given names after the first one. If only one name exists, leave this empty.
+4. "firstNames": All given names joined.
+5. "licenseNumber": Main identification number (Point 5). Extract ONLY alphanumeric characters.
+6. "dateOfBirth": Date of birth (Point 3).
+7. "placeOfBirth": Place of birth (Point 3). TRANSLATE TO ENGLISH.
+8. "issueDate": Date of issue (Point 4a).
+9. "expiryDate": Date of expiry (Point 4b).
+10. "authority": Extract value from Point 4c, TRANSLATE TO ENGLISH, and ALWAYS append the country name "ITALY" at the end.
+11. "class": Extract ALL categories listed in Point 9 on the FRONT. SEPARATE THEM WITH COMMAS.
+12. "classDescriptions": For EACH category found in "class", provide its description on a NEW LINE.
+    Format each line EXACTLY as: "**CATEGORY** - Description".
+    DO NOT include any other text, sources, or links.
+    Use the following EXACT mappings:
+    - AM: 2-wheel, 3-wheel vehicles and light quadricycles with a maximum design speed of not more than 45 km/h.
+    - A1: light motorcycles with a cylinder capacity not more than 125 cubic centimetres and a power rating less than 11 kW.
+    - A2: motorcycles with a power rating under 35 kW.
+    - A: heavy motorcycles without power restrictions.
+    - B1: heavy motorized quadricycle whose empty weight is a maximum of 450 kg if it is intended for the transport of persons, and 600 kg if it is intended for the transport of goods.
+    - B: passenger vehicles weighing up to 3,500 kg and seating not more than eight passengers, in addition to the driver.
+    - BE: vehicle of category B towing a heavy trailer of under 3,500 kg.
+    - C1: goods vehicles between 3,500 kg and 7,500 kg and for up to eight passengers-
+    - C1E: vehicle of category C1 or B towing a heavy trailer; with a combined mass of up to 12,000 kg.
+    - C: goods vehicles weighing more than 3,500 kg and seating not more than eight passengers.
+    - CE: vehicle of category C towing a heavy trailer.
+    - D1: passenger vehicles built for fewer than 16 passengers and that is no longer than 8 m.
+    - D1E: vehicle of category D1 towing a heavy trailer.
+    - D: passenger vehicles for more than eight passengers.
+    - DE: vehicle of category D towing a heavy trailer.
+13. "categoriesDates": Analyze the BACK table, Column 10. Group identical dates.
+    FORMAT: Each group of categories with the same date must be on a NEW LINE.
+    Example format: "AM: 01 January 2000" or "B1, B: 03 February 2001".
+    DO NOT put all categories on a single line.
+14. "codes": Look at the BOTTOM RIGHT corner of the REVERSO (BACK) of the license. Extract the alphanumeric code found there (e.g., "AP 0451798").
+15. "explicacionCodigos": Look at Section 12 (bottom part of the BACK). Identify and translate all codes.
+    - If code "71" exists: "71- Duplicate of licence number: [extracted number]"
+    - If code "01" or "01.06" exists: "01- Prescribed spectacles"
+    - If code "70" exists: "70- Exchange of driver's license number [extracted number]"
+    - If code "106" exists: "106- Subject to the application of article R. 413-5 during probationary period from [DateFrom] to [DateTo] (Speed limits: 110km/h in Freeways where limit is 130km/h, 100km/h in freeways with lower speed limit or double roads, 80 km/h on other roads.)"
+16. "code106From" & "code106To": Extract these specifically if code 106 is present.
+17. Format all dates as "DD Month YYYY".
+
+Return valid JSON adhering to the specified schema.

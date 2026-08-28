@@ -1,0 +1,88 @@
+# REGLAS Y LÓGICA DE EXTRACCIÓN/TRADUCCIÓN - LICENCIAS DE CONDUCIR DE CHINA
+
+## 1. Contexto
+- **País de Origen:** República Popular China (China / 中华人民共和国)
+- **Idioma de Origen:** Chino Simplificado (Simplified Chinese)
+- **Idioma de Destino:** Inglés (UK English) / Español (Interfaz)
+- **Tipo de Documento:** Licencia de Conducir China (Chinese Driver's License - 机动车驾驶证), incluyendo tarjeta principal y tarjeta de registro posterior (Record Card).
+- **Entrada Visual:** 4 imágenes (frente de tarjeta principal, reverso, tarjeta de registro/record, código de barras/observaciones).
+
+---
+
+## 2. Campos Exactos (Estructura de Datos JSON)
+
+| Campo | Tipo | Descripción | Ejemplo / Valor |
+| :--- | :--- | :--- | :--- |
+| `surname` | `string` | Apellido(s) en Pinyin / Inglés | "ZHANG" |
+| `firstName` | `string` | Nombre(s) en Pinyin / Inglés | "WEI" |
+| `fullName` | `string` | Nombre completo en Pinyin / Inglés | "ZHANG WEI" |
+| `licenseNumber` | `string` | Número de Licencia / Documento de Identidad (18 dígitos) | "110101199001158888" |
+| `gender` | `string` | Género traducido ("Male" o "Female") | "Male" |
+| `nationality` | `string` | Nacionalidad traducida al Inglés | "Chinese" |
+| `address` | `string` | Dirección completa traducida al Inglés | "No. 88 Chaoyang Road, Chaoyang District, Beijing" |
+| `dateOfBirth` | `string` | Fecha de nacimiento en formato `DD Month YYYY` | "15 January 1990" |
+| `firstIssued` | `string` | Fecha de primera expedición (初次领证日期) | "10 March 2012" |
+| `issueDate` | `string` | Fecha de inicio de validez (有效起始日期) | "10 March 2018" |
+| `expiryDate` | `string` | Fecha de vencimiento (有效期限) o "To Long Term" | "10 March 2028" o "To Long Term" |
+| `class` | `string` | Clase/Categoría de vehículo | "C1" |
+| `authority` | `string` | Autoridad emisora traducida al Inglés | "Traffic Management Bureau of Beijing Public Security Bureau" |
+| `explicacionCodigos` | `string` | Traducción del texto en la sección de Registro / Observaciones (记录) | "No records of severe violations." |
+| `barcodeNumber` | `string` | Número situado directamente debajo del código de barras | "123456789012" |
+| `fileNumber` | `string` | Número de expediente después de "档案编号" (File Number) | "110000123456" |
+| `assignedNumber` | `string` | Número de referencia interno asignado | "UK-CH-2026-001" |
+
+---
+
+## 3. Reglas de Traducción y Formato
+
+1. **Traducción Global:**
+   - Todo el texto en caracteres chinos (Hanzi) debe ser traducido a **Inglés**.
+   - Los nombres de personas deben convertirse a **Pinyin** en mayúsculas (ejemplo: 张伟 -> ZHANG WEI).
+
+2. **Formato de Fechas (MANDATORIO):**
+   - Todas las fechas deben formatearse como `DD Month YYYY` con el mes escrito en palabras en inglés.
+   - *Ejemplo:* `2020-05-12` o `2020年05月12日` debe convertirse estrictamente en `12 May 2020`.
+
+3. **Período de Validez (`issueDate` y `expiryDate`):**
+   - `issueDate`: Corresponde al primer valor del campo "Valid Period" (有效起始日期).
+   - `expiryDate`: Corresponde al segundo valor del campo "Valid Period" (有效期限).
+   - *Excepción de Vencimiento Permanente:* Si el campo indica término indefinido, permanente o permanente sin fecha (长期 / Permanent / Long term), el valor debe establecerse exactamente en `"To Long Term"`.
+
+4. **Clases de Vehículos (`class`):**
+   - Preservar la codificación estándar china (ej. `C1` para vehículos pequeños, `C2` para automáticos, `A1`, `A2`, `B1`, `B2`).
+
+5. **Género (`gender`):**
+   - 男 -> `"Male"`
+   - 女 -> `"Female"`
+
+6. **Observaciones y Códigos (`explicacionCodigos`):**
+   - Extraer y traducir íntegramente cualquier texto del reverso o tarjeta secundaria bajo el encabezado "Record" / "记录".
+
+---
+
+## 4. Casos Especiales y Excepciones
+
+- **Datos Ilegibles o Borrosos:** Si un dato no se aprecia en las imágenes enviadas, devolver cadena vacía `""` en lugar de omitir la clave en el JSON.
+- **Licencia Permanente (Long Term):** Cuando transcurren los periodos iniciales (6 y 10 años) sin infracciones graves, China emite licencias con validez permanente (长期). Mapear siempre a `"To Long Term"`.
+- **Número de Licencia (License Number):** Corresponde al número de cédula de ciudadanía china de 18 dígitos (公民身份号码).
+- **Referencia Contextual:** Si se proporciona un archivo de referencia previo (`.docx`), priorizar la estructura y consistencia de nombres/estilo de traducción definidos en dicho documento.
+
+---
+
+## 5. System Prompt Sugerido para la API de Gemini
+
+```text
+You are an expert official document translator specializing in Chinese Driver's Licenses (机动车驾驶证).
+Analyze the provided images of a Chinese Driver's License and extract all relevant data into a clean JSON structure.
+
+CRITICAL TRANSLATION & FORMATTING RULES:
+1. Translate all Chinese text to English. Convert names to uppercase Pinyin (e.g. Surname: ZHANG, First Name: WEI).
+2. ALL DATES must be formatted with the day, full English month name, and 4-digit year (e.g., "15 January 1990", "10 March 2028").
+3. "firstIssued": Extract the date indicated as "Date of first issued" (初次领证日期).
+4. "issueDate": Extract the FIRST date in the "Valid Period" (有效起始日期).
+5. "expiryDate": Extract the SECOND date in "Valid Period" (有效期限). If it indicates permanent/long-term (长期), return strictly "To Long Term".
+6. "gender": Translate to "Male" or "Female".
+7. "explicacionCodigos": Translate any text in the "Record" (记录) or remarks section.
+8. "barcodeNumber": Extract the numbers printed directly beneath the barcode.
+9. "fileNumber": Extract the File Number after "档案编号".
+10. Return strictly valid JSON adhering to the specified schema.

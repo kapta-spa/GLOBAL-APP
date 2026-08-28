@@ -1,0 +1,102 @@
+# Documentación de Reglas de Extracción y Traducción para Licencias de Conducir (Hungría)
+
+## 1. Contexto General
+- **País de Origen:** Hungría (Hungary)
+- **Idioma del Documento Original:** Húngaro (Hungarian) / Estándar de la Unión Europea
+- **Idioma Objetivo de Salida:** Inglés (English)
+
+## 2. Campos Exactos (Estructura de Datos - JSON Schema)
+Los campos JSON extraídos de la licencia son los siguientes:
+
+| Nombre del Campo | Descripción | Tipo de Dato |
+| :--- | :--- | :--- |
+| `assignedNumber` | Número de expediente o referencia asignado | String |
+| `licenseLanguage` | Idioma de la licencia original (ej. "Hungarian") | String |
+| `surname` | Apellido(s) principales (Vezetéknév) | String |
+| `firstName` | Primer nombre propio únicamente | String |
+| `middleName` | Nombres secundarios posteriores al primer nombre | String |
+| `firstNames` | Todos los nombres propios unidos | String |
+| `fullName` | Nombre completo (Apellido + Nombres) | String |
+| `licenseNumber` | Número único de licencia (solo caracteres alfanuméricos) | String |
+| `dateOfBirth` | Fecha de nacimiento (Punto 3) | String (DD Month YYYY) |
+| `placeOfBirth` | Lugar de nacimiento (Punto 3), traducido al inglés | String |
+| `issueDate` | Fecha de expedición (Punto 4a) | String (DD Month YYYY) |
+| `expiryDate` | Fecha de caducidad/vencimiento (Punto 4b) | String (DD Month YYYY) |
+| `authority` | Autoridad emisora (Punto 4c), traducido al inglés + "Hungary" | String |
+| `class` | Categorías autorizadas (Punto 9 / Tabla reverso) separadas por coma | String |
+| `categoriesDates` | Fechas de obtención por categoría agrupadas | String |
+| `codes` | Códigos de serie ubicados en la esquina superior izquierda del reverso | String |
+| `explicacionCodigos` | Descripción detallada en inglés de los códigos de restricción (Col. 12) | String |
+| `code106From` | Fecha de inicio del periodo de prueba (Código 106) | String |
+| `code106To` | Fecha de fin del periodo de prueba (Código 106) | String |
+
+---
+
+## 3. Reglas de Traducción, Formato y Extracción
+1. **Idioma de Salida Obligatorio:** Todos los valores en texto deben traducirse al inglés.
+2. **Nombres Propios (`firstName`, `middleName`, `firstNames`):**
+   - `firstName`: Únicamente el primer nombre de la lista de nombres.
+   - `middleName`: Todos los demás nombres propios restantes. Si solo tiene un nombre, se deja vacío ("").
+   - `firstNames`: La unión de todos los nombres propios.
+3. **Número de Licencia (`licenseNumber`):** Extraer únicamente caracteres alfanuméricos (letras y números, eliminando guiones, espacios o símbolos especiales).
+4. **Formato de Fechas:** Todas las fechas (`dateOfBirth`, `issueDate`, `expiryDate`, etc.) deben formatearse estrictamente como `DD Month YYYY` (ejemplo: `14 May 1988`).
+5. **Autoridad Emisora (`authority`):** Extraer el valor del Punto 4c, traducirlo al inglés y añadir siempre el país de origen "Hungary" al final (ej. "Government Office of Budapest, Hungary").
+6. **Lugar de Nacimiento (`placeOfBirth`):** Traducir nombres geográficos y términos al inglés si corresponde (ej. "Budapest, Hungary").
+7. **Categorías de Licencia (`class`):** Extraer todas las categorías del Punto 9 (frente) o de las columnas 9/10 (reverso). Separarlas por comas y espacio (ej. "B, C1, T").
+   - Reconocer tanto categorías estándar de la UE (AM, A1, A2, A, B1, B, C1, C, D1, D, BE, CE, DE, etc.) como las Categorías Nacionales Especiales de Hungría:
+     - K: Garden tractor, animal-drawn vehicle
+     - T: Agricultural tractor and 2 heavy trailers, slow vehicle and trailer, garden tractor, animal-drawn vehicle
+     - M: Moped, animal-drawn vehicle, garden tractor (after 16 years of age)
+     - TR: Trolleybus, agricultural tractor and 2 heavy trailers, moped, slow vehicle and trailer, garden tractor, animal-drawn vehicle
+     - V: Tram, garden tractor, animal-drawn vehicle
+8. **Codificación de Restricciones y Observaciones (`explicacionCodigos`):**
+   Analizar la columna 12 del reverso e identificar los siguientes códigos específicos para generar la explicación exacta en inglés:
+   - Código "70": "70. Exchange of driver's license number [extract number]"
+   - Código "01": "01- Vision correction and/or protection"
+   - Código "01.06": "01.06- Prescribed spectacles or contact lenses"
+   - Código "106": "106- Subject to the application of article R. 413-5 during probationary period from [DateFrom] to [DateTo] (Speed limits: 110km/h in Freeways where limit is 130km/h, 100km/h in freeways with lower speed limit or double roads, 80 km/h on other roads.)"
+
+---
+
+## 4. Casos Especiales y Manejo de Excepciones
+- **Ilegibilidad / Datos Faltantes:** Si un campo es ilegible o no está presente en la imagen de la licencia, devolver una cadena vacía `""`. No inventar datos.
+- **Licencia Bilingüe o Multilingüe:** Identificar el idioma en `licenseLanguage` (ejemplo: "Hungarian" o "Hungarian and English").
+- **Nombre Completo (`fullName`):** Concatenar en el orden: `surname` + " " + `firstName` + " " + `middleName`.
+
+---
+
+## 5. System Prompt Sugerido para Gemini API
+
+```text
+You are an expert document parser and translator specialized in European driver's licenses (specifically Hungary).
+Analyze the two provided images (Front and Back of the driver's license).
+
+IMPORTANT CONSTRAINTS:
+- ALL OUTPUT VALUES MUST BE TRANSLATED TO ENGLISH.
+- Return ONLY a valid JSON object matching the requested schema.
+
+EXTRACT DATA RULES:
+1. "surname": Family name (Vezetéknév).
+2. "firstName": ONLY the very first given name.
+3. "middleName": ALL remaining given names after the first one. Leave empty if none.
+4. "firstNames": All given names joined together.
+5. "licenseNumber": The main identification number. Extract ONLY alphanumeric characters.
+6. "dateOfBirth": Date in Point 3. Format as "DD Month YYYY".
+7. "placeOfBirth": Location in Point 3. Translate to English.
+8. "issueDate": Date in Point 4a. Format as "DD Month YYYY".
+9. "expiryDate": Date in Point 4b. Format as "DD Month YYYY".
+10. "authority": Point 4c issuing authority. Translate to English and ALWAYS append "Hungary" at the end.
+11. "class": Extract ALL categories listed in Point 9 on the front and/or columns 9/10 on the back. Separate with commas. Recognize standard EU classes (AM, A, B, C, D, BE, CE, DE) and special Hungarian national classes:
+    - K: Garden tractor, animal-drawn vehicle
+    - T: Agricultural tractor and 2 heavy trailers, slow vehicle and trailer, garden tractor, animal-drawn vehicle
+    - M: Moped, animal-drawn vehicle, garden tractor (after 16 years of age)
+    - TR: Trolleybus, agricultural tractor and 2 heavy trailers, moped, slow vehicle and trailer, garden tractor, animal-drawn vehicle
+    - V: Tram, garden tractor, animal-drawn vehicle
+12. "categoriesDates": Column 10 on the back table. Group identical dates together.
+13. "codes": Look at the top left corner of the back. Extract series of codes.
+14. "explicacionCodigos": Column 12 restrictions. Translate known codes:
+    - Code "70": "70. Exchange of driver's license number [number]"
+    - Code "01": "01- Vision correction and/or protection"
+    - Code "01.06": "01.06- Prescribed spectacles or contact lenses"
+    - Code "106": "106- Subject to the application of article R. 413-5 during probationary period from [DateFrom] to [DateTo]"
+15. "licenseLanguage": Document primary language (e.g., "Hungarian").

@@ -1,0 +1,99 @@
+# DOCUMENTACIÓN DE REGLAS Y LÓGICA DE EXTRACCIÓN Y TRADUCCIÓN - LICENCIAS DE CONDUCIR (FRANCIA -> REINO UNIDO / INGLÉS)
+
+## 1. Contexto
+- **País de Origen de la Licencia:** Francia (République Française / Unión Europea).
+- **Idioma de la Licencia de Origen:** Francés.
+- **Idioma de Destino de la Traducción:** Inglés (UK Standard).
+
+---
+
+## 2. Campos Exactos (Estructura de Datos JSON)
+A continuación se definen las propiedades exactas extraídas en el objeto JSON de salida:
+
+1. surname (string): Apellido / Nombre de familia (Punto 1).
+2. firstName (string): Únicamente el primer nombre de pila (de la lista del Punto 2).
+3. middleName (string): Todos los nombres de pila restantes después del primero. Si solo existe un nombre, este campo queda vacío ("").
+4. firstNames (string): Todos los nombres de pila unidos.
+5. fullName (string): Apellidos y nombres completos (surname + firstName + middleName).
+6. licenseNumber (string): Número principal de identificación del permiso de conducir (Punto 5). Solo caracteres alfanuméricos.
+7. reference (string): Número/cadena de referencia administrativa (Punto 4d).
+8. dateOfBirth (string): Fecha de nacimiento (Punto 3).
+9. placeOfBirth (string): Lugar/Localidad de nacimiento traducido al inglés (Punto 3).
+10. issueDate (string): Fecha de expedición (Punto 4a).
+11. expiryDate (string): Fecha de caducidad/vencimiento (Punto 4b).
+12. authority (string): Autoridad emisora traducida al inglés (Punto 4c) agregando siempre el nombre del país en inglés al final (ej. "Prefecture of..., France").
+13. class (string): Todas las categorías listadas en el Punto 9 del frente de la licencia, separadas por comas (ej. "AM, A1, A2, A, B1, B").
+14. categoriesDates (string): Resumen de fechas de las categorías analizadas en la tabla del reverso (Columna 10), agrupando aquellas categorías con fechas idénticas.
+15. codes (string): Serie de 3 cadenas/códigos situados exclusivamente en la esquina superior izquierda del reverso.
+16. explicacionCodigos (string): Párrafo explicativo en inglés de las restricciones o códigos específicos detectados en la Columna 12 del reverso.
+17. code106From (string): Fecha de inicio del período de prueba si el código 106 está presente.
+18. code106To (string): Fecha de fin del período de prueba si el código 106 está presente.
+19. assignedNumber (string): Identificador interno o número de archivo asignado para nombrar el documento exportado.
+
+---
+
+## 3. Reglas de Traducción y Formato
+
+### A. Fechas
+- Formato Estándar: Todas las fechas (dateOfBirth, issueDate, expiryDate, code106From, code106To) deben formatearse estrictamente como "DD Month YYYY" (ejemplo: "14 March 1988" o "05 July 2021"). No usar guiones ni barras salvo que se indique explícitamente.
+
+### B. Nombres y Apellidos
+- firstName vs middleName: Se debe separar el primer nombre del resto de nombres de pila. Si en la licencia aparece "JEAN BAPTISTE PIERRE", entonces firstName = "JEAN" y middleName = "BAPTISTE PIERRE".
+
+### C. Lugares y Autoridades (Traducción al Inglés)
+- placeOfBirth: Traducir nombres de ciudades/países al inglés si aplica (ej. "PARIS" -> "PARIS", "ESPAGNE" -> "SPAIN").
+- authority (Punto 4c): Traducir la autoridad emisora al inglés y añadir siempre el país de origen al final ("France"). Ejemplo: "PREFECTURE DU RHONE" -> "Prefecture of Rhone, France".
+
+### D. Número de Licencia
+- licenseNumber (Punto 5): Extraer únicamente los caracteres alfanuméricos sin espacios ni guiones innecesarios.
+
+---
+
+## 4. Casos Especiales y Excepciones
+
+### A. Códigos de Restricciones (Columna 12 del Reverso)
+Buscar específicamente los siguientes códigos comunitarios/nacionales franceses en la Columna 12 y generar el texto exacto correspondiente en inglés para explicacionCodigos:
+- Código 70: "70. Exchange of driver's license number [extraer número]"
+- Código 01: "01- Vision correction and/or protection"
+- Código 01.06: "01.06- Prescribed spectacles or contact lenses"
+- Código 106: "106- Subject to the application of article R. 413-5 during probationary period from [DateFrom] to [DateTo] (Speed limits: 110km/h in Freeways where limit is 130km/h, 100km/h in freeways with lower speed limit or double roads, 80 km/h on other roads.)"
+
+Si se encuentran varios códigos, deben unirse en un solo párrafo coherente. Si no hay códigos detectados, dejar el campo vacío.
+
+### B. Datos Ilegibles o Ausentes
+- Si un valor opcional no es detectable, responder con cadena vacía "" o null en lugar de inventar datos o poner textos ficticios.
+
+---
+
+## 5. System Prompt Sugerido para Gemini API
+
+Analyze these two images representing the Front and Back of a French driver's license.
+
+IMPORTANT CONSTRAINTS:
+1. All text output values MUST be in English.
+2. Format all dates strictly as "DD Month YYYY" (e.g., "15 January 2020").
+
+EXTRACT DATA RULES:
+1. "surname": Family name / Nom (Point 1).
+2. "firstName": ONLY the very first name from the given names list / Prénoms (Point 2).
+3. "middleName": ALL remaining given names after the first one. If only one given name exists, leave this empty.
+4. "firstNames": All given names joined.
+5. "licenseNumber": Main driver identification number (Point 5). Extract ONLY alphanumeric characters.
+6. "reference": Reference string/number located at Point 4d.
+7. "dateOfBirth": Date of birth (Point 3).
+8. "placeOfBirth": Place of birth (Point 3). Translate to English if applicable.
+9. "issueDate": Issue date (Point 4a).
+10. "expiryDate": Expiry date (Point 4b).
+11. "authority": Extract issuing authority (Point 4c), translate to English, and ALWAYS append "France" at the end (e.g., "Prefecture of Paris, France").
+12. "class": Extract ALL category letters listed in Point 9 on the FRONT. Separate them with commas (e.g. "AM, B1, B").
+13. "categoriesDates": Analyze Column 10 on the BACK table. Group identical dates for categories.
+14. "codes": Extract the series of 3 codes from the TOP LEFT corner of the BACK side.
+15. "explicacionCodigos": Check Column 12 (BACK) for specific condition codes:
+    - Code "70": "70. Exchange of driver's license number [number]"
+    - Code "01": "01- Vision correction and/or protection"
+    - Code "01.06": "01.06- Prescribed spectacles or contact lenses"
+    - Code "106": "106- Subject to the application of article R. 413-5 during probationary period from [DateFrom] to [DateTo] (Speed limits: 110km/h in Freeways where limit is 130km/h, 100km/h in freeways with lower speed limit or double roads, 80 km/h on other roads.)"
+    Combine matching explanations into a single paragraph. Leave empty if none found.
+16. "code106From" & "code106To": Extract these specific dates if Code 106 is present.
+
+Return a valid JSON object matching the requested schema.

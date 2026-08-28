@@ -1,0 +1,17 @@
+# Dependencies
+node_modules/
+inbox-app/node_modules/
+
+# Logs
+*.log
+logs/
+
+# Environment
+.env
+.env.local
+
+# OS/IDE
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

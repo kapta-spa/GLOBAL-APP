@@ -1,0 +1,91 @@
+# ESPECIFICACIÓN TÉCNICA DE EXTRACCIÓN Y TRADUCCIÓN DE LICENCIAS DE CONDUCIR (PAÍSES BAJOS)
+
+## 1. CONTEXTO
+- **País de Origen:** Países Bajos (Netherlands / Rijbewijs)
+- **Idioma Fuente del Documento:** Neerlandés (Dutch)
+- **Idioma Destino de Extracción/Traducción:** Inglés (English)
+- **Objetivo:** Extracción OCR estructurada de licencias de conducir neerlandesas (Anverso y Reverso) con la API de Gemini y traducción técnica estándar al inglés para completar plantillas de documentos oficiales.
+
+---
+
+## 2. CAMPOS EXACTOS (ESTRUCTURA DE DATOS JSON)
+
+| Campo JSON | Posición / Origen en Licencia | Descripción y Regla de Negocio |
+|---|---|---|
+| `assignedNumber` | Control Externo | Número interno de control asignado para la nomenclatura final del archivo. |
+| `surname` | Anverso - Punto 1 | Apellidos o nombre de familia del titular. |
+| `firstName` | Anverso - Punto 2 | Únicamente el primer nombre de la lista de nombres de pila. |
+| `middleName` | Anverso - Punto 2 | Todos los nombres de pila secundarios/restantes. Cadena vacía `""` si no hay. |
+| `firstNames` | Anverso - Punto 2 | Concatenación de todos los nombres de pila (`firstName` + `middleName`). |
+| `fullName` | Anverso - Puntos 1 y 2 | Nombre completo unificado (`surname` + `firstName` + `middleName`). |
+| `licenseNumber` | Anverso - Punto 5 | Número identificador de la tarjeta de licencia de conducir. |
+| `citizen` | Reverso - Superior Izq. | BSN (Burgerservicenummer) y número de serie unidos por barra diagonal con espacios (`"BSN / SERIAL"`). Ej: `"150348563 / 1234567851"`. |
+| `dateOfBirth` | Anverso - Punto 3.1 | Fecha de nacimiento formateada. |
+| `placeOfBirth` | Anverso - Punto 3.2 | Ciudad/Lugar de nacimiento traducido al inglés. |
+| `issueDate` | Anverso - Punto 4a | Fecha de expedición del documento. |
+| `expiryDate` | Anverso - Punto 4b | Fecha de vencimiento/expiración del documento. |
+| `authority` | Anverso - Punto 4c | Autoridad municipal emisora traducida al inglés + ", Netherlands". |
+| `class` | Anverso/Reverso - Punto 9 | Categorías de vehículos autorizadas (Ej. "AM, B, T"). |
+| `categoriesDates` | Reverso - Columnas 10-11 | Agrupación de categorías que comparten las mismas fechas de inicio y vencimiento. |
+| `codes` | Reverso - Superior Izq. | Serie numérica adicional o códigos del reverso si difieren del BSN. |
+| `explicacionCodigos` | Reverso - Columna 12 | Traducción en inglés técnico de códigos EU/Nacionales (01, 70, 106, etc.). |
+| `code106From` | Reverso - Columna 12 | Fecha inicio del periodo probatorio/código 106 (si está presente). |
+| `code106To` | Reverso - Columna 12 | Fecha fin del periodo probatorio/código 106 (si está presente). |
+
+---
+
+## 3. REGLAS DE TRADUCCIÓN Y FORMATO
+
+1. **Idioma Estricto de Salida:** Todos los valores de texto descriptivos (lugar de nacimiento, autoridad emisora, explicaciones de restricciones) deben entregarse en **Inglés**.
+2. **Estándar de Fechas:** Todas las fechas deben formatearse como `DD Month YYYY` (Ejemplo: `15 March 2024`).
+3. **Desglose de Nombres (Punto 2):**
+   - `firstName`: Tomar estrictamente solo el primer nombre.
+   - `middleName`: Tomar todos los demás nombres posteriores al primero. Si no existen, asignar `""`.
+4. **Traducción de Autoridad Emisora (Punto 4c):**
+   - Traducir fórmulas administrativas neerlandesas como *"Burgemeester van [Ciudad]"* a *"Mayor and Aldermen of [Ciudad], Netherlands"*.
+   - Siempre debe terminar agregando `", Netherlands"`.
+5. **Formato del Campo `citizen` (Reverso):**
+   - Ubicado en la esquina superior izquierda del reverso de la tarjeta.
+   - Identificar los dos números impresos (BSN y número de serie numérico).
+   - Unirlos con un espacio, barra y espacio: `"BSN_NUMERO / NUMERO_SERIE"`.
+
+---
+
+## 4. CASOS ESPECIALES Y EXCEPCIONES
+
+1. **Campos Ilegibles u Omitidos:** Retornar cadena vacía `""` (nunca `null`, `"N/A"` ni `"undefined"`).
+2. **Interpretación de Códigos Nacionales / EU (Columna 12 Reverso):**
+   - **Código 01 / 01.06:** Corrección visual / gafas o lentes de contacto -> `"Sight correction and/or protection required"`.
+   - **Código 70:** Canje de licencia previa -> `"Exchange of driver's license [Número previo si aplica]"`.
+   - **Código 106:** Restricción de periodo probatorio con rango de fechas -> Extraer fechas de inicio y fin a `code106From` y `code106To`.
+3. **Ubicación del BSN:** En las licencias de conducir de Países Bajos, el número de identificación ciudadana (BSN) no se encuentra en el anverso, sino en el reverso, en la esquina superior izquierda.
+
+---
+
+## 5. SYSTEM PROMPT SUGERIDO PARA LA API DE GEMINI
+
+```text
+You are an expert OCR and document translation system specializing in European driving licenses, specifically Dutch driver's licenses (Rijbewijs Netherlands).
+
+Your task is to analyze the provided FRONT and BACK images of a Netherlands driver's license, extract all structured data fields, and translate all non-English text into professional English.
+
+CRITICAL INSTRUCTIONS:
+1. OUTPUT LANGUAGE: All text outputs (place of birth, authority, code explanations) MUST be in English.
+2. DATE FORMAT: Format all dates strictly as "DD Month YYYY" (e.g., "15 March 2024").
+3. NAME EXTRACTION (Point 2):
+   - "firstName": Extract ONLY the single first given name.
+   - "middleName": Extract all remaining given names. If none exist, return an empty string "".
+   - "surname": Extract family name from Point 1.
+4. CITIZEN / BSN FIELD (Back Top-Left):
+   - Locate the top-left area on the BACK of the card.
+   - Extract the two numeric series (BSN and serial number).
+   - Join them with a slash: "BSN_NUMBER / SERIAL_NUMBER" (e.g., "150348563 / 1234567851").
+5. ISSUING AUTHORITY (Point 4c):
+   - Translate terms like "Burgemeester van [City]" to "Mayor and Aldermen of [City], Netherlands". Always end with ", Netherlands".
+6. CATEGORIES & DATES (Back Table):
+   - Extract categories from Column 9 and group those sharing identical start/expiry dates from Columns 10 & 11.
+7. RESTRICTIONS & CONDITIONS (Column 12):
+   - Translate standard EU/Dutch codes (e.g., Code 01 = "Sight correction required", Code 70 = "Exchange of driver's license", Code 106 = Probationary restrictions with start and end dates).
+8. FALLBACK: Return empty string "" for any missing, blurred, or unreadable field.
+
+Return a valid JSON object adhering strictly to the requested schema.

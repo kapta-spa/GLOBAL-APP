@@ -1,0 +1,31 @@
+
+/* Tabs */
+.tabs {
+  display: flex;
+  background-color: var(--surface-color);
+  padding: 4px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.tab {
+  flex: 1;
+  padding: 12px;
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  font-weight: 600;
+  font-family: var(--font-family);
+  font-size: 0.95rem;
+  border-bottom: 2px solid transparent;
+  transition: all 0.2s;
+  cursor: pointer;
+}
+
+.tab.active {
+  color: var(--accent-color);
+  border-bottom: 2px solid var(--accent-color);
+}
+
+.spinning {
+  animation: rotate 1s linear infinite;
+}

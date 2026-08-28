@@ -1,0 +1,90 @@
+================================================================================
+ REGLAS Y CONDICIONES DE EXTRACCIÓN Y TRADUCCIÓN DE LICENCIAS DE CONDUCIR
+================================================================================
+
+1. CONTEXTO
+   - País de Origen: Francia (French Driver's License)
+   - Idioma de Origen: Francés
+   - Idioma de Destino: Inglés (UK Standard)
+   - Objetivo: Extraer y traducir los datos de imágenes (Frente y Reverso) de la
+     licencia de conducir francesa e insertarlos en una plantilla Word (.docx)
+     para trámites en Reino Unido.
+
+--------------------------------------------------------------------------------
+
+2. CAMPOS EXACTOS (ESTRUCTURA DE DATOS)
+   - surname (string): Apellido / Family Name (Punto 1 del frente).
+   - firstName (string): Únicamente el primer nombre propio de la lista (Punto 2).
+   - middleName (string): Todos los nombres restantes/secundarios (Punto 2).
+   - firstNames (string): Combinación de firstName + middleName.
+   - fullName (string): Nombre completo (surname + firstNames).
+   - licenseNumber (string): Número principal de identificación de la licencia (Punto 5). Solo caracteres alfanuméricos.
+   - personal (string): Código alfanumérico ubicado en el Punto 4d (Frente).
+   - code (string): Serie de 4 cadenas/números alfanuméricos ubicados debajo del punto 4d (Frente), unidos por espacios.
+   - first (string): Año (YYYY) de obtención de la categoría autorizada (ej. B) extraído de la tabla del reverso (Columna 10).
+   - dateOfBirth (string): Fecha de nacimiento (Punto 3 del frente).
+   - placeOfBirth (string): Lugar de nacimiento (Punto 3 del frente), TRADUCIDO AL INGLÉS.
+   - issueDate (string): Fecha de expedición (Punto 4a del frente).
+   - expiryDate (string): Fecha de vencimiento (Punto 4b del frente).
+   - authority (string): Autoridad emisora (Punto 4c del frente), TRADUCIDA AL INGLÉS y con el país (", France") añadido al final.
+   - class (string): Categorías de vehículos autorizadas (Punto 9 del frente), separadas por comas.
+   - categoriesDates (string): Fechas de validez y obtención por categoría según la tabla del reverso (Columna 10 y 11).
+   - explicacionCodigos (string): Explicación detallada en inglés de los códigos o restricciones hallados en la Columna 12 del reverso (ej. 70, 01, 01.06, 106).
+
+--------------------------------------------------------------------------------
+
+3. REGLAS DE TRADUCCIÓN Y FORMATO
+   a) Idioma Obligatorio: TODOS los valores de texto deben generarse en INGLÉS.
+   b) Formato de Fechas: Estrictamente en formato "DD Month YYYY" (Ejemplo: "14 March 1992", "01 June 2018").
+   c) Desglose de Nombres:
+      - Si el Punto 2 contiene "JEAN PAUL RENÉ", firstName = "JEAN", middleName = "PAUL RENÉ".
+   d) Limpieza de Número de Licencia: Extraer únicamente caracteres alfanuméricos eliminando espacios o guiones innecesarios.
+   e) Autoridad Emisora:
+      - Traducir entidades administrativas (ej. "Préfecture de Police de Paris" -> "Prefecture of Police of Paris, France").
+      - SIEMPRE incluir la palabra ", France" al final de la autoridad emisora.
+   f) Categorías: Unir con comas las clases visibles en el frente (ej. "AM, A1, A2, B, B1").
+
+--------------------------------------------------------------------------------
+
+4. CASOS ESPECIALES Y EXCEPCIONES
+   a) Datos Ilegibles o Ausentes: Retornar cadena vacía ("") o "Not detected" según aplique.
+   b) Códigos Comunitarios y Restricciones (Columna 12 al reverso):
+      - Código 01: Glasses or contact lenses required (Corrección de visión).
+      - Código 70: Exchange of licence (Licencia canjeada de otro país).
+      - Código 01.06: Glasses or contact lenses.
+      - Código 106: Restricciones específicas de validez/renovación.
+   c) Fecha de Primera Categoría (Campo "first"):
+      - Buscar la fila correspondiente a la categoría B (o la principal autorizada) en la tabla del reverso.
+      - Extraer ÚNICAMENTE el año de 4 dígitos de la columna 10 (Fecha de expedición de la categoría).
+
+--------------------------------------------------------------------------------
+
+5. SYSTEM PROMPT SUGERIDO PARA LA API DE GEMINI
+--------------------------------------------------------------------------------
+You are an expert OCR and document translation system specialized in European driver's licenses.
+Analyze the two provided images (Front and Back of a French driver's license).
+
+CRITICAL INSTRUCTION: ALL OUTPUT TEXT VALUES MUST BE IN ENGLISH.
+
+Extraction Rules:
+1. "surname": Family name from Point 1 (FRONT).
+2. "firstName": Extracted ONLY as the very first name listed in Point 2 (FRONT).
+3. "middleName": ALL remaining given names listed after the first name in Point 2 (FRONT).
+4. "personal": The alphanumeric value located at Point 4d (FRONT).
+5. "code": The series of four distinct numbers or alphanumeric strings found immediately below label 4d (FRONT). Join them with single spaces.
+6. "first": Locate the main authorized vehicle category (usually Class B) in the table on the BACK. Extract ONLY the 4-digit YEAR from the issue date (Column 10).
+7. "licenseNumber": The main identification number at Point 5 (FRONT). Extract ONLY alphanumeric characters.
+8. "dateOfBirth": Date of birth from Point 3 (FRONT).
+9. "placeOfBirth": Location of birth from Point 3 (FRONT). TRANSLATE TO ENGLISH.
+10. "issueDate": Issue date from Point 4a (FRONT).
+11. "expiryDate": Expiration date from Point 4b (FRONT).
+12. "authority": Issuer from Point 4c (FRONT). TRANSLATE TO ENGLISH and ALWAYS append ", France" at the end.
+13. "class": Categories listed under Point 9 (FRONT), separated by commas.
+14. "categoriesDates": Summary of categories and their respective dates from Column 10 & 11 (BACK).
+15. "explicacionCodigos": Explanation in English for any national/community codes found in Column 12 (BACK) (such as 01, 70, 01.06, 106).
+
+Date Formatting Rule:
+- Format ALL dates as "DD Month YYYY" (e.g. "12 October 2015").
+
+Return a valid JSON object strictly matching the specified JSON schema.
+================================================================================

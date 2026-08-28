@@ -1,0 +1,119 @@
+# DOCUMENTACIÓN TÉCNICA: REGLAS, CONDICIONES Y LÓGICA DE EXTRACCIÓN/TRADUCCIÓN DE LICENCIAS DE CONDUCIR
+====================================================================================================
+
+## 1. CONTEXTO
+- **País / Región de Origen**: Francia / Unión Europea / Países Francófonos e Hispanohablantes.
+- **Idioma del Documento de Entrada**: Francés / Español.
+- **Idioma de Salida Requerido**: Inglés Técnico Oficial (Reino Unido / UK English).
+- **Propósito**: Extracción OCR automatizada y traducción estructurada de licencias de conducir para la generación de certificaciones de equivalencia y documentos en Reino Unido.
+
+---
+
+## 2. CAMPOS EXACTOS (ESTRUCTURA DE DATOS JSON)
+
+La API de extracción devuelve la siguiente estructura JSON con tipado estricto:
+
+| Campo (`key`) | Tipo | Descripción | Ejemplo de Valor Extraído |
+| :--- | :--- | :--- | :--- |
+| `surname` | `string` | Apellidos de la persona (Family Name / Nom) | `"DUPONT"` |
+| `firstName` | `string` | Únicamente el primer nombre propio | `"JEAN"` |
+| `middleName` | `string` | Segundo y demás nombres propios restantes | `"MARIE PHILIPPE"` |
+| `firstNames` | `string` | Todos los nombres propios concatenados | `"JEAN MARIE PHILIPPE"` |
+| `fullName` | `string` | Nombre completo (Apellidos + Nombres) | `"DUPONT JEAN MARIE PHILIPPE"` |
+| `licenseNumber` | `string` | Número único de identificación de la licencia | `"123456789012"` |
+| `assignedNumber` | `string` | Identificador de expediente asignado (Nombre del archivo) | `"EXP-2026-9941"` |
+| `dateOfBirth` | `string` | Fecha de nacimiento formateada | `"15 March 1988"` |
+| `placeOfBirth` | `string` | Lugar de nacimiento traducido al inglés | `"Paris, France"` |
+| `issueDate` | `string` | Fecha de expedición del documento | `"10 January 2020"` |
+| `expiryDate` | `string` | Fecha de vencimiento / caducidad | `"09 January 2035"` |
+| `nationality` | `string` | Nacionalidad traducida al inglés | `"French"` |
+| `authority` | `string` | Autoridad emisora en inglés + País al final | `"Police Prefecture, France"` |
+| `class` | `string` | Lista de categorías de conducir autorizadas | `"AM, A1, B, BE"` |
+| `categoriesDates` | `string` | Fechas de inicio/vencimiento por categoría al reverso | `"B: 10/01/2020 - 09/01/2035"` |
+| `codes` | `string` | Códigos de restricción o condiciones numéricas | `"01, 78"` |
+| `explicacionCodigos` | `string` | Traducción explicativa técnica de categorías y códigos | `"Category B: Motor vehicles up to 3500kg... Code 01: Sight correction required."` |
+| `curp` | `string` | Identificador nacional único (CURP / RFC / NIR / DNI) | `"DPNT880315HFR..."` |
+| `blood` | `string` | Tipo de sangre (si figura en la licencia) | `"O+"` |
+| `barcode` | `string` | Cadena alfanumérica/numérica asociada al código de barras | `"9876543210"` |
+
+---
+
+## 3. REGLAS DE TRADUCCIÓN Y FORMATO POR CAMPO
+
+### 3.1. Formato de Fechas
+- **Regla Estricta**: Todas las fechas (`dateOfBirth`, `issueDate`, `expiryDate`) se formatean como `"DD Month YYYY"`.
+- *Ejemplo*: `12/05/1990` o `12 mai 1990` ➔ `"12 May 1990"`.
+- *Meses en Inglés*: `January`, `February`, `March`, `April`, `May`, `June`, `July`, `August`, `September`, `October`, `November`, `December`.
+
+### 3.2. Autoridad Emisora (`authority`)
+- **Regla**: Traducir la institución al inglés Y añadir obligatoriamente el país de origen al final separado por una coma.
+- *Mapeos Frecuentes*:
+  - `"Préfecture de Police"` ➔ `"Police Prefecture, France"`
+  - `"Préfecture du Rhône"` ➔ `"Rhône Prefecture, France"`
+  - `"Ministère de l'Intérieur"` ➔ `"Ministry of Interior, France"`
+  - `"Secretaría de Movilidad"` ➔ `"Secretariat of Mobility, Mexico"`
+
+### 3.3. Nombres Propios (`surname`, `firstName`, `middleName`)
+- **Regla**: Los nombres y apellidos NUNCA se traducen ni se anglicanizan. Conservar la grafía y acentuación original.
+- **División de Nombres**:
+  - `firstName`: Exclusivamente el **primer** nombre dado.
+  - `middleName`: Todos los demás nombres siguientes concatenados.
+  - *Ejemplo*: `"Pierre Jean François"` ➔ `firstName`: `"Pierre"`, `middleName`: `"Jean François"`.
+
+### 3.4. Explicación de Categorías y Códigos (`explicacionCodigos`)
+- **Regla**: Proporcionar una traducción técnica oficial estándar en inglés UK de las categorías autorizadas y restricciones según la directiva europea / estándar británico:
+  - **Categoría A**: `"Category A: Motorcycles with or without a sidecar."`
+  - **Categoría B**: `"Category B: Motor vehicles with a maximum authorized mass not exceeding 3500kg, designed and constructed for the carriage of no more than eight passengers in addition to the driver."`
+  - **Categoría C**: `"Category C: Large goods vehicles exceeding 3500kg."`
+  - **Código 01**: `"Code 01: Sight correction and/or protection required (glasses or contact lenses)."`
+  - **Código 78**: `"Code 78: Restricted to vehicles with automatic transmission."`
+  - **Código 106**: `"Code 106: National restriction / validity period extension."`
+
+---
+
+## 4. CASOS ESPECIALES Y EXCEPCIONES
+
+1. **Campos Ausentes o Ilegibles**:
+   - Si un dato no figura o es ilegible por desgaste, devolver una cadena vacía `""`. NUNCA usar `"N/A"`, `"null"`, ni `"undefined"`.
+
+2. **Detección del Reverso**:
+   - Analizar la tabla de categorías del reverso (Filas: 9-Categoría, 10-Fecha inicio, 11-Fecha fin, 12-Códigos).
+   - Mapear cada categoría activa con sus respectivas fechas en el campo `categoriesDates`.
+
+3. **Inyección de Imágenes para Word (.docx)**:
+   - Las imágenes de frente y reverso se procesan en Base64 para inyectarse en etiquetas de imagen del módulo `docxtemplater`:
+     - `{%license_front}` ➔ Imagen frontal escalada a ~312x195px.
+     - `{%license_back}` ➔ Imagen trasera escalada a ~312x195px.
+
+---
+
+## 5. SYSTEM PROMPT SUGERIDO (OPTIMIZADO PARA LA API DE GEMINI 3 FLASH)
+
+You are an expert OCR and document translation system specialized in European and Latin American driver's licenses.
+
+Analyze the two provided images (Front and Back of a driver's license).
+
+CRITICAL INSTRUCTION: ALL TEXT OUTPUT VALUES MUST BE TRANSLATED TO UK ENGLISH EXCEPT FOR PROPER NAMES OF PERSONS.
+
+EXTRACTION AND TRANSLATION RULES:
+1. "surname": Family name / Nom as written on the document.
+2. "firstName": ONLY the very first given name.
+3. "middleName": ALL remaining given names combined into a single string.
+4. "firstNames": All given names together ("firstName" + "middleName").
+5. "fullName": Full name ("surname" + "firstName" + "middleName").
+6. "licenseNumber": Primary document identification number.
+7. "curp": National tax/identification code if present (e.g., CURP, RFC, NIR).
+8. "blood": Blood type if specified (e.g., A+, O-).
+9. "nationality": Translate nationality to English (e.g., "Française" -> "French", "Mexicana" -> "Mexican").
+10. "barcode": Numerical or alphanumeric code printed near the barcode.
+11. "dateOfBirth": Date of birth formatted strictly as "DD Month YYYY" (e.g., "15 March 1988").
+12. "placeOfBirth": Place of birth translated to English (e.g., "Paris, France").
+13. "issueDate": Issue date formatted strictly as "DD Month YYYY".
+14. "expiryDate": Expiration date formatted strictly as "DD Month YYYY".
+15. "authority": Translate issuing authority to English AND append the country name at the end separated by a comma (e.g., "Police Prefecture, France" or "Ministry of Transport, Colombia").
+16. "class": Extract driving categories list (e.g., "AM, A1, B, BE").
+17. "categoriesDates": Extract category validity periods from the back table (e.g., "B: 10 Jan 2020 - 09 Jan 2035").
+18. "codes": Restriction codes listed in column 12 (e.g., "01, 78").
+19. "explicacionCodigos": Provide a professional English translation describing the allowed driving categories and any restriction codes (e.g., "Category B: Motor vehicles up to 3500kg... Code 01: Sight correction required").
+
+If any field is missing or illegible, return an empty string (""). Return valid JSON.

@@ -1,0 +1,109 @@
+Configura la aplicación para procesar, extraer y traducir Licencias de Conducir de Taiwán (中華民國 駕駛執照 - Republic of China Driving License) a partir de dos imágenes (Frente y Reverso), convirtiendo los datos al inglés e insertándolos en plantillas Word (.docx) mediante docxtemplater.
+
+### 1. INFORMACIÓN GENERAL Y NOMBRE
+- Nombre de la aplicación: Taiwan
+- Idioma de origen: Chino Tradicional (y nombres romanizados si constan en la licencia).
+- Idioma de salida de los datos: Inglés Oficial.
+
+---
+
+### 2. REGLA CRÍTICA DE CONVERSIÓN DE FECHAS (CALENDARIO ROC / MINGUO)
+Taiwán utiliza el calendario de la República de China (民國 - Minguo Era). Todas las fechas leídas de la licencia deben convertirse a años gregorianos occidentales con la siguiente fórmula:
+- Fórmula: Año Gregoriano = Año ROC + 1911
+- Formato de salida estricto: "DD Month YYYY" (ejemplo en inglés: "15 June 1991", "10 April 2019", "04 November 2024").
+- Ejemplos:
+  * 80.06.15 -> (80 + 1911 = 1991) -> "15 June 1991"
+  * 108.04.10 -> (108 + 1911 = 2019) -> "10 April 2019"
+  * 113.11.04 -> (113 + 1911 = 2024) -> "04 November 2024"
+
+---
+
+### 3. CAMPOS DE EXTRACCIÓN Y ETIQUETAS DE LA PLANTILLA WORD (DOCXTEMPLATER)
+
+Extrae y rellena exactamente los siguientes tags:
+
+1. {{class}}: Traducción al inglés de la clase o categoría autorizada para conducir (駕照種類 / 類別):
+   - 普通小型車 / 小型車 -> "Ordinary Light Vehicle"
+   - 職業小型車 -> "Professional Light Vehicle"
+   - 大型重型機車 (más de 250cc) -> "Heavy Motorcycle (Over 250cc)"
+   - 普通重型機車 (50cc a 250cc) -> "Ordinary Heavy Motorcycle (50cc - 250cc)"
+   - 普通輕型機車 (menos de 50cc) -> "Light Motorcycle (Under 50cc)"
+   - 普通大貨車 -> "Ordinary Large Truck"
+   - 職業大貨車 -> "Professional Large Truck"
+   - 普通大客車 -> "Ordinary Large Passenger Vehicle (Bus)"
+   - 職業大客車 -> "Professional Large Passenger Vehicle (Bus)"
+   - 普通聯結車 -> "Ordinary Articulated Vehicle (Trailer)"
+   - 職業聯結車 -> "Professional Articulated Vehicle (Trailer)"
+
+2. {{conditions}}: Condiciones o restricciones de manejo (持照條件):
+   - Si indica "A" o "無限制" -> "A- Unrestricted"
+   - Si indica "B" o "限駕自排車" -> "B- Automatic Transmission"
+   - Si indica otro código (ej. "C") -> "C- Specially Equipped Vehicle"
+
+3. {{area}}: El número ubicado al FRENTE de la licencia en la parte inferior derecha (管轄編號 / serial / control number).
+
+4. {{file}}: El número ubicado al REVERSO (BACK) de la licencia en la parte superior (檔案編號 / código de barras / file number superior).
+
+5. {{issuedDate}}: La fecha ubicada DIRECTAMENTE ABAJO de la fecha de expiración (有效日期) en el frente de la licencia (corresponde a la fecha de emisión o renovación/inspección). Convertir año ROC (+1911) a formato "DD Month YYYY".
+
+6. {{issueDate}}: Fecha de emisión general (發照日期), convertida de ROC (+1911) a "DD Month YYYY".
+
+7. {{expiryDate}}: Fecha de vencimiento/expiración (有效日期). Convertir año ROC (+1911) a formato "DD Month YYYY". Si indica "無期限", permanente o está sin fecha de expiración, devolver "None / Indefinite" o "Indefinite".
+
+8. {{surname}}: Apellidos de la persona en mayúsculas (formato romanizado / Pinyin, ej. "LIN", "CHEN", "WANG").
+
+9. {{firstName}}: Primer nombre de pila en mayúsculas (ej. "CHIA-HAO", "MEI-LING").
+
+10. {{middleName}}: Segundo nombre o nombres adicionales si constan (o cadena vacía si no aplica).
+
+11. {{firstNames}}: Todos los nombres de pila combinados.
+
+12. {{fullName}}: Nombre completo en formato inglés romanizado (ej. "LIN, CHIA-HAO").
+
+13. {{licenseNumber}}: Número de identificación / licencia (身分證字號 / 駕照號碼), compuesto normalmente por 1 letra y 9 dígitos (ej. A123456789).
+
+14. {{dateOfBirth}}: Fecha de nacimiento (出生年月日), convertida de ROC (+1911) a "DD Month YYYY".
+
+15. {{placeOfBirth}}: Lugar de nacimiento u origen si se indica, o "Taiwan".
+
+16. {{authority}}: Autoridad emisora traducida al inglés (ej. "Directorate General of Highways, MOTC, Taiwan" o la oficina de vehículos motorizados correspondiente).
+
+17. {{address}}: Dirección residencial completa traducida y romanizada al inglés (Calle, Distrito, Ciudad, Taiwán).
+
+18. {{gender}}: Sexo exacto en inglés: "Male" (男) o "Female" (女).
+
+19. {{blood}}: Grupo sanguíneo si consta (ej. "A", "B", "O", "AB").
+
+20. {{assignedNumber}}: Número de expediente o archivo para nombrar el documento descargado ({assignedNumber}.docx).
+
+---
+
+### 4. INSTRUCCIONES DEL PROMPT PARA GEMINI (@google/genai SDK)
+
+Usa el modelo `gemini-2.5-flash` enviando las dos imágenes en Base64 con el siguiente schema JSON estructurado:
+
+```json
+{
+  "surname": "string",
+  "firstName": "string",
+  "middleName": "string",
+  "firstNames": "string",
+  "fullName": "string",
+  "licenseNumber": "string",
+  "dateOfBirth": "string",
+  "placeOfBirth": "string",
+  "issueDate": "string",
+  "issuedDate": "string",
+  "expiryDate": "string",
+  "address": "string",
+  "gender": "string",
+  "blood": "string",
+  "class": "string",
+  "conditions": "string",
+  "area": "string",
+  "file": "string",
+  "codes": "string",
+  "authority": "string",
+  "categoriesDates": "string",
+  "explicacionCodigos": "string"
+}

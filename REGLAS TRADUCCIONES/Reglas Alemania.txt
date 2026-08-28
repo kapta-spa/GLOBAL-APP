@@ -1,0 +1,115 @@
+# Especificación de Extracción y Traducción de Licencias de Conducir (Francia/EU -> UK/Inglés)
+
+## 1. Contexto
+- **País / Región de Origen:** Francia / Unión Europea (Alemania/Francia/EU)
+- **Idioma Objetivo:** Inglés (UK)
+- **Propósito:** Extracción, traducción estandarizada y mapeo automático de campos para llenado de plantillas oficiales (.docx) mediante la API de Gemini.
+
+---
+
+## 2. Estructura de Datos (Campos Exactos)
+
+| Nombre del Campo (`JSON Key`) | Etiqueta / Punto de Licencia | Descripción / Contenido esperable |
+| :--- | :--- | :--- |
+| `surname` | Punto 1 (Front) | Apellidos / Nombre de familia |
+| `firstName` | Punto 2 (Front) | Únicamente el PRIMER nombre |
+| `middleName` | Punto 2 (Front) | Todos los nombres secundarios o centrales restantes |
+| `firstNames` | Punto 2 (Front) | Combinación de primer y segundos nombres |
+| `fullName` | Punto 1 + 2 (Front) | Apellidos y nombres completos (`surname + firstName + middleName`) |
+| `licenseNumber` | Punto 5 (Front) | Número principal de identificación de la licencia |
+| `dateOfBirth` | Punto 3 (Front) | Fecha de nacimiento |
+| `placeOfBirth` | Punto 3 (Front) | Lugar / Ciudad / País de nacimiento |
+| `issueDate` | Punto 4a (Front) | Fecha de expedición de la licencia |
+| `expiryDate` | Punto 4b (Front) | Fecha de expiración de la licencia (o "Indefinite" si no aplica) |
+| `authority` | Punto 4c (Front) | Autoridad expedidora traducida al inglés + País |
+| `class` | Punto 9 (Front/Back) | Categorías/Clases autorizadas (ej. AM, A1, A2, A, B, BE, B1, C1, C1E, C, CE, D1, D1E, D, DE, M, S, L, T) |
+| `classDescriptions` | Auto-generado / Mapeo | Descripciones oficiales de cada categoría autorizada (una por línea) |
+| `categoriesDates` | Columna 10 (Back) | Fechas de expiración agrupadas por categoría/clase |
+| `codes` | Columna 12 (Back) | Códigos numéricos de restricciones/explicaciones y su significado oficial |
+| `assignedNumber` | Campo interno | Número de asignación / referencia de archivo |
+
+---
+
+## 3. Reglas de Traducción y Formato
+
+1. **Idioma Global:** Todos los valores extraídos deben estar estrictamente traducidos al **Inglés**.
+2. **Formato de Fechas:** 
+   - Estándar obligatorio: `DD Month YYYY` (Ejemplo: `01 January 2000`, `15 March 2026`).
+   - Todos los nombres de meses deben traducirse al inglés.
+3. **Expiración General (`expiryDate`):**
+   - Si no hay fecha visible, la casilla está vacía o es indefinida, colocar la palabra literal: `Indefinite`.
+4. **Separación de Nombres:**
+   - `firstName`: Exclusivamente el primer nombre.
+   - `middleName`: Todos los demás nombres dados. Si no hay más nombres, dejar vacío (`""`).
+5. **Autoridad Expedidora (`authority`):**
+   - Traducir la entidad expedidora del Punto 4c al inglés, seguida de una coma y el país en inglés.
+   - Ejemplo: `"Berlin capital, Germany"` o `"Prefecture of Police, France"`.
+6. **Formato de Fechas por Categoría (`categoriesDates`):**
+   - Estructura: `"Categoría(s): Fecha"` (ej. `AM: 01 January 2000` o `B1, B: 03 February 2001`).
+   - **Regla estricta:** Un renglón/línea por cada grupo de categorías que compartan la misma fecha. Separar los grupos con saltos de línea (`\n`).
+7. **Descripciones de Categorías (`classDescriptions`):**
+   - Cada categoría permitida debe aparecer en una línea separada con el formato: `[CÓDIGO] - [Descripción en Inglés]`.
+   - Ejemplo:
+     ```text
+     AM - 2-wheel, 3-wheel vehicles and light quadricycles with a maximum design speed of not more than 45 km/h.
+     B - passenger vehicles weighing up to 3,500 kg and seating not more than eight passengers, in addition to the driver.
+     ```
+8. **Códigos de Restricción (`codes`):**
+   - Comparar los números encontrados en la Columna 12 (reverso) con el catálogo oficial.
+   - Formato obligatorio: `[NÚMERO]- [Explicación Oficial en Inglés]`.
+   - Ejemplo: `01- Vision correction and/or protection device`.
+   - Si un código no figura en el catálogo validado, debe descartarse.
+
+---
+
+## 4. Casos Especiales y Excepciones
+
+- **Datos ilegibles o ausentes:** Si un dato numérico o de texto no es visible en la imagen, retornar un string vacío `""` o `Indefinite` en el caso específico de `expiryDate`.
+- **Nombres compuestos o múltiples:** Respetar la división en `firstName` (primer elemento) y `middleName` (elementos restantes).
+- **Categorías múltiples con la misma fecha:** Agruparlas en `categoriesDates` usando coma y espacio (ej. `C1, C: 01 March 2002`).
+
+---
+
+## 5. System Prompt Sugerido para Gemini API
+
+```text
+You are an expert OCR and translation assistant specialized in European (French/German/EU) driving licenses for official document processing in English.
+
+Analyze the two provided images (Front and Back of a driver's license).
+
+IMPORTANT RULES:
+1. ALL OUTPUT VALUES MUST BE IN ENGLISH.
+2. ALL DATES (dateOfBirth, issueDate, expiryDate, categoriesDates) MUST strictly use the format "DD Month YYYY" (e.g., "01 January 2026"). Translate all month names to English.
+3. If expiryDate is empty, missing, or indefinite, set it strictly to "Indefinite".
+
+EXTRACT THE FOLLOWING FIELDS (JSON Format):
+- "surname": Family name from Point 1.
+- "firstName": ONLY the very first given name from Point 2.
+- "middleName": ALL remaining given names from Point 2.
+- "licenseNumber": Main identification number from Point 5.
+- "dateOfBirth": Date from Point 3.
+- "placeOfBirth": Location from Point 3 (Translated to English).
+- "issueDate": Date from Point 4a.
+- "expiryDate": Date from Point 4b. Output "Indefinite" if missing or blank.
+- "authority": Translate the issuing authority from Point 4c into English, followed by a comma and the Country name in English (e.g., "Prefecture of Police, France").
+- "class": Extract all authorized categories/classes listed on the license (Point 9 or back table, e.g., AM, A1, A2, A, B, BE, B1, C1, C1E, C, CE, D1, D1E, D, DE, M, S, L, T).
+- "categoriesDates": Analyze Column 10 on the BACK. List categories with their expiry dates in format "Category: Date" or "Category1, Category2: Date". Use actual line breaks (\n) between groups. Example:
+  AM: 01 January 2000
+  B1, B: 03 February 2001
+  C1, C: 01 March 2002
+- "codes": Analyze Column 12 on the BACK. Match found numerical codes with the official explanation list below. Format each as "NUMBER- Explanation":
+  - 01- Vision correction and/or protection device
+  - 70- Exchange of driver's license number, issued by
+  - 171- Class C1, also valid for motor vehicles of class D with a maximum permissible mass not exceeding 7,500 kg, but without passengers.
+  - 172- Class C, valid also for motor vehicles of class D, but without passengers.
+  - 79.03- Only three-wheeled vehicles
+  - 79.04- Only vehicle combinations of three-wheeled vehicles and a trailer with a maximum permissible mass not exceeding 750 kg.
+  - 79.06- Vehicles (vehicle combination) of category BE, provided that the maximum permissible mass of the trailer exceeds 3,500 kg.
+  - 79 (C1E > 12.000 kg, L ≤ 3)- Restriction of class CE due to the authorization resulting from the previous class 3 to drive three-axle trains with a towing vehicle of class C1 and more than 12,000 kg total mass and trains with a towing vehicle of class C1 and trailers without registration, where the total mass can be more than 12,000 kg and three-axle trains consisting of a towing vehicle of class C1 and a trailer, where the maximum permissible mass of the trailer exceeds the unladen mass of the towing vehicle (part not covered by C1E).
+  - 174- Class L, also valid for driving tractors with a maximum speed determined by their design of not more than 40 km/h...
+  - 175- Class L, also valid for driving motor vehicles with a maximum speed determined by their design of not more than 25 km/h...
+  - 181- Class T, only valid for motor vehicles of class S
+  - 197- The test was taken on a motor vehicle with automatic transmission...
+
+Discard any code not listed above.
+Return valid JSON adhering strictly to the requested schema.

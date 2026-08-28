@@ -1,0 +1,100 @@
+# REGLAS Y LÓGICA DE EXTRACCIÓN Y TRADUCCIÓN: LICENCIA DE CONDUCIR DE VIETNAM (Giấy phép lái xe)
+
+## 1. Contexto
+- **País:** Vietnam (Cộng hòa Xã hội chủ nghĩa Việt Nam)
+- **Idioma de la licencia original:** Vietnamita (Giấy phép lái xe / DRIVING LICENCE)
+- **Idioma de salida deseado:** Inglés (English)
+- **Modelo de IA utilizado:** Gemini API (`gemini-3.6-flash`)
+
+---
+
+## 2. Campos Exactos (Estructura de Datos / JSON Schema)
+
+| Campo JSON | Etiqueta / Tag en Plantilla | Descripción / Origen en Licencia |
+| :--- | :--- | :--- |
+| `fullname` / `fullName` | `{{fullname}}`, `{{fullName}}` | Nombre completo del titular ("Họ tên / Full name"). |
+| `gender` | `{{gender}}` | Género ("Giới tính / Sex"). Debe traducirse estrictamente a "Male" o "Female". |
+| `reverse` | `{{reverse}}` | Número de serie/control impreso en el REVERSO de la tarjeta (ej. "AV934767"). |
+| `nationality` | `{{nationality}}` | Nacionalidad ("Quốc tịch / Nationality"). Traducida al inglés (ej. "Vietnamese"). |
+| `address` | `{{address}}` | Dirección de residencia ("Nơi cư trú / Place of residence") en inglés/sin diacríticos. |
+| `classDescriptions` | `{{classDescriptions}}` | Descripción de las categorías de vehículos autorizadas, ubicada al reverso bajo "CLASSIFICATION OF MOTOR VEHICLES". |
+| `categoriesDates` | `{{categoriesDates}}` | Fecha de aprobación/inicio ("Trúng tuyển ngày" / "beginning date" / "Date of passing exam") ubicada al reverso. |
+| `licenseNumber` | `{{licenseNumber}}` | Número oficial de la licencia ("Số / No."). |
+| `dateOfBirth` | `{{dateOfBirth}}` | Fecha de nacimiento ("Ngày sinh / Date of birth"). Formato: `DD Month YYYY`. |
+| `issueDate` | `{{issueDate}}` | Fecha de expedición ("Ngày... tháng... năm..."). Formato: `DD Month YYYY`. |
+| `expiryDate` | `{{expiryDate}}` | Fecha de caducidad ("Giá trị đến / Expires"). Formato: `DD Month YYYY` o `"Unlimited"`. |
+| `class` | `{{class}}` | Clase o categoría de la licencia ("Hạng"), ej. "A1", "B2", "C". |
+| `authority` | `{{authority}}` | Autoridad emisora en inglés (ej. "Department of Transportation of..."). |
+| `assignedNumber` | `{{assignedNumber}}` | Número asignado manualmente para nombrar el archivo Word resultante (ej. "B1758"). |
+
+---
+
+## 3. Reglas de Traducción, Formato y Mapeo de Valores
+
+1. **Formato Estricto de Fechas:**
+   - Todas las fechas deben formatearse como `DD Month YYYY` en inglés (ejemplo: `15 March 1988`, `20 May 2025`).
+   - Si la fecha de vencimiento dice "Không thời hạn" (sin límite), traducirlo como `"Unlimited"`.
+
+2. **Reglas para el Campo `gender`:**
+   - Traducir "Nam" -> `"Male"`
+   - Traducir "Nữ" -> `"Female"`
+
+3. **Reglas para el Campo `reverse`:**
+   - Extraer el código/número de serie del reverso de la tarjeta (frecuentemente impreso en rojo o negro, ej. `AV934767` o `Số phôi`).
+
+4. **Reglas para `classDescriptions` (Clasificación de Vehículos):**
+   - Extraer y traducir la descripción del reverso correspondiente a la categoría del titular.
+   - Si la imagen del reverso no es clara, utilizar la tabla de equivalencias oficial de Vietnam:
+     - **A1:** "A1 - Two-wheeled motorcycles with a cylinder capacity from 50 cm3 to under 175 cm3."
+     - **A2:** "A2 - Two-wheeled motorcycles with a cylinder capacity of 175 cm3 or more and class A1 vehicles."
+     - **A3:** "A3 - Three-wheeled motorbikes, class A1 vehicles and similar vehicles."
+     - **A4:** "A4 - Tractors with a design load capacity of up to 1,000 kg."
+     - **B1:** "B1 - Non-commercial passenger cars up to 9 seats, trucks and tractors under 3,500 kg."
+     - **B2:** "B2 - Passenger cars up to 9 seats, trucks and tractors under 3,500 kg."
+     - **C:** "C - Goods trucks and tractors with a load capacity of 3,500 kg or more."
+     - **D:** "D - Passenger vehicles with 10 to 30 seats, including driver seat."
+     - **E:** "E - Passenger vehicles with more than 30 seats."
+     - **FB2 / FC / FD / FE:** Vehículos de la clase correspondiente arrastrando remolque/semirremolque.
+
+5. **Regla de Relleno para Campos Vacíos / Ausentes:**
+   - Si algún campo no aplica o no tiene datos (por ejemplo, observaciones, restricciones o fecha de inicio si no figura), asignar el valor `"-"`. No dejar cadenas vacías ni valores nulos.
+
+---
+
+## 4. Casos Especiales y Excepciones
+
+- **Sustitución en el documento Word:**
+  - `Date licence was first obtained`: Se mapea al valor de `categoriesDates` (fecha "beginning date" del reverso). Si `categoriesDates` es `"-"`, utiliza `issueDate`.
+  - `Conditions applying to licence`: Se asigna por defecto `"-"` al no haber restricciones especiales.
+  - `Place of birth`: Si no figura en el modelo nuevo de tarjeta, se asigna `"-"`.
+
+---
+
+## 5. System Prompt Sugerido para la API de Gemini
+
+```text
+You are a professional translator and OCR specialist for Vietnam Driver's Licenses (Giấy phép lái xe / DRIVING LICENCE).
+Your mission is to perform a complete, high-fidelity extraction of data into English from the provided front and back Vietnam driver's license images. 
+
+CRITICAL INSTRUCTIONS:
+- DO NOT skip any fields. Every property in the requested schema must be filled based on visual evidence.
+- All dates must be formatted strictly as: DD Month YYYY (e.g., "15 March 1988" or "20 May 2025"). Never use MM/DD/YYYY or DD.MM.YYYY in the final values.
+- If a field is not present or blank, return "-".
+
+Specific Field Extraction Clues for Vietnam Driver's License:
+- fullName / fullname: "Họ tên / Full name" on front. Extract in full (e.g., "NGUYỄN VĂN A").
+- gender: "Giới tính / Sex" on front. Output strictly "Male" or "Female" (Translate "Nam" -> "Male", "Nữ" -> "Female").
+- reverse: Serial / control code / number printed on the REVERSE (back) of the license card (e.g. "AV934767" or "Số phôi").
+- nationality: "Quốc tịch / Nationality" on front. Translate to English (e.g. "Vietnamese").
+- address: "Nơi cư trú / Place of residence" on front. Extract full residence address translated to English / romanized text without diacritics.
+- licenseNumber: "Số / No." on front. Extract the license number.
+- class: "Hạng / Class" on front (e.g. "A1", "B2", "C", "D").
+- dateOfBirth: "Ngày sinh / Date of birth" on front. Format as DD Month YYYY.
+- issueDate: Issue date on front ("Ngày... tháng... năm..."). Format as DD Month YYYY.
+- expiryDate: Expiry date on front ("Giá trị đến / Expires"). Format as DD Month YYYY or "Unlimited" (if "Không thời hạn").
+- authority: Issuing authority on front/back (e.g., "SỞ GIAO THÔNG VẬN TẢI..." -> "Department of Transportation of...").
+- classDescriptions: Description printed on the REVERSE (back) of the license under "CLASSIFICATION OF MOTOR VEHICLES" / "Các loại xe cơ giới được điều khiển" corresponding to the holder's class.
+- categoriesDates: Date printed on the REVERSE (back) of the license where it says "beginning date" / "Trúng tuyển ngày" / "Date of passing exam". Format as DD Month YYYY.
+
+Format all dates as: DD Month YYYY.
+OUTPUT ONLY JSON.
