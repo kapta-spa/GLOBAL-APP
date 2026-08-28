@@ -137,7 +137,9 @@ export const extractLicenseData = async (apiKey, base64Images, country) => {
   const models = await getValidModels(apiKey);
   
   let countryKey = country ? country.toLowerCase() : '';
-  if (countryKey.includes('denmark') || countryKey.includes('dinamarca') || countryKey.includes('danmark')) {
+  if (countryKey.includes('alemania') || countryKey.includes('germany') || countryKey.includes('deutschland')) {
+    countryKey = 'alemania';
+  } else if (countryKey.includes('denmark') || countryKey.includes('dinamarca') || countryKey.includes('danmark')) {
     countryKey = 'denmark';
   } else if (countryKey.includes('taiwan') || countryKey.includes('taiwán')) {
     countryKey = 'taiwan';
@@ -211,7 +213,60 @@ export const extractLicenseData = async (apiKey, base64Images, country) => {
       extractedData.conditions = condVal;
       extractedData.codes = condVal;
       extractedData.explicacionCodigos = condVal;
-    } else if (matchedKey === 'suiza' || matchedKey === 'swiss' || matchedKey === 'switzerland') {
+    } else if (matchedKey === 'alemania' || matchedKey === 'germany' || matchedKey === 'deutschland') {
+      const germanCodeMap = {
+        '01': '01- Vision correction and/or protection device',
+        '01.01': '01.01- Spectacles',
+        '01.02': '01.02- Contact lens(es)',
+        '01.06': '01.06- Spectacles or contact lenses',
+        '70': '70- Exchange of driver\'s license number, issued by',
+        '171': '171- Class C1, also valid for motor vehicles of class D with a maximum permissible mass not exceeding 7,500 kg, but without passengers.',
+        '172': '172- Class C, valid also for motor vehicles of class D, but without passengers.',
+        '79.03': '79.03- Only three-wheeled vehicles',
+        '79.04': '79.04- Only vehicle combinations of three-wheeled vehicles and a trailer with a maximum permissible mass not exceeding 750 kg.',
+        '79.06': '79.06- Vehicles (vehicle combination) of category BE, provided that the maximum permissible mass of the trailer exceeds 3,500 kg.',
+        '79': '79 (C1E > 12.000 kg, L ≤ 3)- Restriction of class CE due to the authorization resulting from the previous class 3 to drive three-axle trains with a towing vehicle of class C1 and more than 12,000 kg total mass and trains with a towing vehicle of class C1 and trailers without registration, where the total mass can be more than 12,000 kg and three-axle trains consisting of a towing vehicle of class C1 and a trailer, where the maximum permissible mass of the trailer exceeds the unladen mass of the towing vehicle (part not covered by C1E). The aforementioned authorizations do not apply to semitrailers with a total permissible mass of more than 7.5 tons. The letter L in this code stands for the number of axles.',
+        '174': '174- Class L, also valid for driving tractors with a maximum speed determined by their design of not more than 40 km/h, also with a single-axle trailer (whereby axles with a distance of less than 1.0 m from each other are considered to be one axle) as well as combinations of these tractors and trailers, if they are driven at a speed of not more than 25 km/h',
+        '175': '175- Class L, also valid for driving motor vehicles with a maximum speed determined by their design of not more than 25 km/h and for driving motor vehicles other than those belonging to classes A, A1, A2 and AM with an engine capacity of not more than 50 cm3',
+        '181': '181- Class T, only valid for motor vehicles of class S (since 19.1.2013 AM)',
+        '197': '197- The test was taken on a motor vehicle with automatic transmission and practical training for driving class B vehicles with manual transmission was completed.'
+      };
+
+      let currentCodes = (extractedData.explicacionCodigos || extractedData.codes || '').trim();
+      if (currentCodes && currentCodes !== '-') {
+        const rawTokens = currentCodes.split(/\n|,|;/);
+        const resultLines = [];
+        for (let token of rawTokens) {
+          token = token.trim();
+          if (!token) continue;
+          
+          let matchedDesc = null;
+          for (const [codeKey, desc] of Object.entries(germanCodeMap)) {
+            if (token === codeKey || token.startsWith(codeKey + '-') || token.startsWith(codeKey + ' ') || token.startsWith(codeKey + '.')) {
+              matchedDesc = desc;
+              break;
+            }
+          }
+          if (matchedDesc) {
+            if (!resultLines.includes(matchedDesc)) {
+              resultLines.push(matchedDesc);
+            }
+          } else {
+            if (!resultLines.includes(token)) {
+              resultLines.push(token);
+            }
+          }
+        }
+        if (resultLines.length > 0) {
+          currentCodes = resultLines.join('\n');
+        }
+      }
+
+      const finalCond = (currentCodes && currentCodes.trim() !== '') ? currentCodes : '-';
+      extractedData.codes = finalCond;
+      extractedData.explicacionCodigos = finalCond;
+    }
+    else if (matchedKey === 'suiza' || matchedKey === 'swiss' || matchedKey === 'switzerland') {
       const swissCodeMap = {
         '920e': '920E- Professional passenger transport (BPT) exemption/authorization',
         '957': '957- Professional passenger transport permission / local authority endorsement',

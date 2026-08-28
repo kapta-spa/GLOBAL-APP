@@ -930,7 +930,7 @@ function App() {
       const currentImages = queue[0];
       let country = "";
       const folderLower = editorFolder.toLowerCase();
-      const availableCountries = ['alemania', 'belgica', 'brazil', 'canada', 'china', 'denmark', 'dinamarca', 'danmark', 'hungria', 'indonesia', 'vietnam', 'francia', 'japon', 'taiwan', 'taiwán', 'suiza', 'swiss', 'switzerland'];
+      const availableCountries = ['alemania', 'germany', 'deutschland', 'belgica', 'brazil', 'canada', 'china', 'denmark', 'dinamarca', 'danmark', 'hungria', 'indonesia', 'vietnam', 'francia', 'japon', 'taiwan', 'taiwán', 'suiza', 'swiss', 'switzerland'];
       for (const c of availableCountries) {
         if (folderLower.includes(c)) {
           country = c;
@@ -943,12 +943,15 @@ function App() {
         if (candidate.includes('franc')) country = 'francia';
         else if (candidate.includes('japon') || candidate.includes('japan')) country = 'japon';
         else if (candidate.includes('denmark') || candidate.includes('dinamarca') || candidate.includes('danmark')) country = 'denmark';
+        else if (candidate.includes('aleman') || candidate.includes('german') || candidate.includes('deutsch')) country = 'alemania';
         else if (candidate.includes('suiz') || candidate.includes('swiss') || candidate.includes('switzer')) country = 'suiza';
         else if (availableCountries.includes(candidate)) country = candidate;
       }
       
       if (country === 'dinamarca' || country === 'danmark') {
         country = 'denmark';
+      } else if (country === 'germany' || country === 'deutschland') {
+        country = 'alemania';
       } else if (country === 'swiss' || country === 'switzerland') {
         country = 'suiza';
       }
