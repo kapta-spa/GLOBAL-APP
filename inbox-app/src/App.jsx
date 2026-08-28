@@ -802,13 +802,17 @@ function App() {
       let allUrls = [];
       let customerEmailStr = "";
       
-      // 2. Fetch the body of the most recent message(s) to extract links
-      for (const msg of data.messages) {
-        const msgRes = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages/${msg.id}`, {
-           headers: { Authorization: `Bearer ${token}` }
-        });
-        const msgData = await msgRes.json();
-        
+      // 2. Fetch the body of the most recent message(s) in parallel (Promise.all)
+      const fetchedMessages = await Promise.all(
+        data.messages.map(async (msg) => {
+          const msgRes = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages/${msg.id}`, {
+            headers: { Authorization: `Bearer ${token}` }
+          });
+          return msgRes.json();
+        })
+      );
+      
+      for (const msgData of fetchedMessages) {
         let bodyData = '';
         if (msgData.payload.parts) {
           for (let part of msgData.payload.parts) {
@@ -871,16 +875,14 @@ function App() {
       }
       
       if (allUrls.length === 0) {
-         // Intentar buscar archivos de imagen adjuntos en los correos de Gmail
-         for (const msg of data.messages) {
-            const msgRes = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages/${msg.id}`, {
-               headers: { Authorization: `Bearer ${token}` }
-            });
-            const msgData = await msgRes.json();
-            const attachments = await fetchGmailImageAttachments(msgData, token);
-            if (attachments.length > 0) {
-               allUrls = [...allUrls, ...attachments];
-            }
+         // Fetch image attachments in parallel with Promise.all
+         const attachmentsList = await Promise.all(
+           fetchedMessages.map(msgData => fetchGmailImageAttachments(msgData, token))
+         );
+         for (const attachments of attachmentsList) {
+           if (attachments && attachments.length > 0) {
+             allUrls = [...allUrls, ...attachments];
+           }
          }
       }
       

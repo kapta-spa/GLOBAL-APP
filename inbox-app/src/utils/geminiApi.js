@@ -30,7 +30,7 @@ const generateWithRetryAndFallback = async (genAI, promptParts, modelList, shoul
     let retries = 3; // Try up to 3 times for each model if temporary errors occur
     while (retries > 0) {
       try {
-        console.log(`Intentando generación con modelo: ${modelName} (Intento ${4 - retries})`);
+        console.log(`Ejecutando respuesta en streaming con modelo: ${modelName} (Intento ${4 - retries})`);
         const model = genAI.getGenerativeModel({ model: modelName });
         
         // 45-second timeout promise race for vision OCR tasks
@@ -38,11 +38,17 @@ const generateWithRetryAndFallback = async (genAI, promptParts, modelList, shoul
           setTimeout(() => reject(new Error(`Timeout de 45s alcanzado en ${modelName}`)), 45000)
         );
         
-        const generatePromise = model.generateContent(promptParts);
-        const result = await Promise.race([generatePromise, timeoutPromise]);
+        const streamPromise = model.generateContentStream(promptParts);
+        const resultStream = await Promise.race([streamPromise, timeoutPromise]);
         
-        const response = await result.response;
-        let text = response.text();
+        let text = '';
+        for await (const chunk of resultStream.stream) {
+          const chunkText = chunk.text();
+          text += chunkText;
+          if (onChunk && typeof onChunk === 'function') {
+            onChunk(chunkText, text);
+          }
+        }
         
         if (shouldParseJson) {
           return cleanAndParseJSON(text);
@@ -86,51 +92,16 @@ const generateWithRetryAndFallback = async (genAI, promptParts, modelList, shoul
   throw new Error(`Todos los modelos de Gemini fallaron. Último error: ${lastError ? lastError.message : 'Desconocido'}`);
 };
 
-let cachedModelsList = null;
-
 const getValidModels = async (apiKey) => {
-  const priorityModels = [
+  return [
     "gemini-2.5-flash",
     "gemini-2.0-flash",
     "gemini-1.5-flash",
     "gemini-1.5-pro"
   ];
-
-  if (cachedModelsList && cachedModelsList.length > 0) return cachedModelsList;
-  try {
-    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`);
-    if (res.ok) {
-      const data = await res.json();
-      if (data.models && Array.isArray(data.models)) {
-        const valid = data.models
-          .filter(m => m.supportedGenerationMethods && m.supportedGenerationMethods.includes("generateContent"))
-          .map(m => m.name.replace(/^models\//, ''));
-        
-        const ordered = [];
-        for (const p of priorityModels) {
-          if (valid.includes(p)) ordered.push(p);
-        }
-        for (const v of valid) {
-          if (!ordered.includes(v) && (v.includes('flash') || v.includes('pro')) && !v.includes('preview')) {
-            ordered.push(v);
-          }
-        }
-        
-        if (ordered.length > 0) {
-          console.log("Modelos seleccionados para fallback:", ordered);
-          cachedModelsList = ordered;
-          return ordered;
-        }
-      }
-    }
-  } catch (err) {
-    console.warn("No se pudo obtener la lista dinámica de modelos:", err);
-  }
-
-  return priorityModels;
 };
 
-export const extractLicenseData = async (apiKey, base64Images, country) => {
+export const extractLicenseData = async (apiKey, base64Images, country, onChunk = null) => {
   if (!apiKey) throw new Error("API Key de Gemini no encontrada. Agrégala en Settings.");
   
   const genAI = new GoogleGenerativeAI(apiKey);
@@ -177,7 +148,8 @@ export const extractLicenseData = async (apiKey, base64Images, country) => {
     genAI,
     [fullPrompt, ...imageParts],
     models,
-    true
+    true,
+    onChunk
   );
 
   // Post-processing and country-specific fallbacks
@@ -232,39 +204,37 @@ export const extractLicenseData = async (apiKey, base64Images, country) => {
         '197': '197- The test was taken on a motor vehicle with automatic transmission and practical training for driving class B vehicles with manual transmission was completed.'
       };
 
-      let currentCodes = (extractedData.explicacionCodigos || extractedData.codes || '').trim();
-      if (currentCodes && currentCodes !== '-') {
-        const rawTokens = currentCodes.split(/\n|,|;/);
-        const resultLines = [];
-        for (let token of rawTokens) {
-          token = token.trim();
-          if (!token) continue;
-          
-          let matchedDesc = null;
-          for (const [codeKey, desc] of Object.entries(germanCodeMap)) {
-            if (token === codeKey || token.startsWith(codeKey + '-') || token.startsWith(codeKey + ' ') || token.startsWith(codeKey + '.')) {
-              matchedDesc = desc;
-              break;
-            }
+      const rawCombined = [
+        extractedData.codes,
+        extractedData.explicacionCodigos,
+        extractedData.conditions,
+        extractedData.categoriesDates
+      ].filter(Boolean).join(' ');
+
+      const matchedDescriptions = [];
+
+      for (const [codeKey, desc] of Object.entries(germanCodeMap)) {
+        const escaped = codeKey.replace('.', '\\.');
+        const regex = new RegExp(`(?:^|\\s|,|;|\\b)${escaped}(?:$|\\s|,|;|\\b|-|\\.)`, 'i');
+        if (regex.test(rawCombined)) {
+          if (!matchedDescriptions.includes(desc)) {
+            matchedDescriptions.push(desc);
           }
-          if (matchedDesc) {
-            if (!resultLines.includes(matchedDesc)) {
-              resultLines.push(matchedDesc);
-            }
-          } else {
-            if (!resultLines.includes(token)) {
-              resultLines.push(token);
-            }
-          }
-        }
-        if (resultLines.length > 0) {
-          currentCodes = resultLines.join('\n');
         }
       }
 
-      const finalCond = (currentCodes && currentCodes.trim() !== '') ? currentCodes : '-';
-      extractedData.codes = finalCond;
-      extractedData.explicacionCodigos = finalCond;
+      let finalCodesText = '-';
+      if (matchedDescriptions.length > 0) {
+        finalCodesText = matchedDescriptions.join('\n');
+      } else {
+        const rawTrimmed = (extractedData.codes || extractedData.explicacionCodigos || extractedData.conditions || '').trim();
+        if (rawTrimmed && rawTrimmed !== '-') {
+          finalCodesText = rawTrimmed;
+        }
+      }
+
+      extractedData.codes = finalCodesText;
+      extractedData.explicacionCodigos = finalCodesText;
     }
     else if (matchedKey === 'suiza' || matchedKey === 'swiss' || matchedKey === 'switzerland') {
       const swissCodeMap = {
