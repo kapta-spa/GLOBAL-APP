@@ -96,7 +96,7 @@ export default function TranslationPreviewModal({
       if (name === 'Blood') updated.blood = value;
       if (name === 'personal') updated.point4d = value;
       if (name === 'point4d') updated.personal = value;
-      if (name === 'categoriesDates') updated.categoriesDates = formatCategoriesDates(value);
+      if (name === 'categoriesDates') updated.categoriesDates = value;
       return updated;
     });
   };

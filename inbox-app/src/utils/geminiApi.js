@@ -316,6 +316,20 @@ export const extractLicenseData = async (apiKey, base64Images, country, onChunk 
       extractedData.codes = finalCond;
       extractedData.explicacionCodigos = finalCond;
     }
+    else if (matchedKey === 'latino') {
+      let rawClass = (extractedData.class || '').trim();
+      if (rawClass) {
+        if (!rawClass.includes('-') && !rawClass.includes(':') && !rawClass.toLowerCase().includes('vehicle') && !rawClass.toLowerCase().includes('car') && !rawClass.toLowerCase().includes('motorcycle') && !rawClass.toLowerCase().includes('passenger')) {
+          const generatedDesc = generateClassDescriptions(rawClass);
+          if (generatedDesc && generatedDesc.trim() !== '') {
+            extractedData.class = generatedDesc;
+          }
+        }
+      }
+      if (!extractedData.classDescriptions || extractedData.classDescriptions.trim() === '' || extractedData.classDescriptions.trim() === '-') {
+        extractedData.classDescriptions = extractedData.class || generateClassDescriptions(rawClass);
+      }
+    }
 
     const cd = extractedData.classDescriptions;
     if (!cd || typeof cd !== 'string' || cd.trim() === '' || cd.trim() === '-') {

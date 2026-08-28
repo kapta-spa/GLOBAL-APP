@@ -71,43 +71,40 @@ export const generateWordDocument = async (templateArrayBuffer, data, imagesBase
     
     const today = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'long', year: 'numeric' });
 
-    const classDescriptionsVal = (data.classDescriptions && data.classDescriptions.trim() !== '-' && data.classDescriptions.trim() !== '')
+    const defaultClassDescriptions = (data.classDescriptions && data.classDescriptions.trim() !== '' && data.classDescriptions.trim() !== '-')
       ? data.classDescriptions
       : generateClassDescriptions(data.class || '');
 
-    const codesVal = (data.codes && data.codes.trim() !== '' && data.codes.trim() !== '-') 
+    const defaultCodes = (data.codes && data.codes.trim() !== '' && data.codes.trim() !== '-') 
       ? data.codes 
       : ((data.explicacionCodigos && data.explicacionCodigos.trim() !== '' && data.explicacionCodigos.trim() !== '-') ? data.explicacionCodigos : '-');
 
-    const personalVal = (data.personal && data.personal.trim() !== '' && data.personal.trim() !== '-') 
+    const defaultPersonal = (data.personal && data.personal.trim() !== '' && data.personal.trim() !== '-') 
       ? data.personal 
       : ((data.point4d && data.point4d.trim() !== '' && data.point4d.trim() !== '-') ? data.point4d : '-');
 
-    const middleNameVal = (data.middleName && data.middleName.trim() !== '' && data.middleName.trim() !== '""')
-      ? data.middleName
-      : '-';
-
-    const categoriesDatesVal = formatCategoriesDates(data.categoriesDates || '');
-
     const renderData = {
-      ...data,
-      middleName: middleNameVal,
-      personal: personalVal,
-      point4d: personalVal,
-      classDescriptions: classDescriptionsVal,
-      class_descriptions: classDescriptionsVal,
-      classDescription: classDescriptionsVal,
-      categoriesDescriptions: classDescriptionsVal,
-      codes: codesVal,
-      explicacionCodigos: codesVal,
-      conditions: (data.conditions && data.conditions.trim() !== '') ? data.conditions : codesVal,
-      area: data.area || "-",
-      file: data.file || "-",
-      issuedDate: data.issuedDate || data.issueDate || "-",
-      categoriesDates: categoriesDatesVal,
-      gold: data.gold !== undefined ? data.gold : "-",
+      // Default fallbacks for empty fields
+      middleName: '-',
+      personal: defaultPersonal,
+      point4d: defaultPersonal,
+      classDescriptions: defaultClassDescriptions,
+      class_descriptions: defaultClassDescriptions,
+      classDescription: defaultClassDescriptions,
+      categoriesDescriptions: defaultClassDescriptions,
+      codes: defaultCodes,
+      explicacionCodigos: defaultCodes,
+      conditions: defaultCodes,
+      area: "-",
+      file: "-",
+      issuedDate: data.issueDate || "-",
+      categoriesDates: data.categoriesDates || "-",
+      gold: "-",
       today: today,
       assignedNumber: assignedNumber,
+      // User edits from modal take highest priority!
+      ...data,
+      // System images
       license_front: imagesBase64[0] || "",
       license_back: imagesBase64[1] || "",
     };
