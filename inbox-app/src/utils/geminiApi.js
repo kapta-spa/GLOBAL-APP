@@ -99,14 +99,49 @@ const generateWithRetryAndFallback = async (genAI, promptParts, modelList, shoul
   throw new Error(`Todos los modelos de Gemini fallaron. Último error: ${lastError ? lastError.message : 'Desconocido'}`);
 };
 
+let cachedModelsList = null;
+
 const getValidModels = async (apiKey) => {
-  return [
-    "gemini-2.5-flash",
-    "gemini-2.0-flash",
+  if (cachedModelsList && cachedModelsList.length > 0) return cachedModelsList;
+
+  const priorityOrder = [
     "gemini-1.5-flash",
-    "gemini-1.5-flash-latest",
-    "gemini-1.5-pro-latest"
+    "gemini-2.0-flash-exp",
+    "gemini-2.0-flash",
+    "gemini-1.5-pro",
+    "gemini-1.5-flash-8b"
   ];
+
+  try {
+    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`);
+    if (res.ok) {
+      const data = await res.json();
+      if (data.models && Array.isArray(data.models)) {
+        const validFromApi = data.models
+          .filter(m => m.supportedGenerationMethods && m.supportedGenerationMethods.includes("generateContent"))
+          .map(m => m.name.replace(/^models\//, ''));
+
+        const ordered = [];
+        for (const p of priorityOrder) {
+          if (validFromApi.includes(p)) ordered.push(p);
+        }
+        for (const v of validFromApi) {
+          if (!ordered.includes(v) && (v.includes('flash') || v.includes('pro'))) {
+            ordered.push(v);
+          }
+        }
+        if (ordered.length > 0) {
+          console.log("Modelos válidos detectados desde API de Gemini:", ordered);
+          cachedModelsList = ordered;
+          return ordered;
+        }
+      }
+    }
+  } catch (err) {
+    console.warn("No se pudo consultar la lista dinámica de modelos:", err);
+  }
+
+  return priorityOrder;
 };
 
 export const extractLicenseData = async (apiKey, base64Images, country, onChunk = null) => {
