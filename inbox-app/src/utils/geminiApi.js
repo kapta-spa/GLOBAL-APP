@@ -23,14 +23,14 @@ const cleanAndParseJSON = (text) => {
 };
 
 // Helper function to handle generation with retries and cascading fallbacks
-const generateWithRetryAndFallback = async (genAI, promptParts, modelList, shouldParseJson = false) => {
+const generateWithRetryAndFallback = async (genAI, promptParts, modelList, shouldParseJson = false, onChunk = null) => {
   let lastError = null;
   
   for (const modelName of modelList) {
     let retries = 3; // Try up to 3 times for each model if temporary errors occur
     while (retries > 0) {
       try {
-        console.log(`Ejecutando respuesta en streaming con modelo: ${modelName} (Intento ${4 - retries})`);
+        console.log(`Ejecutando modelo: ${modelName} (Intento ${4 - retries})`);
         const model = genAI.getGenerativeModel({ model: modelName });
         
         // 45-second timeout promise race for vision OCR tasks
@@ -38,16 +38,23 @@ const generateWithRetryAndFallback = async (genAI, promptParts, modelList, shoul
           setTimeout(() => reject(new Error(`Timeout de 45s alcanzado en ${modelName}`)), 45000)
         );
         
-        const streamPromise = model.generateContentStream(promptParts);
-        const resultStream = await Promise.race([streamPromise, timeoutPromise]);
-        
         let text = '';
-        for await (const chunk of resultStream.stream) {
-          const chunkText = chunk.text();
-          text += chunkText;
-          if (onChunk && typeof onChunk === 'function') {
-            onChunk(chunkText, text);
+        try {
+          const streamPromise = model.generateContentStream(promptParts);
+          const resultStream = await Promise.race([streamPromise, timeoutPromise]);
+          for await (const chunk of resultStream.stream) {
+            const chunkText = chunk.text();
+            text += chunkText;
+            if (onChunk && typeof onChunk === 'function') {
+              onChunk(chunkText, text);
+            }
           }
+        } catch (streamErr) {
+          console.warn(`Streaming no disponible para ${modelName}, usando generación estándar:`, streamErr.message);
+          const generatePromise = model.generateContent(promptParts);
+          const result = await Promise.race([generatePromise, timeoutPromise]);
+          const response = await result.response;
+          text = response.text();
         }
         
         if (shouldParseJson) {
@@ -67,8 +74,8 @@ const generateWithRetryAndFallback = async (genAI, promptParts, modelList, shoul
           errorMsg.includes('500');
         
         if (isTemporaryError && retries > 1) {
-          console.warn(`Error temporal de servidores (${errorMsg}) en ${modelName}. Reintentando en 2.5s... (intentos restantes: ${retries - 1})`);
-          await new Promise(resolve => setTimeout(resolve, 2500));
+          console.warn(`Error temporal de servidores (${errorMsg}) en ${modelName}. Reintentando en 1.5s... (intentos restantes: ${retries - 1})`);
+          await new Promise(resolve => setTimeout(resolve, 1500));
           retries--;
           continue;
         }
@@ -97,7 +104,8 @@ const getValidModels = async (apiKey) => {
     "gemini-2.5-flash",
     "gemini-2.0-flash",
     "gemini-1.5-flash",
-    "gemini-1.5-pro"
+    "gemini-1.5-flash-latest",
+    "gemini-1.5-pro-latest"
   ];
 };
 
