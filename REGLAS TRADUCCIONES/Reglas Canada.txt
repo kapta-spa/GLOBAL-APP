@@ -2,7 +2,7 @@
 
 ## 1. Contexto
 - **País de Origen:** Canada (con soporte de localización/traducción a Reino Unido - UK / Canadá)
-- **Idioma del Documento de Origen:** Francés
+- **Idioma del Documento de Origen:** Francés / Inglés
 - **Idioma de Salida / Traducción:** Inglés (UK / CA)
 
 ---
@@ -13,7 +13,7 @@
 | :--- | :--- | :--- |
 | `surname` | String | Apellido / Family Name (Sección 1). |
 | `firstName` | String | Únicamente el primer nombre de la lista de nombres dados. |
-| `middleName` | String | Todos los nombres dados restantes después del primer nombre. Vacío si solo hay uno. |
+| `middleName` | String | Todos los nombres dados restantes después del primer nombre. Guion `-` si solo hay uno. |
 | `firstNames` | String | Todos los nombres dados unidos por espacio. |
 | `fullName` | String | Nombre completo consolidado (`surname` + `firstName` + `middleName`). |
 | `licenseNumber` | String | Número de identificación principal de la licencia (Sección 5). |
@@ -24,8 +24,11 @@
 | `expiryDate` | String | Fecha de vencimiento / caducidad (Punto 4b). |
 | `address` | String | Dirección de residencia (Punto 8). |
 | `reference` | String | Número de referencia extraído del Punto 5. |
-| `height` | String | Estatura / Altura (ej. `175cm`). |
-| `eye` | String | Color de ojos traducido al inglés (ej. `BR` -> `Brown`, `BL` -> `Blue`). |
+| `height` | String | Estatura / Altura (ej. `175 cm` o `5'10"`). Si no figura, `-`. |
+| `eye` | String | Color de ojos traducido al inglés (ej. `BR` -> `Brown`, `BL` -> `Blue`, `VR` -> `Green`, `GR` -> `Grey`, `HZ` -> `Hazel`). Si no figura, `-`. |
+| `eyeColor` | String | Mismo valor exacto que `eye`. |
+| `sex` | String | Sexo / Género (ej. `M` -> `Male`, `F` -> `Female`, `X`). Si no figura, `-`. |
+| `gender` | String | Mismo valor exacto que `sex`. |
 | `authority` | String | Autoridad expedidora (Punto 4c), traducida al inglés y con el país anexado. |
 | `class` | String | Categorías de la licencia listadas en el Punto 9. |
 | `categoriesDates` | String | Fechas y validez por categoría analizadas desde la tabla posterior (Columna 10 al reverso). |
@@ -37,44 +40,55 @@
 ## 3. Reglas de Traducción y Formato
 
 1. **Idioma Global de Salida:**
-   - Todos los valores de texto extraídos deben estar estrictamente en **Inglés**.
+   - Todos los valores de texto extraídos deben estar strictly en **Inglés**.
 
 2. **Formato de Fechas:**
    - Todas las fechas (`dateOfBirth`, `issueDate`, `expiryDate`, etc.) se deben formatear obligatoriamente como: `"DD Month YYYY"` (ejemplo: `15 March 2022`).
 
 3. **Descomposición de Nombres (`firstName` / `middleName`):**
    - `firstName`: Tomar únicamente la **primera** palabra del listado de nombres.
-   - `middleName`: Tomar **todas** las palabras restantes del listado de nombres. Si solo existe un nombre, dejar `middleName` como cadena vacía (`""`).
+   - `middleName`: Tomar **todas** las palabras restantes del listado de nombres. Si solo existe un nombre, poner guion `"-"`.
    - `firstNames`: Todos los nombres dados concatenados.
 
-4. **Lugar de Nacimiento (`placeOfBirth`):**
-   - Traducir los nombres de ciudades, comunas o términos geográficos franceses al inglés cuando corresponda.
+4. **Estatura / Altura (`height`):**
+   - Extraer la altura en centímetros o pies/pulgadas (ej. `"175 cm"` o `"5'10"`"). Si no figura en el documento o no aplica, poner obligatoriamente `"-"`.
 
-5. **Color de Ojos (`eye`):**
-   - Mapear las abreviaturas francesas/estándar a su nombre en inglés:
+5. **Color de Ojos (`eye` / `eyeColor`):**
+   - Mapear las abreviaturas a su nombre completo en inglés:
      - `BR` / `Marron` -> `Brown`
      - `BL` / `Bleu` -> `Blue`
      - `VR` / `Vert` -> `Green`
      - `GR` / `Gris` -> `Grey` / `Gray`
+     - `HZ` -> `Hazel`
+     - `BK` -> `Black`
+   - Si no figura en el documento, poner obligatoriamente `"-"`.
 
-6. **Autoridad Expedidora (`authority`):**
-   - Extraer el valor del Punto 4c, traducirlo al inglés (ej. "Prefecture of Paris") y añadir siempre el nombre del país en inglés (ej. "Prefecture of Paris, France").
+6. **Sexo / Género (`sex` / `gender`):**
+   - Mapear las iniciales a su palabra en inglés: `M` -> `Male`, `F` -> `Female`, `X` -> `X`.
+   - Si no figura en el documento, poner obligatoriamente `"-"`.
 
-7. **Códigos y Condicionados (`explicacionCodigos`):**
+7. **Lugar de Nacimiento (`placeOfBirth`):**
+   - Traducir los nombres de ciudades o términos geográficos al inglés. Si no figura, poner `"-"`.
+
+8. **Autoridad Expedidora (`authority`):**
+   - Extraer el valor del Punto 4c, traducirlo al inglés y añadir siempre el nombre del país en inglés (ej. `"Ministry of Transportation of Ontario, Canada"`).
+
+9. **Códigos y Condicionados (`explicacionCodigos` / `codes`):**
    - Extraer todos los códigos listados al reverso de la licencia.
-   - Traducir cada código y restricción de manera clara al inglés (ej. *"A - Prescribed spectacles / corrective lenses"*).
+   - Traducir cada código y restricción de manera clara al inglés.
    - Si no existen restricciones ni códigos registrados, el valor exacto debe ser `"-"`.
+
+10. **REGLA MANDATORIA DE CAMPOS SIN RESPUESTA:**
+   - Para cualquier campo que no tenga respuesta, esté ausente o no sea visible en la licencia, poner OBLIGATORIAMENTE un guion `"-"`. NUNCA dejar cadenas vacías `""` ni valores `null`.
 
 ---
 
 ## 4. Casos Especiales y Excepciones
 
-- **Datos Ilegibles o Faltantes:**
-  - Si un campo no es visible o resulta ilegible en la imagen, devolver cadena vacía `""` sin inventar datos.
+- **Datos Ilegibles, Faltantes o Sin Respuesta:**
+  - Si un campo no es visible, no aplica o resulta ilegible en la imagen, devolver obligatoriamente un guion `"-"` sin inventar datos.
 - **Códigos al Reverso (Condiciones/Endorsements):**
-  - Mapear y decodificar la columna de observaciones/restricciones al reverso (Sección 12/13).
-- **Consistencia con Documento de Referencia:**
-  - Cuando se proporcione un documento `.docx` de referencia previo, priorizar la terminología y estructura de traducción utilizada anteriormente para mantener coherencia estilística.
+  - Mapear y decodificar la columna de observaciones/restricciones al reverso.
 - **Construcción del Nombre Completo (`fullName`):**
   - Si la IA no genera `fullName` directamente, construirlo mediante la fórmula: `${surname} ${firstName} ${middleName}` limpiando espacios innecesarios.
 
@@ -83,30 +97,59 @@
 ## 5. System Prompt Sugerido para Gemini API
 
 ```text
-You are an expert OCR and document translation system specializing in driver's licenses.
-Analyze the provided front and back images of a driver's license.
+You are an expert OCR and document translation system specializing in Canadian Driver's Licenses.
+Analyze the provided front and back images of a driver's license from Canada.
 
-CRITICAL REQUIREMENT: ALL EXTRACTED TEXT VALUES MUST BE IN ENGLISH.
+CRITICAL REQUIREMENT 1: ALL EXTRACTED TEXT VALUES MUST BE IN ENGLISH.
+CRITICAL REQUIREMENT 2: EVERY SINGLE FIELD IN THE OUTPUT JSON MUST BE EXTRACTED AND FILLED. IF ANY FIELD IS MISSING, UNANSWERED, BLANK, OR NOT PRESENT ON THE CARD, YOU MUST OUTPUT STRICTLY A SINGLE HYPHEN "-" FOR THAT FIELD. NEVER OUTPUT EMPTY STRINGS "" OR null.
 
 Extraction & Translation Rules:
-1. "surname": Family name / Nom.
-2. "firstName": ONLY the very first given name.
-3. "middleName": ALL remaining given names after the first one. Leave empty if none.
-4. "firstNames": All given names joined by space.
-5. "licenseNumber": Main identification/license number (Point 5).
-6. "dateOfBirth": Date of birth (Point 3). Format as "DD Month YYYY".
-7. "placeOfBirth": Place of birth (Point 3). Translate location names to English.
-8. "issueDate": Date of issue (Point 4a). Format as "DD Month YYYY".
-9. "expiryDate": Expiration date (Point 4b). Format as "DD Month YYYY".
-10. "address": Residence address found in Point 8.
-11. "reference": Reference number in Point 5 (if applicable).
-12. "height": Stature/Height (e.g., "175cm").
-13. "eye": Eye color translated to English (e.g., BR -> Brown, BL -> Blue, VR -> Green).
-14. "authority": Issuing authority (Point 4c), translated to English with the country appended (e.g., "Prefecture of Police, France").
-15. "class": Categories listed in Point 9.
-16. "categoriesDates": Categories and validity dates from Column 10/11 on the back table.
-17. "codes": Condition/restriction codes list from the back.
-18. "explicacionCodigos": Clear English explanation of all condition/restriction codes present on the back. Output exactly "-" if none found.
+1. "surname": Family name / Nom. If missing, "-".
+2. "firstName": ONLY the very first given name. If missing, "-".
+3. "middleName": ALL remaining given names after the first one. If none, "-".
+4. "firstNames": All given names joined by space. If missing, "-".
+5. "fullName": Full name (surname + firstName + middleName).
+6. "licenseNumber": Main identification/license number. If missing, "-".
+7. "dateOfBirth": Date of birth (Point 3). Format as "DD Month YYYY". If missing, "-".
+8. "placeOfBirth": Place of birth (Point 3). Translate location names to English. If missing, "-".
+9. "issueDate": Date of issue (Point 4a). Format as "DD Month YYYY". If missing, "-".
+10. "expiryDate": Expiration date (Point 4b). Format as "DD Month YYYY". If missing, "-".
+11. "address": Residence address (Point 8). If missing, "-".
+12. "reference": Reference number (Point 5). If missing, "-".
+13. "height": Stature/Height (e.g., "175 cm", "5'10\""). If missing on the license, MUST output "-".
+14. "eye": Eye color translated to English (e.g. BR -> Brown, BL -> Blue, VR -> Green, GR -> Grey, HZ -> Hazel). If missing on the license, MUST output "-".
+15. "eyeColor": EXACT SAME value as "eye".
+16. "sex": Sex/Gender (e.g. M -> Male, F -> Female). If missing, MUST output "-".
+17. "gender": EXACT SAME value as "sex".
+18. "authority": Issuing authority (Point 4c), translated to English with ", Canada" appended. If missing, "-".
+19. "class": Categories listed in Point 9. If missing, "-".
+20. "categoriesDates": Categories and validity dates. If missing, "-".
+21. "codes": Condition/restriction codes. If missing, "-".
+22. "explicacionCodigos": Clear English explanation of all condition/restriction codes present. Output strictly "-" if none found.
 
-Format all dates strictly as "DD Month YYYY" (e.g., "14 March 2025").
-Return a clean, valid JSON object matching the target structure.
+RETURN ONLY A VALID RAW JSON OBJECT MATCHING THIS SCHEMA:
+{
+  "surname": "...",
+  "firstName": "...",
+  "middleName": "...",
+  "firstNames": "...",
+  "fullName": "...",
+  "licenseNumber": "...",
+  "dateOfBirth": "...",
+  "placeOfBirth": "...",
+  "issueDate": "...",
+  "expiryDate": "...",
+  "address": "...",
+  "reference": "...",
+  "height": "...",
+  "eye": "...",
+  "eyeColor": "...",
+  "sex": "...",
+  "gender": "...",
+  "authority": "...",
+  "class": "...",
+  "categoriesDates": "...",
+  "codes": "...",
+  "explicacionCodigos": "..."
+}
+```

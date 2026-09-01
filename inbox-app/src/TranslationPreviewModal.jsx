@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { X, Save, Download, ArrowRight, RefreshCw } from 'lucide-react';
 import { generateClassDescriptions, formatCategoriesDates } from './utils/classDescriptions';
+import { getAssignedNumber } from './utils/documentGenerator';
 
 export default function TranslationPreviewModal({ 
   isOpen, 
   onClose, 
   initialData, 
+  folderName,
   onSave,
   onDownloadWord
 }) {
@@ -29,6 +31,21 @@ export default function TranslationPreviewModal({
         }
       }
 
+      // Auto-populate assignedNumber if missing
+      if (!normalized.assignedNumber || normalized.assignedNumber.trim() === '' || normalized.assignedNumber.trim() === '-') {
+        if (folderName) {
+          normalized.assignedNumber = getAssignedNumber(folderName);
+        }
+      }
+
+      // Sync citizen
+      const defaultCitizen = (normalized.citizen && normalized.citizen.trim() !== '') 
+        ? normalized.citizen 
+        : ((normalized.bsn && normalized.bsn.trim() !== '') ? normalized.bsn : '');
+      if (defaultCitizen) {
+        normalized.citizen = defaultCitizen;
+      }
+
       // Auto-populate classDescriptions if missing, empty, or '-'
       if ((!normalized.classDescriptions || normalized.classDescriptions.trim() === '' || normalized.classDescriptions.trim() === '-') && normalized.class) {
         normalized.classDescriptions = generateClassDescriptions(normalized.class);
@@ -45,9 +62,18 @@ export default function TranslationPreviewModal({
       }
       
       // Sync codes and explicacionCodigos for Conditions
-      const condCodes = (normalized.codes && normalized.codes.trim() !== '') 
-        ? normalized.codes 
-        : ((normalized.explicacionCodigos && normalized.explicacionCodigos.trim() !== '') ? normalized.explicacionCodigos : '-');
+      let condCodes = (normalized.explicacionCodigos && normalized.explicacionCodigos.trim() !== '' && normalized.explicacionCodigos !== '-') 
+        ? normalized.explicacionCodigos.trim() 
+        : ((normalized.codes && normalized.codes.trim() !== '' && normalized.codes !== '-') ? normalized.codes.trim() : '-');
+
+      if (condCodes !== '-' && normalized.citizen && normalized.citizen !== '-') {
+        const cleanCond = condCodes.replace(/[\s\/,-]+/g, '');
+        const cleanCit = normalized.citizen.replace(/[\s\/,-]+/g, '');
+        if ((cleanCit && (cleanCond === cleanCit || cleanCond.includes(cleanCit))) || /^\d{8,}[\s\/,-]*\d*$/.test(condCodes.trim())) {
+          condCodes = '-';
+        }
+      }
+
       normalized.codes = condCodes;
       normalized.explicacionCodigos = condCodes;
 
@@ -76,9 +102,27 @@ export default function TranslationPreviewModal({
       normalized.personal = sec4d;
       normalized.point4d = sec4d;
 
+      // Sync eye & eyeColor
+      const finalEye = (normalized.eye && normalized.eye.trim() !== '') 
+        ? normalized.eye 
+        : ((normalized.eyeColor && normalized.eyeColor.trim() !== '') ? normalized.eyeColor : (normalized.Eye || ''));
+      if (finalEye) {
+        normalized.eye = finalEye;
+        normalized.eyeColor = finalEye;
+      }
+
+      // Sync sex & gender
+      const finalSex = (normalized.sex && normalized.sex.trim() !== '') 
+        ? normalized.sex 
+        : ((normalized.gender && normalized.gender.trim() !== '') ? normalized.gender : '');
+      if (finalSex) {
+        normalized.sex = finalSex;
+        normalized.gender = finalSex;
+      }
+
       setFormData(normalized);
     }
-  }, [initialData]);
+  }, [initialData, folderName]);
 
   if (!isOpen) return null;
 
@@ -97,6 +141,10 @@ export default function TranslationPreviewModal({
       if (name === 'personal') updated.point4d = value;
       if (name === 'point4d') updated.personal = value;
       if (name === 'categoriesDates') updated.categoriesDates = value;
+      if (name === 'eye') updated.eyeColor = value;
+      if (name === 'eyeColor') updated.eye = value;
+      if (name === 'sex') updated.gender = value;
+      if (name === 'gender') updated.sex = value;
       return updated;
     });
   };
@@ -176,12 +224,31 @@ export default function TranslationPreviewModal({
             </div>
           </div>
 
-          {(formData.gender !== undefined) && (
-            <div style={{ marginBottom: '24px' }}>
-              <label style={{ display: 'block', fontSize: '14px', fontWeight: 'bold', marginBottom: '4px', color: '#374151' }}>Gender</label>
-              <input type="text" name="gender" value={formData.gender || ''} onChange={handleChange} style={inputStyle} />
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '16px', marginBottom: '24px' }}>
+            <div>
+              <label style={{ display: 'block', fontSize: '14px', fontWeight: 'bold', marginBottom: '4px', color: '#374151' }}>Height ({"{{height}}"})</label>
+              <input type="text" name="height" value={formData.height || ''} onChange={handleChange} style={inputStyle} placeholder="-" />
             </div>
-          )}
+            <div>
+              <label style={{ display: 'block', fontSize: '14px', fontWeight: 'bold', marginBottom: '4px', color: '#374151' }}>Eye Color ({"{{eye}}"} / {"{{eyeColor}}"})</label>
+              <input type="text" name="eye" value={formData.eye || formData.eyeColor || ''} onChange={handleChange} style={inputStyle} placeholder="-" />
+            </div>
+            <div>
+              <label style={{ display: 'block', fontSize: '14px', fontWeight: 'bold', marginBottom: '4px', color: '#374151' }}>Sex / Gender ({"{{sex}}"} / {"{{gender}}"})</label>
+              <input type="text" name="sex" value={formData.sex || formData.gender || ''} onChange={handleChange} style={inputStyle} placeholder="-" />
+            </div>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '24px' }}>
+            <div>
+              <label style={{ display: 'block', fontSize: '14px', fontWeight: 'bold', marginBottom: '4px', color: '#374151' }}>Address ({"{{address}}"})</label>
+              <input type="text" name="address" value={formData.address || ''} onChange={handleChange} style={inputStyle} placeholder="-" />
+            </div>
+            <div>
+              <label style={{ display: 'block', fontSize: '14px', fontWeight: 'bold', marginBottom: '4px', color: '#374151' }}>Reference No. ({"{{reference}}"})</label>
+              <input type="text" name="reference" value={formData.reference || ''} onChange={handleChange} style={inputStyle} placeholder="-" />
+            </div>
+          </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '24px' }}>
             <div>
@@ -189,8 +256,19 @@ export default function TranslationPreviewModal({
               <input type="text" name="licenseNumber" value={formData.licenseNumber || ''} onChange={handleChange} style={inputStyle} />
             </div>
             <div>
+              <label style={{ display: 'block', fontSize: '14px', fontWeight: 'bold', marginBottom: '4px', color: '#374151' }}>Assigned No. ({"{{assignedNumber}}"})</label>
+              <input type="text" name="assignedNumber" value={formData.assignedNumber || ''} onChange={handleChange} style={inputStyle} placeholder="ej. B1234" />
+            </div>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '24px' }}>
+            <div>
               <label style={{ display: 'block', fontSize: '14px', fontWeight: 'bold', marginBottom: '4px', color: '#374151' }}>Personal No. / Sec 4d ({"{{personal}}"})</label>
               <input type="text" name="personal" value={formData.personal || formData.point4d || ''} onChange={handleChange} style={inputStyle} />
+            </div>
+            <div>
+              <label style={{ display: 'block', fontSize: '14px', fontWeight: 'bold', marginBottom: '4px', color: '#374151' }}>Citizen No. / Netherlands Back Top-Left ({"{{citizen}}"})</label>
+              <input type="text" name="citizen" value={formData.citizen || ''} onChange={handleChange} style={inputStyle} placeholder="ej. 230773941 / 5899184886" />
             </div>
           </div>
 

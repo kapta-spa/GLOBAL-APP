@@ -418,14 +418,29 @@ function App() {
 
 
       // 3. Find Spreadsheet ID
-      const driveRes = await fetch(`https://www.googleapis.com/drive/v3/files?q=name='${sheetName}' and mimeType='application/vnd.google-apps.spreadsheet' and trashed=false&fields=files(id)`, {
+      const cleanSheetName = (sheetName || '').trim();
+      const escapedName = cleanSheetName.replace(/'/g, "\\'");
+      
+      // Search for exact match or substring match, including shared drives
+      const driveQuery = `(name = '${escapedName}' or name contains '${escapedName}') and mimeType = 'application/vnd.google-apps.spreadsheet' and trashed = false`;
+      const driveUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(driveQuery)}&supportsAllDrives=true&includeItemsFromAllDrives=true&fields=files(id,name)`;
+
+      const driveRes = await fetch(driveUrl, {
         headers: { Authorization: `Bearer ${token}` }
       });
+
+      if (driveRes.status === 401 || driveRes.status === 403) {
+        const errData = await driveRes.json().catch(() => ({}));
+        throw new Error(`Error de permisos en Google Drive (${driveRes.status}): ${errData.error?.message || 'Acceso denegado. Vuelve a iniciar sesión.'}`);
+      }
+
       const driveData = await driveRes.json();
       if (!driveData.files || driveData.files.length === 0) {
-        throw new Error(`No se encontró el archivo de Sheets con el nombre "${sheetName}"`);
+        throw new Error(`No se encontró el archivo de Sheets con el nombre "${cleanSheetName}". Verifica que el archivo exista en tu Google Drive (o Unidades Compartidas) y coincida con este nombre.`);
       }
-      const spreadsheetId = driveData.files[0].id;
+
+      const exactMatch = driveData.files.find(f => f.name.trim().toLowerCase() === cleanSheetName.toLowerCase());
+      const spreadsheetId = exactMatch ? exactMatch.id : driveData.files[0].id;
 
       // 4. Fetch Sheet Data to find empty row
       const sheetRes = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${tab}!E:K`, {
@@ -932,7 +947,7 @@ function App() {
       const currentImages = queue[0];
       let country = "";
       const folderLower = editorFolder.toLowerCase();
-      const availableCountries = ['alemania', 'germany', 'deutschland', 'belgica', 'brazil', 'canada', 'china', 'denmark', 'dinamarca', 'danmark', 'hungria', 'indonesia', 'vietnam', 'francia', 'japon', 'taiwan', 'taiwán', 'suiza', 'swiss', 'switzerland'];
+      const availableCountries = ['alemania', 'germany', 'deutschland', 'belgica', 'brazil', 'canada', 'china', 'denmark', 'dinamarca', 'danmark', 'hungria', 'indonesia', 'vietnam', 'francia', 'japon', 'taiwan', 'taiwán', 'suiza', 'swiss', 'switzerland', 'netherlands', 'holanda', 'paises bajos', 'países bajos', 'dutch'];
       for (const c of availableCountries) {
         if (folderLower.includes(c)) {
           country = c;
@@ -947,6 +962,7 @@ function App() {
         else if (candidate.includes('denmark') || candidate.includes('dinamarca') || candidate.includes('danmark')) country = 'denmark';
         else if (candidate.includes('aleman') || candidate.includes('german') || candidate.includes('deutsch')) country = 'alemania';
         else if (candidate.includes('suiz') || candidate.includes('swiss') || candidate.includes('switzer')) country = 'suiza';
+        else if (candidate.includes('holand') || candidate.includes('netherland') || candidate.includes('paises') || candidate.includes('dutch')) country = 'netherlands';
         else if (availableCountries.includes(candidate)) country = candidate;
       }
       
@@ -956,9 +972,11 @@ function App() {
         country = 'alemania';
       } else if (country === 'swiss' || country === 'switzerland') {
         country = 'suiza';
+      } else if (country === 'holanda' || country === 'paises bajos' || country === 'países bajos' || country === 'dutch') {
+        country = 'netherlands';
       }
       
-      if (!availableCountries.includes(country) && country !== 'denmark' && country !== 'suiza') {
+      if (!availableCountries.includes(country) && country !== 'denmark' && country !== 'suiza' && country !== 'netherlands') {
         country = "";
       }
       

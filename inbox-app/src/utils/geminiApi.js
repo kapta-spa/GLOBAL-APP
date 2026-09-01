@@ -22,20 +22,59 @@ const cleanAndParseJSON = (text) => {
   }
 };
 
+const optimizeBase64Image = (base64Str, maxDimension = 1600, quality = 0.85) => {
+  return new Promise((resolve) => {
+    if (typeof window === 'undefined' || !base64Str || !base64Str.startsWith('data:image/')) {
+      return resolve(base64Str);
+    }
+    const img = new Image();
+    img.crossOrigin = 'Anonymous';
+    img.onload = () => {
+      let width = img.width;
+      let height = img.height;
+      if (width <= maxDimension && height <= maxDimension) {
+        return resolve(base64Str);
+      }
+      if (width > height) {
+        if (width > maxDimension) {
+          height = Math.round((height * maxDimension) / width);
+          width = maxDimension;
+        }
+      } else {
+        if (height > maxDimension) {
+          width = Math.round((width * maxDimension) / height);
+          height = maxDimension;
+        }
+      }
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0, width, height);
+      const resizedBase64 = canvas.toDataURL('image/jpeg', quality);
+      resolve(resizedBase64);
+    };
+    img.onerror = () => {
+      resolve(base64Str);
+    };
+    img.src = base64Str;
+  });
+};
+
 // Helper function to handle generation with retries and cascading fallbacks
 const generateWithRetryAndFallback = async (genAI, promptParts, modelList, shouldParseJson = false, onChunk = null) => {
   let lastError = null;
   
   for (const modelName of modelList) {
-    let retries = 3; // Try up to 3 times for each model if temporary errors occur
+    let retries = 2; // Try up to 2 times per model to fail fast
     while (retries > 0) {
       try {
-        console.log(`Ejecutando modelo: ${modelName} (Intento ${4 - retries})`);
+        console.log(`Ejecutando modelo: ${modelName} (Intento ${3 - retries})`);
         const model = genAI.getGenerativeModel({ model: modelName });
         
-        // 45-second timeout promise race for vision OCR tasks
+        // 25-second timeout promise race for fast failover
         const timeoutPromise = new Promise((_, reject) => 
-          setTimeout(() => reject(new Error(`Timeout de 45s alcanzado en ${modelName}`)), 45000)
+          setTimeout(() => reject(new Error(`Timeout alcanzado en ${modelName}`)), 25000)
         );
         
         let text = '';
@@ -74,8 +113,8 @@ const generateWithRetryAndFallback = async (genAI, promptParts, modelList, shoul
           errorMsg.includes('500');
         
         if (isTemporaryError && retries > 1) {
-          console.warn(`Error temporal de servidores (${errorMsg}) en ${modelName}. Reintentando en 1.5s... (intentos restantes: ${retries - 1})`);
-          await new Promise(resolve => setTimeout(resolve, 1500));
+          console.warn(`Error temporal (${errorMsg}) en ${modelName}. Reintentando en 1s...`);
+          await new Promise(resolve => setTimeout(resolve, 1000));
           retries--;
           continue;
         }
@@ -89,10 +128,10 @@ const generateWithRetryAndFallback = async (genAI, promptParts, modelList, shoul
   if (lastError) {
     const errorMsg = lastError.message || '';
     if (errorMsg.includes('503') || errorMsg.includes('high demand') || errorMsg.includes('overloaded')) {
-      throw new Error("Los servidores de Gemini en Google están experimentando alta demanda temporal (Error 503). Por favor espera 5 a 10 segundos y vuelve a presionar 'Procesar con IA'.");
+      throw new Error("Los servidores de Gemini en Google están experimentando alta demanda temporal (Error 503). Por favor reintenta en unos segundos.");
     }
     if (errorMsg.includes('429') || errorMsg.includes('Quota exceeded') || errorMsg.includes('quota')) {
-      throw new Error("Límite de cuota gratuita alcanzado en Google AI Studio (429 Rate Limit). Por favor espera 20 a 30 segundos y vuelve a presionar 'Procesar con IA', o agrega tu propia API Key en Settings.");
+      throw new Error("Límite de cuota gratuita alcanzado en Google AI Studio (429 Rate Limit). Por favor espera unos segundos.");
     }
   }
   
@@ -105,9 +144,10 @@ const getValidModels = async (apiKey) => {
   if (cachedModelsList && cachedModelsList.length > 0) return cachedModelsList;
 
   const priorityOrder = [
+    "gemini-2.0-flash",
+    "gemini-2.0-flash-lite",
     "gemini-1.5-flash",
     "gemini-2.0-flash-exp",
-    "gemini-2.0-flash",
     "gemini-1.5-pro",
     "gemini-1.5-flash-8b"
   ];
@@ -141,6 +181,7 @@ const getValidModels = async (apiKey) => {
     console.warn("No se pudo consultar la lista dinámica de modelos:", err);
   }
 
+  cachedModelsList = priorityOrder;
   return priorityOrder;
 };
 
@@ -159,6 +200,10 @@ export const extractLicenseData = async (apiKey, base64Images, country, onChunk 
     countryKey = 'taiwan';
   } else if (countryKey.includes('suiza') || countryKey.includes('swiss') || countryKey.includes('switzerland')) {
     countryKey = 'suiza';
+  } else if (countryKey.includes('canada') || countryKey.includes('canadá')) {
+    countryKey = 'canada';
+  } else if (countryKey.includes('netherlands') || countryKey.includes('holanda') || countryKey.includes('países bajos') || countryKey.includes('paises bajos') || countryKey.includes('dutch')) {
+    countryKey = 'netherlands';
   }
 
   const availableCountries = Object.keys(COUNTRY_RULES);
@@ -174,7 +219,12 @@ export const extractLicenseData = async (apiKey, base64Images, country, onChunk 
   
   const fullPrompt = `${BASE_PROMPT}\n\n### MANDATORY COUNTRY RULES:\n${specificRules}\n\nSTRICT FINAL OVERRIDE INSTRUCTIONS:\n- NEVER OUTPUT ANY JAPANESE CHARACTERS (Kanji, Hiragana, Katakana) OR PARENTHESES WITH JAPANESE in any output JSON field.\n- Translate all names, categories, and conditions strictly to English in Title Case.\n- Follow the mandatory country rules above.\n\nAnalyze the provided driver's license images and extract the data as instructed.`;
   
-  const imageParts = base64Images.map(img => {
+  // Optimize & resize images in parallel before sending to Gemini API
+  const optimizedBase64s = await Promise.all(
+    base64Images.map(img => optimizeBase64Image(img, 1600, 0.85))
+  );
+
+  const imageParts = optimizedBase64s.map(img => {
     // Extract base64 part and mime type
     const [header, base64Data] = img.split(',');
     const mimeType = header.split(':')[1].split(';')[0];
@@ -197,7 +247,82 @@ export const extractLicenseData = async (apiKey, base64Images, country, onChunk 
 
   // Post-processing and country-specific fallbacks
   if (extractedData && typeof extractedData === 'object') {
-    if (matchedKey === 'denmark' || matchedKey === 'dinamarca') {
+    if (matchedKey === 'canada') {
+      const canadaFields = [
+        'surname', 'firstName', 'middleName', 'firstNames', 'fullName',
+        'licenseNumber', 'assignedNumber', 'dateOfBirth', 'placeOfBirth',
+        'issueDate', 'expiryDate', 'address', 'reference', 'height',
+        'eye', 'eyeColor', 'sex', 'gender', 'authority', 'class',
+        'categoriesDates', 'codes', 'explicacionCodigos', 'conditions'
+      ];
+
+      // Format & map Eye Color
+      const eyeMap = {
+        'br': 'Brown', 'marron': 'Brown', 'brown': 'Brown',
+        'bl': 'Blue', 'bleu': 'Blue', 'blue': 'Blue',
+        'vr': 'Green', 'vert': 'Green', 'green': 'Green',
+        'gr': 'Grey', 'gris': 'Grey', 'grey': 'Grey', 'gray': 'Grey',
+        'hz': 'Hazel', 'hazel': 'Hazel',
+        'bk': 'Black', 'black': 'Black'
+      };
+
+      if (extractedData.eye && typeof extractedData.eye === 'string') {
+        const rawEye = extractedData.eye.trim().toLowerCase();
+        if (eyeMap[rawEye]) extractedData.eye = eyeMap[rawEye];
+      }
+      if (extractedData.eyeColor && typeof extractedData.eyeColor === 'string') {
+        const rawEyeCol = extractedData.eyeColor.trim().toLowerCase();
+        if (eyeMap[rawEyeCol]) extractedData.eyeColor = eyeMap[rawEyeCol];
+      }
+
+      const finalEye = (extractedData.eye && typeof extractedData.eye === 'string' && extractedData.eye.trim() !== '' && extractedData.eye !== '-')
+        ? extractedData.eye
+        : ((extractedData.eyeColor && typeof extractedData.eyeColor === 'string' && extractedData.eyeColor.trim() !== '' && extractedData.eyeColor !== '-') ? extractedData.eyeColor : '-');
+      extractedData.eye = finalEye;
+      extractedData.eyeColor = finalEye;
+
+      // Format & map Sex / Gender
+      const sexMap = { 'm': 'Male', 'f': 'Female', 'x': 'X', 'male': 'Male', 'female': 'Female' };
+      if (extractedData.sex && typeof extractedData.sex === 'string') {
+        const rawSex = extractedData.sex.trim().toLowerCase();
+        if (sexMap[rawSex]) extractedData.sex = sexMap[rawSex];
+      }
+      if (extractedData.gender && typeof extractedData.gender === 'string') {
+        const rawGen = extractedData.gender.trim().toLowerCase();
+        if (sexMap[rawGen]) extractedData.gender = sexMap[rawGen];
+      }
+      const finalSex = (extractedData.sex && typeof extractedData.sex === 'string' && extractedData.sex.trim() !== '' && extractedData.sex !== '-')
+        ? extractedData.sex
+        : ((extractedData.gender && typeof extractedData.gender === 'string' && extractedData.gender.trim() !== '' && extractedData.gender !== '-') ? extractedData.gender : '-');
+      extractedData.sex = finalSex;
+      extractedData.gender = finalSex;
+
+      // Sync codes / explicacionCodigos / conditions
+      const finalCodes = (extractedData.codes && typeof extractedData.codes === 'string' && extractedData.codes.trim() !== '' && extractedData.codes !== '-')
+        ? extractedData.codes
+        : ((extractedData.explicacionCodigos && typeof extractedData.explicacionCodigos === 'string' && extractedData.explicacionCodigos.trim() !== '' && extractedData.explicacionCodigos !== '-')
+          ? extractedData.explicacionCodigos
+          : ((extractedData.conditions && typeof extractedData.conditions === 'string' && extractedData.conditions.trim() !== '' && extractedData.conditions !== '-') ? extractedData.conditions : '-'));
+      extractedData.codes = finalCodes;
+      extractedData.explicacionCodigos = finalCodes;
+      extractedData.conditions = finalCodes;
+
+      // Ensure every single field is filled or defaulted to '-'
+      canadaFields.forEach(field => {
+        const val = extractedData[field];
+        if (val === undefined || val === null || val === 'null' || val === 'undefined' || (typeof val === 'string' && val.trim() === '')) {
+          extractedData[field] = '-';
+        }
+      });
+
+      // Build fullName if needed
+      if (!extractedData.fullName || extractedData.fullName === '-') {
+        const parts = [extractedData.surname, extractedData.firstName, extractedData.middleName].filter(p => p && p !== '-');
+        if (parts.length > 0) {
+          extractedData.fullName = parts.join(' ');
+        }
+      }
+    } else if (matchedKey === 'denmark' || matchedKey === 'dinamarca') {
       // Middle name fallback to "-" for Denmark if empty
       if (!extractedData.middleName || typeof extractedData.middleName !== 'string' || extractedData.middleName.trim() === '' || extractedData.middleName.trim() === '""') {
         extractedData.middleName = '-';
@@ -329,6 +454,39 @@ export const extractLicenseData = async (apiKey, base64Images, country, onChunk 
       if (!extractedData.classDescriptions || extractedData.classDescriptions.trim() === '' || extractedData.classDescriptions.trim() === '-') {
         extractedData.classDescriptions = extractedData.class || generateClassDescriptions(rawClass);
       }
+    } else if (matchedKey === 'netherlands' || matchedKey === 'holanda') {
+      let cit = (extractedData.citizen && typeof extractedData.citizen === 'string') ? extractedData.citizen.trim() : '';
+      if (!cit || cit === '-') {
+        if (extractedData.bsn) cit = extractedData.bsn;
+      }
+      extractedData.citizen = cit || '-';
+
+      if (extractedData.class) {
+        const permDesc = generateClassDescriptions(extractedData.class);
+        if (permDesc && permDesc.trim() !== '') {
+          extractedData.classDescriptions = permDesc;
+        }
+      }
+
+      if (extractedData.categoriesDates) {
+        extractedData.categoriesDates = formatCategoriesDates(extractedData.categoriesDates);
+      }
+
+      let rawCodes = (extractedData.explicacionCodigos && extractedData.explicacionCodigos.trim() !== '' && extractedData.explicacionCodigos !== '-') 
+        ? extractedData.explicacionCodigos.trim() 
+        : ((extractedData.codes && extractedData.codes.trim() !== '' && extractedData.codes !== '-') ? extractedData.codes.trim() : '');
+
+      if (rawCodes) {
+        const cleanRaw = rawCodes.replace(/[\s\/,-]+/g, '');
+        const cleanCit = cit.replace(/[\s\/,-]+/g, '');
+        if ((cleanCit && cleanCit !== '-' && (cleanRaw === cleanCit || cleanRaw.includes(cleanCit))) || /^\d{8,}[\s\/,-]*\d*$/.test(rawCodes.trim())) {
+          rawCodes = '-';
+        }
+      }
+
+      const finalCodes = (rawCodes && rawCodes.trim() !== '') ? rawCodes : '-';
+      extractedData.codes = finalCodes;
+      extractedData.explicacionCodigos = finalCodes;
     }
 
     const cd = extractedData.classDescriptions;

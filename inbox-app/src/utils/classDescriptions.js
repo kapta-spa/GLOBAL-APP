@@ -17,7 +17,7 @@ export const OFFICIAL_CLASS_DESCRIPTIONS = {
   "LK": "LK- Small moped with a maximum speed of 30 km/h. (Now included in AM class).",
   "TM": "TM- Tractor/Motorised equipment.",
   "L": "L - Agricultural and forestry tractors with a maximum design speed of up to 40 km/h, and work machinery up to 25 km/h.",
-  "T": "T - Agricultural and forestry tractors with a maximum design speed of up to 60 km/h.",
+  "T": "T- tractor or limited-speed motor vehicle (MMBS) on public roads.",
   "M": "M - Mopeds with maximum design speed up to 45 km/h.",
   "S": "S - Trikes, quadricycles and microcars."
 };

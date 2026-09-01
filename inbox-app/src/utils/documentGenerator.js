@@ -75,19 +75,40 @@ export const generateWordDocument = async (templateArrayBuffer, data, imagesBase
       ? data.classDescriptions
       : generateClassDescriptions(data.class || '');
 
-    const defaultCodes = (data.codes && data.codes.trim() !== '' && data.codes.trim() !== '-') 
-      ? data.codes 
-      : ((data.explicacionCodigos && data.explicacionCodigos.trim() !== '' && data.explicacionCodigos.trim() !== '-') ? data.explicacionCodigos : '-');
+    const defaultCitizen = (data.citizen && data.citizen.trim() !== '' && data.citizen.trim() !== '-')
+      ? data.citizen
+      : ((data.bsn && data.bsn.trim() !== '' && data.bsn.trim() !== '-') ? data.bsn : '-');
 
-    const defaultPersonal = (data.personal && data.personal.trim() !== '' && data.personal.trim() !== '-') 
-      ? data.personal 
-      : ((data.point4d && data.point4d.trim() !== '' && data.point4d.trim() !== '-') ? data.point4d : '-');
+    let defaultCodes = (data.explicacionCodigos && data.explicacionCodigos.trim() !== '' && data.explicacionCodigos.trim() !== '-') 
+      ? data.explicacionCodigos.trim() 
+      : ((data.codes && data.codes.trim() !== '' && data.codes.trim() !== '-') ? data.codes.trim() : '-');
+
+    if (defaultCodes !== '-' && defaultCitizen !== '-') {
+      const cleanCodes = defaultCodes.replace(/[\s\/,-]+/g, '');
+      const cleanCit = defaultCitizen.replace(/[\s\/,-]+/g, '');
+      if ((cleanCit && (cleanCodes === cleanCit || cleanCodes.includes(cleanCit))) || /^\d{8,}[\s\/,-]*\d*$/.test(defaultCodes.trim())) {
+        defaultCodes = '-';
+      }
+    }
+
+    const defaultEye = (data.eye && data.eye.trim() !== '' && data.eye.trim() !== '-')
+      ? data.eye
+      : ((data.eyeColor && data.eyeColor.trim() !== '' && data.eyeColor.trim() !== '-') ? data.eyeColor : '-');
+
+    const defaultSex = (data.sex && data.sex.trim() !== '' && data.sex.trim() !== '-')
+      ? data.sex
+      : ((data.gender && data.gender.trim() !== '' && data.gender.trim() !== '-') ? data.gender : '-');
+
+    const assignedNumberVal = (data.assignedNumber && data.assignedNumber.trim() !== '' && data.assignedNumber.trim() !== '-')
+      ? data.assignedNumber
+      : (assignedNumber || '-');
 
     const renderData = {
       // Default fallbacks for empty fields
       middleName: '-',
       personal: defaultPersonal,
       point4d: defaultPersonal,
+      citizen: defaultCitizen,
       classDescriptions: defaultClassDescriptions,
       class_descriptions: defaultClassDescriptions,
       classDescription: defaultClassDescriptions,
@@ -95,19 +116,44 @@ export const generateWordDocument = async (templateArrayBuffer, data, imagesBase
       codes: defaultCodes,
       explicacionCodigos: defaultCodes,
       conditions: defaultCodes,
+      height: (data.height && data.height.trim() !== '') ? data.height : '-',
+      eye: defaultEye,
+      eyeColor: defaultEye,
+      sex: defaultSex,
+      gender: defaultSex,
+      address: (data.address && data.address.trim() !== '') ? data.address : '-',
+      reference: (data.reference && data.reference.trim() !== '') ? data.reference : '-',
+      placeOfBirth: (data.placeOfBirth && data.placeOfBirth.trim() !== '') ? data.placeOfBirth : '-',
       area: "-",
       file: "-",
       issuedDate: data.issueDate || "-",
       categoriesDates: data.categoriesDates || "-",
       gold: "-",
       today: today,
-      assignedNumber: assignedNumber,
+      assignedNumber: assignedNumberVal,
       // User edits from modal take highest priority!
       ...data,
       // System images
       license_front: imagesBase64[0] || "",
       license_back: imagesBase64[1] || "",
     };
+
+    if (!renderData.assignedNumber || renderData.assignedNumber === '-' || renderData.assignedNumber.trim() === '') {
+      renderData.assignedNumber = assignedNumberVal;
+    }
+    if (!renderData.citizen || renderData.citizen.trim() === '') {
+      renderData.citizen = defaultCitizen;
+    }
+
+    // Convert any remaining empty strings, nulls or undefined values to "-" (excluding system images)
+    for (const key of Object.keys(renderData)) {
+      if (key !== 'license_front' && key !== 'license_back' && key !== 'foto_frente' && key !== 'foto_reverso') {
+        const val = renderData[key];
+        if (val === undefined || val === null || val === 'null' || val === 'undefined' || (typeof val === 'string' && val.trim() === '')) {
+          renderData[key] = '-';
+        }
+      }
+    }
     
     doc.render(renderData);
   } catch (error) {
