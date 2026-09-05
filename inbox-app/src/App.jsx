@@ -12,7 +12,7 @@ import { extractLicenseData } from './utils/geminiApi';
 import { generateWordDocument, getAssignedNumber } from './utils/documentGenerator';
 import { sendEmailWithPdf } from './utils/gmailService';
 
-const GOOGLE_API_SCOPES = 'https://www.googleapis.com/auth/gmail.modify https://www.googleapis.com/auth/gmail.labels https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/drive.readonly https://www.googleapis.com/auth/drive.file';
+const GOOGLE_API_SCOPES = 'https://www.googleapis.com/auth/gmail.modify https://www.googleapis.com/auth/gmail.labels https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/drive.readonly https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/drive';
 
 class ErrorBoundary extends React.Component {
   constructor(props) {
@@ -1058,11 +1058,24 @@ function App() {
   const extractDLNumbers = (folderName, docs = []) => {
     const dls = new Set();
     if (folderName) {
-      const match = folderName.match(/^([a-zA-Z0-9]+(?:\s*,\s*[a-zA-Z0-9]+)*)/);
+      // Strip any Gmail label path like "0. Work/0. 1 HOUR/0. DL IN PROGRESS/"
+      let cleanFolder = String(folderName).replace(/^.*(?:DL IN PROGRESS|1 HOUR|Work)\//i, '').trim();
+      if (cleanFolder.includes('/')) {
+        cleanFolder = cleanFolder.split('/').pop().trim();
+      }
+
+      // Extract B#### or any consecutive like B1234 or numbers
+      const bMatches = cleanFolder.match(/\b[A-Za-z]?\d{3,6}\b/g) || [];
+      bMatches.forEach(m => {
+        const clean = m.toUpperCase().startsWith('B') ? m.toUpperCase() : `B${m}`;
+        dls.add(clean);
+      });
+
+      const match = cleanFolder.match(/^([a-zA-Z0-9]+(?:\s*,\s*[a-zA-Z0-9]+)*)/);
       if (match) {
         const parts = match[1].split(',').map(s => s.trim());
         const prefixMatch = parts[0].match(/^[a-zA-Z]+/);
-        const prefix = prefixMatch ? prefixMatch[0] : 'B';
+        const prefix = prefixMatch ? prefixMatch[0].toUpperCase() : 'B';
         parts.forEach(p => {
           if (/^\d+$/.test(p)) {
             dls.add((prefix + p).toUpperCase());
@@ -1071,15 +1084,11 @@ function App() {
           }
         });
       }
-      const allMatches = folderName.match(/\b[B|b]\d+\b/g);
-      if (allMatches) {
-        allMatches.forEach(m => dls.add(m.toUpperCase()));
-      }
     }
     if (docs && docs.length > 0) {
       docs.forEach(doc => {
         if (doc.name) {
-          const m = doc.name.match(/\b[B|b]?\d+\b/g);
+          const m = doc.name.match(/\b[A-Za-z]?\d{3,6}\b/g);
           if (m) {
             m.forEach(val => {
               const clean = val.toUpperCase().startsWith('B') ? val.toUpperCase() : `B${val}`;
@@ -1106,29 +1115,62 @@ function App() {
   const updateSheetStatusCompleted = async (token, folderName, docs, currentSheetName) => {
     try {
       const targetDLs = extractDLNumbers(folderName, docs);
-      console.log("Actualizando Status a 'completed' para DLs:", targetDLs, "en carpeta:", folderName);
+      console.log("Actualizando Status a COMPLETED para DLs:", targetDLs, "en carpeta:", folderName);
       
+      let spreadsheetId = localStorage.getItem('lastSpreadsheetId') || null;
+
+      // 1. Search spreadsheet in Drive by configured name
       const cleanSheetName = (currentSheetName || localStorage.getItem('sheetName') || 'July 2026').trim();
       const escapedName = cleanSheetName.replace(/'/g, "\\'");
       const driveQuery = `(name = '${escapedName}' or name contains '${escapedName}') and mimeType = 'application/vnd.google-apps.spreadsheet' and trashed = false`;
       const driveUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(driveQuery)}&supportsAllDrives=true&includeItemsFromAllDrives=true&fields=files(id,name)`;
       
       const driveRes = await fetch(driveUrl, { headers: { Authorization: `Bearer ${token}` } });
-      if (!driveRes.ok) {
-        console.warn("No se pudo buscar el archivo en Drive:", driveRes.status);
-        return false;
+      if (driveRes.ok) {
+        const driveData = await driveRes.json();
+        if (driveData.files && driveData.files.length > 0) {
+          const exactMatch = driveData.files.find(f => f.name.trim().toLowerCase() === cleanSheetName.toLowerCase());
+          spreadsheetId = exactMatch ? exactMatch.id : driveData.files[0].id;
+        }
       }
-      const driveData = await driveRes.json();
-      if (!driveData.files || driveData.files.length === 0) {
-        console.warn(`No se encontró el archivo de Sheets "${cleanSheetName}" en Drive.`);
-        return false;
+
+      // 2. If not found by name, discover recent spreadsheets containing 1HRGT or RVA tabs
+      if (!spreadsheetId) {
+        const recentRes = await fetch(
+          `https://www.googleapis.com/drive/v3/files?q=mimeType%3D'application%2Fvnd.google-apps.spreadsheet'%20and%20trashed%3Dfalse&orderBy=modifiedTime%20desc&pageSize=10&supportsAllDrives=true&includeItemsFromAllDrives=true&fields=files(id,name)`,
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+        if (recentRes.ok) {
+          const recentData = await recentRes.json();
+          for (const file of (recentData.files || [])) {
+            try {
+              const metaRes = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${file.id}?fields=sheets.properties.title`, {
+                headers: { Authorization: `Bearer ${token}` }
+              });
+              if (metaRes.ok) {
+                const metaData = await metaRes.json();
+                const titles = (metaData.sheets || []).map(s => s.properties?.title);
+                if (titles.includes('1HRGT') || titles.includes('RVA')) {
+                  spreadsheetId = file.id;
+                  break;
+                }
+              }
+            } catch (e) {
+              // ignore
+            }
+          }
+        }
       }
-      
-      const exactMatch = driveData.files.find(f => f.name.trim().toLowerCase() === cleanSheetName.toLowerCase());
-      const spreadsheetId = exactMatch ? exactMatch.id : driveData.files[0].id;
-      
+
+      if (!spreadsheetId) {
+        throw new Error(`No se encontró el archivo de Sheets en Drive.`);
+      }
+
+      localStorage.setItem('lastSpreadsheetId', spreadsheetId);
+
       const tabsToCheck = ['1HRGT', 'RVA'];
       const updateRanges = [];
+      const updatedInfo = [];
 
       for (const tab of tabsToCheck) {
         try {
@@ -1141,7 +1183,7 @@ function App() {
           const rows = sheetData.values || [];
           if (rows.length === 0) continue;
 
-          // Buscar columna "Status" o "Estado" en las primeras filas
+          // Search for "Status" or "Estado" column in the first 3 rows
           let statusColIdx = -1;
           for (let r = 0; r < Math.min(3, rows.length); r++) {
             const headerRow = rows[r] || [];
@@ -1155,31 +1197,36 @@ function App() {
             if (statusColIdx !== -1) break;
           }
 
-          // Fallback: Columna L (index 11) para 1HRGT o Columna K (index 10) para RVA
+          // Fallback: Columna L (index 11) for 1HRGT or Columna K (index 10) for RVA
           if (statusColIdx === -1) {
             statusColIdx = tab === '1HRGT' ? 11 : 10;
           }
 
           const statusColLetter = getColumnLetter(statusColIdx);
 
-          // Buscar filas que coincidan con los números de consecutivo DL
+          // Find rows matching target DLs
           for (let r = 0; r < rows.length; r++) {
             const row = rows[r] || [];
-            const dlVal = String(row[4] || '').trim().toUpperCase(); // Columna E (index 4)
-            
+            const dlVal = String(row[4] || '').trim().toUpperCase(); // Column E (index 4)
+            const cleanDlVal = dlVal.replace(/[^A-Z0-9]/g, '');
+            const dlDigits = dlVal.replace(/\D/g, '');
+
             const dlMatch = targetDLs.some(tdl => {
               if (!tdl) return false;
-              const cleanTdl = tdl.toUpperCase();
-              const cleanDlVal = dlVal.toUpperCase();
-              return cleanDlVal === cleanTdl || cleanDlVal.includes(cleanTdl) || (cleanDlVal.replace(/\D/g, '') === cleanTdl.replace(/\D/g, '') && cleanDlVal.replace(/\D/g, '').length > 0);
+              const cleanTdl = tdl.toUpperCase().replace(/[^A-Z0-9]/g, '');
+              const tdlDigits = tdl.replace(/\D/g, '');
+              return (cleanDlVal && cleanDlVal === cleanTdl) ||
+                     (dlDigits && tdlDigits && dlDigits === tdlDigits && dlDigits.length >= 3) ||
+                     (cleanDlVal && cleanTdl && cleanDlVal.includes(cleanTdl));
             });
 
             if (dlMatch) {
-              const rowNum = r + 1; // 1-indexed para Google Sheets
+              const rowNum = r + 1; // 1-indexed for Google Sheets
               updateRanges.push({
                 range: `${tab}!${statusColLetter}${rowNum}`,
-                values: [["completed"]]
+                values: [["COMPLETED"]]
               });
+              updatedInfo.push(`${tab} (fila ${rowNum}, ${dlVal || targetDLs.join(', ')})`);
             }
           }
         } catch (tabErr) {
@@ -1188,7 +1235,7 @@ function App() {
       }
 
       if (updateRanges.length > 0) {
-        console.log("Enviando actualización de Status a completed:", updateRanges);
+        console.log("Enviando actualización de Status a COMPLETED:", updateRanges);
         const updateRes = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values:batchUpdate`, {
           method: 'POST',
           headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
@@ -1197,14 +1244,19 @@ function App() {
             data: updateRanges
           })
         });
-        return updateRes.ok;
+        
+        if (!updateRes.ok) {
+          const errDetail = await updateRes.text();
+          throw new Error(`Error Sheets API (${updateRes.status}): ${errDetail}`);
+        }
+        return { success: true, details: updatedInfo.join(', ') };
       } else {
         console.warn("No se encontraron filas coincidentes en Sheets para DLs:", targetDLs);
-        return false;
+        return { success: false, reason: `No se encontró fila para DL (${targetDLs.join(', ') || folderName}) en el Sheet.` };
       }
     } catch (err) {
       console.error("Error al actualizar Status en Sheet:", err);
-      return false;
+      return { success: false, reason: err.message };
     }
   };
 
@@ -1234,19 +1286,19 @@ function App() {
           <a href="https://wa.me/64220962125">WhatsApp Chat</a>
         </div>
         <div style="text-align: center; margin-top: 20px; font-size: 11px; color: #64748b; font-style: italic;">
-          Ngā Mihi. शुक्रिया. Thank you. 谢谢. Gracias. ありがとう. Danke. شكرا. Obrigado.<br />
+          Ngā Mihi. शुक्रिया. Thank you. 谢谢. Gracias. ありがとう. Danke. شكra. Obrigado.<br />
           “The World is but one country, and mankind its citizens.” Bahá’u’lláh
         </div>
       `;
       
       await sendEmailWithPdf(token, finalEmailTo, subject, htmlBody, pdfBlobsArray);
       
-      const sheetUpdated = await updateSheetStatusCompleted(token, editorFolder, processedDocs, sheetName);
+      const sheetResult = await updateSheetStatusCompleted(token, editorFolder, processedDocs, sheetName);
       
-      if (sheetUpdated) {
-        alert(`✅ Correo enviado exitosamente a ${finalEmailTo}\n📊 Estado actualizado a 'completed' en la columna Status de Google Sheets.`);
+      if (sheetResult && sheetResult.success) {
+        alert(`✅ Correo enviado exitosamente a ${finalEmailTo}\n📊 Estado actualizado a 'COMPLETED' en Google Sheets: ${sheetResult.details}`);
       } else {
-        alert(`✅ Correo enviado exitosamente a ${finalEmailTo}`);
+        alert(`✅ Correo enviado exitosamente a ${finalEmailTo}\n⚠️ Nota: No se pudo actualizar el Status en el Sheet (${sheetResult?.reason || 'Revisar configuración de hoja'}).`);
       }
       
       if (activeEmailItem) {

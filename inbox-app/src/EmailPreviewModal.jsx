@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { X, Send, UploadCloud, FileText, ArrowLeft, Trash2, Download } from 'lucide-react';
+import { X, Send, UploadCloud, FileText, ArrowLeft, Trash2, Download, RefreshCw } from 'lucide-react';
+import { convertDocxToPdf } from './utils/driveConverter';
 
 export default function EmailPreviewModal({ 
   isOpen, 
@@ -12,6 +13,7 @@ export default function EmailPreviewModal({
   onBack 
 }) {
   const [pdfBlobs, setPdfBlobs] = useState([]);
+  const [isConverting, setIsConverting] = useState(false);
   const [error, setError] = useState('');
   const [emailTo, setEmailTo] = useState(customerEmail || '');
 
@@ -22,6 +24,30 @@ export default function EmailPreviewModal({
   }, [isOpen, customerEmail]);
 
   if (!isOpen) return null;
+
+  const handleConvertToPdf = async () => {
+    setIsConverting(true);
+    setError('');
+    try {
+      if (!token) {
+        throw new Error("No hay una sesión activa de Google. Por favor vuelve a iniciar sesión.");
+      }
+      if (!processedDocs || processedDocs.length === 0) {
+        throw new Error("No hay documentos Word generados para convertir a PDF.");
+      }
+      const convertedPdfs = [];
+      for (const doc of processedDocs) {
+        const pdf = await convertDocxToPdf(doc.blob, `${doc.name}.docx`, token);
+        convertedPdfs.push({ blob: pdf, name: doc.name });
+      }
+      setPdfBlobs(convertedPdfs);
+    } catch (err) {
+      console.error("Error convirtiendo a PDF con Google Drive:", err);
+      setError(`Error Google Drive: ${err.message}`);
+    } finally {
+      setIsConverting(false);
+    }
+  };
 
   const handleManualPdfUpload = (e) => {
     if (e.target.files && e.target.files.length > 0) {
@@ -63,18 +89,33 @@ export default function EmailPreviewModal({
         <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
           
           <div className="pdf-section" style={{ padding: '16px', background: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
-            <h3 style={{ marginTop: 0, fontSize: '1.1rem', color: '#1e293b' }}>1. Adjuntar PDF de Traducción</h3>
+            <h3 style={{ marginTop: 0, fontSize: '1.1rem', color: '#1e293b' }}>1. Preparar PDF</h3>
             
             {pdfBlobs.length === 0 ? (
-              <div style={{ marginTop: '12px', padding: '24px', background: '#ffffff', borderRadius: '8px', border: '2px dashed #cbd5e1', textAlign: 'center' }}>
-                <UploadCloud size={36} style={{ color: '#3b82f6', margin: '0 auto 8px' }} />
-                <p style={{ margin: '0 0 12px', color: '#475569', fontSize: '0.95rem' }}>
-                  Selecciona o sube el archivo PDF final de la traducción para enviarlo al cliente.
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginTop: '12px' }}>
+                <p style={{ margin: 0, color: '#475569', fontSize: '0.95rem' }}>
+                  Elige cómo deseas generar o adjuntar el PDF para el cliente:
                 </p>
-                <label className="btn-primary" style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', cursor: 'pointer', padding: '10px 20px', borderRadius: '6px' }}>
-                  <UploadCloud size={18} /> Subir Archivo PDF
-                  <input type="file" accept=".pdf,application/pdf" multiple style={{ display: 'none' }} onChange={handleManualPdfUpload} />
-                </label>
+                
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', alignItems: 'center' }}>
+                  <button 
+                    className="btn-primary" 
+                    onClick={handleConvertToPdf} 
+                    disabled={isConverting || processedDocs.length === 0}
+                    style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', padding: '10px 18px', borderRadius: '6px' }}
+                  >
+                    {isConverting ? (
+                      <><RefreshCw size={18} className="spinning" /> Convirtiendo con Google Drive ({processedDocs.length})...</>
+                    ) : (
+                      <><FileText size={18} /> Convertir con Google Drive ({processedDocs.length})</>
+                    )}
+                  </button>
+
+                  <label className="btn-secondary" style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', cursor: 'pointer', padding: '10px 18px', borderRadius: '6px' }}>
+                    <UploadCloud size={18} /> Subir PDF Manual
+                    <input type="file" accept=".pdf,application/pdf" multiple style={{ display: 'none' }} onChange={handleManualPdfUpload} />
+                  </label>
+                </div>
               </div>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '12px' }}>
@@ -109,9 +150,21 @@ export default function EmailPreviewModal({
                     </div>
                   </div>
                 ))}
-                <div style={{ display: 'flex', gap: '12px', alignItems: 'center', marginTop: '6px' }}>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', alignItems: 'center', marginTop: '6px' }}>
+                  <button 
+                    className="btn-secondary" 
+                    onClick={handleConvertToPdf} 
+                    disabled={isConverting || processedDocs.length === 0}
+                    style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '0.85rem', padding: '6px 12px', borderRadius: '6px' }}
+                  >
+                    {isConverting ? (
+                      <><RefreshCw size={14} className="spinning" /> Reconvirtiendo...</>
+                    ) : (
+                      <><RefreshCw size={14} /> Reconvertir con Drive</>
+                    )}
+                  </button>
                   <label className="btn-secondary" style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '0.85rem', padding: '6px 12px', borderRadius: '6px' }}>
-                    <UploadCloud size={16} /> Agregar otro PDF
+                    <UploadCloud size={14} /> Agregar otro PDF
                     <input type="file" accept=".pdf,application/pdf" multiple style={{ display: 'none' }} onChange={handleManualPdfUpload} />
                   </label>
                   <button className="btn-text" onClick={() => setPdfBlobs([])} style={{ color: '#ef4444', fontSize: '0.85rem' }}>
