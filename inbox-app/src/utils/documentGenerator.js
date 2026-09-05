@@ -99,6 +99,10 @@ export const generateWordDocument = async (templateArrayBuffer, data, imagesBase
       ? data.sex
       : ((data.gender && data.gender.trim() !== '' && data.gender.trim() !== '-') ? data.gender : '-');
 
+    const defaultPersonal = (data.personal && data.personal.trim() !== '' && data.personal.trim() !== '-')
+      ? data.personal
+      : ((data.point4d && data.point4d.trim() !== '' && data.point4d.trim() !== '-') ? data.point4d : '-');
+
     const assignedNumberVal = (data.assignedNumber && data.assignedNumber.trim() !== '' && data.assignedNumber.trim() !== '-')
       ? data.assignedNumber
       : (assignedNumber || '-');

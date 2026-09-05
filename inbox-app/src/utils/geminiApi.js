@@ -204,6 +204,8 @@ export const extractLicenseData = async (apiKey, base64Images, country, onChunk 
     countryKey = 'canada';
   } else if (countryKey.includes('netherlands') || countryKey.includes('holanda') || countryKey.includes('países bajos') || countryKey.includes('paises bajos') || countryKey.includes('dutch')) {
     countryKey = 'netherlands';
+  } else if (countryKey.includes('chile') || countryKey.includes('mexico') || countryKey.includes('méxico') || countryKey.includes('argentina') || countryKey.includes('uruguay') || countryKey.includes('colombia') || countryKey.includes('peru') || countryKey.includes('perú') || countryKey.includes('latino')) {
+    countryKey = 'latino';
   }
 
   const availableCountries = Object.keys(COUNTRY_RULES);
@@ -442,17 +444,58 @@ export const extractLicenseData = async (apiKey, base64Images, country, onChunk 
       extractedData.explicacionCodigos = finalCond;
     }
     else if (matchedKey === 'latino') {
+      let exp = (extractedData.explicacion && extractedData.explicacion.trim() !== '' && extractedData.explicacion !== '-')
+        ? extractedData.explicacion.trim()
+        : ((extractedData.explicacionCodigos && extractedData.explicacionCodigos.trim() !== '' && extractedData.explicacionCodigos !== '-') ? extractedData.explicacionCodigos.trim() : '');
+
       let rawClass = (extractedData.class || '').trim();
-      if (rawClass) {
-        if (!rawClass.includes('-') && !rawClass.includes(':') && !rawClass.toLowerCase().includes('vehicle') && !rawClass.toLowerCase().includes('car') && !rawClass.toLowerCase().includes('motorcycle') && !rawClass.toLowerCase().includes('passenger')) {
-          const generatedDesc = generateClassDescriptions(rawClass);
-          if (generatedDesc && generatedDesc.trim() !== '') {
-            extractedData.class = generatedDesc;
-          }
+      if (!exp && rawClass && rawClass !== '-') {
+        const generatedDesc = generateClassDescriptions(rawClass);
+        if (generatedDesc && generatedDesc.trim() !== '') {
+          exp = generatedDesc;
         }
       }
-      if (!extractedData.classDescriptions || extractedData.classDescriptions.trim() === '' || extractedData.classDescriptions.trim() === '-') {
-        extractedData.classDescriptions = extractedData.class || generateClassDescriptions(rawClass);
+
+      const finalExp = (exp && exp.trim() !== '') ? exp : '-';
+      extractedData.explicacion = finalExp;
+      extractedData.explicacionCodigos = finalExp;
+
+      // Gender: Male, Female or "-"
+      if (extractedData.gender && typeof extractedData.gender === 'string') {
+        const gLow = extractedData.gender.trim().toLowerCase();
+        if (gLow === 'male' || gLow === 'm' || gLow === 'masculino' || gLow === 'hombre') {
+          extractedData.gender = 'Male';
+        } else if (gLow === 'female' || gLow === 'f' || gLow === 'femenino' || gLow === 'mujer') {
+          extractedData.gender = 'Female';
+        } else if (gLow === '' || gLow === '-' || gLow === 'null' || gLow === 'undefined') {
+          extractedData.gender = '-';
+        }
+      } else {
+        extractedData.gender = '-';
+      }
+
+      // Organs: Yes or No if specified, else remove (delete key or empty string)
+      if (extractedData.organs && typeof extractedData.organs === 'string') {
+        const oLow = extractedData.organs.trim().toLowerCase();
+        if (oLow === 'yes' || oLow === 'si' || oLow === 'sí' || oLow === 'donante' || oLow === 'true') {
+          extractedData.organs = 'Yes';
+        } else if (oLow === 'no' || oLow === 'false' || oLow === 'no donante') {
+          extractedData.organs = 'No';
+        } else {
+          delete extractedData.organs;
+        }
+      } else {
+        delete extractedData.organs;
+      }
+
+      // Address: keep if specified, else delete/remove
+      if (!extractedData.address || typeof extractedData.address !== 'string' || extractedData.address.trim() === '' || extractedData.address.trim() === '-' || extractedData.address.trim().toLowerCase() === 'null') {
+        delete extractedData.address;
+      }
+
+      // Nationality: keep in English if specified, else delete/remove
+      if (!extractedData.nationality || typeof extractedData.nationality !== 'string' || extractedData.nationality.trim() === '' || extractedData.nationality.trim() === '-' || extractedData.nationality.trim().toLowerCase() === 'null') {
+        delete extractedData.nationality;
       }
     } else if (matchedKey === 'netherlands' || matchedKey === 'holanda') {
       let cit = (extractedData.citizen && typeof extractedData.citizen === 'string') ? extractedData.citizen.trim() : '';

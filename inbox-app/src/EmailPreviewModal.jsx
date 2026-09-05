@@ -1,18 +1,17 @@
 import React, { useState, useEffect } from 'react';
-import { X, Send, UploadCloud, RefreshCw, FileText, ArrowLeft, Trash2 } from 'lucide-react';
-import { convertDocxToPdf } from './utils/convertApi';
+import { X, Send, UploadCloud, FileText, ArrowLeft, Trash2, Download } from 'lucide-react';
 
 export default function EmailPreviewModal({ 
   isOpen, 
   onClose, 
   processedDocs = [], 
   folderName, 
-  customerEmail,
-  onSendEmail,
-  onBack
+  customerEmail, 
+  token, 
+  onSendEmail, 
+  onBack 
 }) {
   const [pdfBlobs, setPdfBlobs] = useState([]);
-  const [isConverting, setIsConverting] = useState(false);
   const [error, setError] = useState('');
   const [emailTo, setEmailTo] = useState(customerEmail || '');
 
@@ -24,30 +23,14 @@ export default function EmailPreviewModal({
 
   if (!isOpen) return null;
 
-  const handleConvertToPdf = async () => {
-    setIsConverting(true);
-    setError('');
-    try {
-      const convertedPdfs = [];
-      for (const doc of processedDocs) {
-        const pdf = await convertDocxToPdf(doc.blob, `${doc.name}.docx`);
-        convertedPdfs.push({ blob: pdf, name: doc.name });
-      }
-      setPdfBlobs(convertedPdfs);
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setIsConverting(false);
-    }
-  };
-
   const handleManualPdfUpload = (e) => {
     if (e.target.files && e.target.files.length > 0) {
       const newPdfs = Array.from(e.target.files).map(file => ({
         blob: file,
-        name: file.name.replace('.pdf', '')
+        name: file.name.replace(/\.pdf$/i, '')
       }));
-      setPdfBlobs([...pdfBlobs, ...newPdfs]);
+      setPdfBlobs(prev => [...prev, ...newPdfs]);
+      setError('');
     }
   };
 
@@ -57,14 +40,14 @@ export default function EmailPreviewModal({
 
   const handleSend = () => {
     if (pdfBlobs.length === 0) {
-      alert("Necesitas tener al menos un PDF listo antes de enviar.");
+      alert("Necesitas tener al menos un archivo PDF adjunto antes de enviar.");
       return;
     }
-    if (!emailTo) {
+    if (!emailTo || !emailTo.trim()) {
       alert("Por favor ingresa un correo electrónico de destino.");
       return;
     }
-    onSendEmail(pdfBlobs, emailTo);
+    onSendEmail(pdfBlobs, emailTo.trim());
   };
 
   return (
@@ -80,53 +63,57 @@ export default function EmailPreviewModal({
         <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
           
           <div className="pdf-section" style={{ padding: '16px', background: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
-            <h3 style={{ marginTop: 0, fontSize: '1.1rem', color: '#1e293b' }}>1. Preparar PDF</h3>
+            <h3 style={{ marginTop: 0, fontSize: '1.1rem', color: '#1e293b' }}>1. Adjuntar PDF de Traducción</h3>
             
             {pdfBlobs.length === 0 ? (
-              <div style={{ display: 'flex', gap: '10px', marginTop: '12px' }}>
-                <button 
-                  className="btn-primary" 
-                  onClick={handleConvertToPdf} 
-                  disabled={isConverting || processedDocs.length === 0}
-                >
-                  {isConverting ? (
-                    <><RefreshCw size={18} className="spin" /> Convirtiendo {processedDocs.length} arch...</>
-                  ) : (
-                    <><FileText size={18} /> Convertir Word a PDF Automático ({processedDocs.length})</>
-                  )}
-                </button>
-
-                <div className="file-input-wrapper">
-                  <label className="btn-secondary" style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
-                    <UploadCloud size={18} /> Subir PDF Manual
-                    <input type="file" accept=".pdf" multiple style={{ display: 'none' }} onChange={handleManualPdfUpload} />
-                  </label>
-                </div>
+              <div style={{ marginTop: '12px', padding: '24px', background: '#ffffff', borderRadius: '8px', border: '2px dashed #cbd5e1', textAlign: 'center' }}>
+                <UploadCloud size={36} style={{ color: '#3b82f6', margin: '0 auto 8px' }} />
+                <p style={{ margin: '0 0 12px', color: '#475569', fontSize: '0.95rem' }}>
+                  Selecciona o sube el archivo PDF final de la traducción para enviarlo al cliente.
+                </p>
+                <label className="btn-primary" style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', cursor: 'pointer', padding: '10px 20px', borderRadius: '6px' }}>
+                  <UploadCloud size={18} /> Subir Archivo PDF
+                  <input type="file" accept=".pdf,application/pdf" multiple style={{ display: 'none' }} onChange={handleManualPdfUpload} />
+                </label>
               </div>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '12px' }}>
                 {pdfBlobs.map((pdfItem, index) => (
-                  <div key={index} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', color: '#16a34a', background: '#f0fdf4', padding: '8px 12px', borderRadius: '6px', border: '1px solid #bbf7d0' }}>
+                  <div key={index} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', color: '#16a34a', background: '#f0fdf4', padding: '10px 14px', borderRadius: '6px', border: '1px solid #bbf7d0' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                       <FileText size={20} />
                       <span><strong>¡PDF Listo!</strong> {pdfItem.name}.pdf ({Math.round(pdfItem.blob.size / 1024)} KB)</span>
                     </div>
-                    <button 
-                      onClick={() => handleRemovePdf(index)}
-                      style={{ padding: '4px 8px', background: '#ffffff', border: '1px solid #fca5a5', borderRadius: '4px', cursor: 'pointer', color: '#ef4444', display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.8rem' }}
-                      title="Eliminar este PDF"
-                    >
-                      <Trash2 size={14} /> Eliminar
-                    </button>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <button 
+                        onClick={() => {
+                          const url = URL.createObjectURL(pdfItem.blob);
+                          const a = document.createElement('a');
+                          a.href = url;
+                          a.download = `${pdfItem.name}.pdf`;
+                          a.click();
+                          URL.revokeObjectURL(url);
+                        }}
+                        style={{ padding: '4px 8px', background: '#ffffff', border: '1px solid #cbd5e1', borderRadius: '4px', cursor: 'pointer', color: '#2563eb', display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.8rem' }}
+                        title="Descargar PDF"
+                      >
+                        <Download size={14} /> Ver
+                      </button>
+                      <button 
+                        onClick={() => handleRemovePdf(index)}
+                        style={{ padding: '4px 8px', background: '#ffffff', border: '1px solid #fca5a5', borderRadius: '4px', cursor: 'pointer', color: '#ef4444', display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.8rem' }}
+                        title="Eliminar este PDF"
+                      >
+                        <Trash2 size={14} /> Eliminar
+                      </button>
+                    </div>
                   </div>
                 ))}
-                <div style={{ display: 'flex', gap: '12px', alignItems: 'center', marginTop: '4px' }}>
-                  <div className="file-input-wrapper">
-                    <label className="btn-secondary" style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '0.85rem', padding: '6px 12px' }}>
-                      <UploadCloud size={16} /> Agregar otro PDF
-                      <input type="file" accept=".pdf" multiple style={{ display: 'none' }} onChange={handleManualPdfUpload} />
-                    </label>
-                  </div>
+                <div style={{ display: 'flex', gap: '12px', alignItems: 'center', marginTop: '6px' }}>
+                  <label className="btn-secondary" style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '0.85rem', padding: '6px 12px', borderRadius: '6px' }}>
+                    <UploadCloud size={16} /> Agregar otro PDF
+                    <input type="file" accept=".pdf,application/pdf" multiple style={{ display: 'none' }} onChange={handleManualPdfUpload} />
+                  </label>
                   <button className="btn-text" onClick={() => setPdfBlobs([])} style={{ color: '#ef4444', fontSize: '0.85rem' }}>
                     Eliminar todos
                   </button>

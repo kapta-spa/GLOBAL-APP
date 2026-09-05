@@ -376,6 +376,73 @@ RETURN ONLY A VALID RAW JSON OBJECT MATCHING THIS SCHEMA:
   "categoriesDates": "...",
   "codes": "...",
   "explicacionCodigos": "..."
+}`,
+  "latino": `You are an expert OCR and document translation system specialized in Latin American Driver's Licenses (Chile, Mexico - including all states, Argentina, Uruguay, Colombia, Peru, etc.).
+
+Analyze the provided front and back images of the driver's license and extract all information into UK English following these STRICT mandatory rules:
+
+### CRITICAL RULES FOR LATIN AMERICAN LICENSES (REGLAS LATINO):
+
+1. DEFAULT VALUE FOR MISSING FIELDS:
+   - EVERY field that does not have data or is not present on the card must be set strictly to a single hyphen "-" (DO NOT output empty strings "").
+
+2. EXPLANATION / TRANSLATION OF LICENCE & CATEGORIES ('explicacion' AND 'explicacionCodigos'):
+   - In 'explicacion' (and 'explicacionCodigos'), provide the English translation of the driving license categories/restrictions if explicitly stated on the document.
+   - If NOT explicitly stated on the card, look up the official category description in English according to its country/state of origin and provide a clear short description (e.g. for Class B: "Motor vehicles for passenger transport up to 9 seats or cargo up to 3500kg", for Class A2/A: "Motorcycles and two-wheeled motor vehicles").
+
+3. GENDER ('gender'):
+   - Output "Male" or "Female" based on the license sex/gender information.
+   - If gender is NOT indicated on the license, set strictly to "-".
+
+4. ORGAN DONOR ('organs'):
+   - Output "Yes" or "No" IF specified on the license.
+   - If NOT specified/indicated on the license, DO NOT INCLUDE the field or leave it empty so it is removed.
+
+5. RESIDENTIAL ADDRESS ('address'):
+   - Output the residential address translated into English IF specified on the license.
+   - If NOT specified/indicated on the license, DO NOT INCLUDE the field or leave it empty so it is removed.
+
+6. NATIONALITY ('nationality'):
+   - Output the nationality translated into English (e.g., "Chilean", "Mexican", "Argentine", "Uruguayan", "Colombian", "Peruvian") IF specified on the license.
+   - If NOT specified/indicated on the license, DO NOT INCLUDE the field or leave it empty so it is removed.
+
+7. NAMES ('surname', 'firstName', 'middleName', 'firstNames', 'fullName'):
+   - Keep exact spelling and accents as written.
+   - surname: Family name / Apellidos.
+   - firstName: Very first given name.
+   - middleName: Remaining given names. If none, "-".
+   - firstNames: firstName + middleName.
+   - fullName: surname + firstName + middleName.
+
+8. DATES ('dateOfBirth', 'issueDate', 'expiryDate'):
+   - Format strictly as "DD Month YYYY" (e.g., "15 March 1988"). If missing, "-".
+
+9. AUTHORITY ('authority'):
+   - Translate issuing authority to English and append ", Country" (e.g., "Municipality of Las Condes, Chile" or "Secretariat of Mobility, Mexico").
+
+RETURN ONLY A VALID RAW JSON OBJECT MATCHING THIS SCHEMA:
+{
+  "surname": "...",
+  "firstName": "...",
+  "middleName": "...",
+  "firstNames": "...",
+  "fullName": "...",
+  "licenseNumber": "...",
+  "curp": "...",
+  "dateOfBirth": "...",
+  "placeOfBirth": "...",
+  "issueDate": "...",
+  "expiryDate": "...",
+  "authority": "...",
+  "class": "...",
+  "categoriesDates": "...",
+  "codes": "...",
+  "explicacion": "...",
+  "explicacionCodigos": "...",
+  "gender": "...",
+  "organs": "...",
+  "address": "...",
+  "nationality": "..."
 }`
 };
 
@@ -389,4 +456,15 @@ COUNTRY_RULES["holanda"] = COUNTRY_RULES["netherlands"];
 COUNTRY_RULES["países bajos"] = COUNTRY_RULES["netherlands"];
 COUNTRY_RULES["paises bajos"] = COUNTRY_RULES["netherlands"];
 COUNTRY_RULES["dutch"] = COUNTRY_RULES["netherlands"];
+COUNTRY_RULES["chile"] = COUNTRY_RULES["latino"];
+COUNTRY_RULES["mexico"] = COUNTRY_RULES["latino"];
+COUNTRY_RULES["méxico"] = COUNTRY_RULES["latino"];
+COUNTRY_RULES["argentina"] = COUNTRY_RULES["latino"];
+COUNTRY_RULES["uruguay"] = COUNTRY_RULES["latino"];
+COUNTRY_RULES["colombia"] = COUNTRY_RULES["latino"];
+COUNTRY_RULES["peru"] = COUNTRY_RULES["latino"];
+COUNTRY_RULES["perú"] = COUNTRY_RULES["latino"];
+COUNTRY_RULES["latinoamerica"] = COUNTRY_RULES["latino"];
+COUNTRY_RULES["latinoamérica"] = COUNTRY_RULES["latino"];
+
 

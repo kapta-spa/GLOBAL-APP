@@ -13,68 +13,58 @@
 
 La API de extracción devuelve la siguiente estructura JSON con tipado estricto:
 
-| Campo (`key`) | Tipo | Descripción | Ejemplo de Valor Extraído |
+| Campo (`key`) | Tipo | Descripción | Ejemplo / Regla |
 | :--- | :--- | :--- | :--- |
-| `surname` | `string` | Apellidos de la persona (Family Name / Nom) | `"DUPONT"` |
-| `firstName` | `string` | Únicamente el primer nombre propio | `"JEAN"` |
-| `middleName` | `string` | Segundo y demás nombres propios restantes | `"MARIE PHILIPPE"` |
-| `firstNames` | `string` | Todos los nombres propios concatenados | `"JEAN MARIE PHILIPPE"` |
-| `fullName` | `string` | Nombre completo (Apellidos + Nombres) | `"DUPONT JEAN MARIE PHILIPPE"` |
-| `licenseNumber` | `string` | Número único de identificación de la licencia | `"123456789012"` |
-| `assignedNumber` | `string` | Identificador de expediente asignado (Nombre del archivo) | `"EXP-2026-9941"` |
-| `dateOfBirth` | `string` | Fecha de nacimiento formateada | `"15 March 1988"` |
-| `placeOfBirth` | `string` | Lugar de nacimiento traducido al inglés | `"Paris, France"` |
+| `surname` | `string` | Apellidos de la persona (Family Name) | `"GONZALEZ"` |
+| `firstName` | `string` | Únicamente el primer nombre propio | `"CARLOS"` |
+| `middleName` | `string` | Segundo y demás nombres propios restantes | `"ALBERTO"` |
+| `firstNames` | `string` | Todos los nombres propios concatenados | `"CARLOS ALBERTO"` |
+| `fullName` | `string` | Nombre completo (Apellidos + Nombres) | `"GONZALEZ CARLOS ALBERTO"` |
+| `licenseNumber` | `string` | Número único de identificación de la licencia | `"123456789"` |
+| `dateOfBirth` | `string` | Fecha de nacimiento formateada (DD Month YYYY) | `"15 March 1988"` |
+| `placeOfBirth` | `string` | Lugar de nacimiento traducido al inglés | `"Santiago, Chile"` |
 | `issueDate` | `string` | Fecha de expedición del documento | `"10 January 2020"` |
 | `expiryDate` | `string` | Fecha de vencimiento / caducidad | `"09 January 2035"` |
-| `nationality` | `string` | Nacionalidad traducida al inglés | `"French"` |
-| `authority` | `string` | Autoridad emisora en inglés + País al final | `"Police Prefecture, France"` |
-| `class` | `string` | Lista de categorías de conducir autorizadas | `"AM, A1, B, BE"` |
-| `categoriesDates` | `string` | Fechas de inicio/vencimiento por categoría al reverso | `"B: 10/01/2020 - 09/01/2035"` |
-| `codes` | `string` | Códigos de restricción o condiciones numéricas | `"01, 78"` |
-| `explicacionCodigos` | `string` | Traducción explicativa técnica de categorías y códigos | `"Category B: Motor vehicles up to 3500kg... Code 01: Sight correction required."` |
-| `curp` | `string` | Identificador nacional único (CURP / RFC / NIR / DNI) | `"DPNT880315HFR..."` |
-| `blood` | `string` | Tipo de sangre (si figura en la licencia) | `"O+"` |
-| `barcode` | `string` | Cadena alfanumérica/numérica asociada al código de barras | `"9876543210"` |
+| `authority` | `string` | Autoridad emisora en inglés + País al final | `"Municipality of Las Condes, Chile"` |
+| `class` | `string` | Lista de categorías de conducir autorizadas | `"B"` |
+| `categoriesDates` | `string` | Fechas de inicio/vencimiento por categoría | `"B: 10/01/2020 - 09/01/2035"` |
+| `codes` | `string` | Códigos de restricción o condiciones | `"01"` |
+| `explicacion` | `string` | Traducción/descripción corta en inglés | `"Motor vehicles for passenger transport up to 9 seats..."` |
+| `explicacionCodigos` | `string` | Mismo contenido explicativo de `explicacion` | `"Motor vehicles for passenger transport up to 9 seats..."` |
+| `gender` | `string` | Género traducido (`"Male"` o `"Female"`). Si no figura, `"-"` | `"Male"` |
+| `organs` | `string` | Donante de órganos (`"Yes"` o `"No"`). Si no figura, se borra/omite | `"Yes"` |
+| `address` | `string` | Dirección de residencia. Si no figura, se borra/omite | `"Av. Providencia 1234, Santiago, Chile"` |
+| `nationality` | `string` | Nacionalidad en inglés (ej. `"Chilean"`, `"Mexican"`). Si no figura, se borra/omite | `"Chilean"` |
 
 ---
 
 ## 3. REGLAS DE TRADUCCIÓN Y FORMATO POR CAMPO
 
-### 3.1. Formato de Fechas
-- **Regla Estricta**: Todas las fechas (`dateOfBirth`, `issueDate`, `expiryDate`) se formatean como `"DD Month YYYY"`.
-- *Ejemplo*: `12/05/1990` o `12 mai 1990` ➔ `"12 May 1990"`.
-- *Meses en Inglés*: `January`, `February`, `March`, `April`, `May`, `June`, `July`, `August`, `September`, `October`, `November`, `December`.
+### 3.1. Traducción y Explicaciones (`explicacion`)
+- **Regla**: En el campo `explicacion` poner la traducción de la licencia si lo indica. Si no lo indica en el plástico/documento, buscar la descripción oficial en inglés según su país de origen (Chile, México y sus estados, Argentina, Uruguay, Colombia, etc.) y poner una descripción corta.
 
-### 3.2. Autoridad Emisora (`authority`)
-- **Regla**: Traducir la institución al inglés Y añadir obligatoriamente el país de origen al final separado por una coma.
-- *Mapeos Frecuentes*:
-  - `"Préfecture de Police"` ➔ `"Police Prefecture, France"`
-  - `"Préfecture du Rhône"` ➔ `"Rhône Prefecture, France"`
-  - `"Ministère de l'Intérieur"` ➔ `"Ministry of Interior, France"`
-  - `"Secretaría de Movilidad"` ➔ `"Secretariat of Mobility, Mexico"`
+### 3.2. Género (`gender`)
+- **Regla**: Poner `"Male"` o `"Female"` según sea el caso. Si la licencia no indica el género, colocar estrictamente un guion `"-"`.
 
-### 3.3. Nombres Propios (`surname`, `firstName`, `middleName`)
-- **Regla**: Los nombres y apellidos NUNCA se traducen ni se anglicanizan. Conservar la grafía y acentuación original.
-- **División de Nombres**:
-  - `firstName`: Exclusivamente el **primer** nombre dado.
-  - `middleName`: Todos los demás nombres siguientes concatenados.
-  - *Ejemplo*: `"Pierre Jean François"` ➔ `firstName`: `"Pierre"`, `middleName`: `"Jean François"`.
+### 3.3. Donante de Órganos (`organs`)
+- **Regla**: Poner `"Yes"` o `"No"` si la licencia lo indica expresamente. Si la licencia no lo indica, BORRALO (omitir el campo).
 
-### 3.4. Explicación de Categorías y Códigos (`explicacionCodigos`)
-- **Regla**: Proporcionar una traducción técnica oficial estándar en inglés UK de las categorías autorizadas y restricciones según la directiva europea / estándar británico:
-  - **Categoría A**: `"Category A: Motorcycles with or without a sidecar."`
-  - **Categoría B**: `"Category B: Motor vehicles with a maximum authorized mass not exceeding 3500kg, designed and constructed for the carriage of no more than eight passengers in addition to the driver."`
-  - **Categoría C**: `"Category C: Large goods vehicles exceeding 3500kg."`
-  - **Código 01**: `"Code 01: Sight correction and/or protection required (glasses or contact lenses)."`
-  - **Código 78**: `"Code 78: Restricted to vehicles with automatic transmission."`
-  - **Código 106**: `"Code 106: National restriction / validity period extension."`
+### 3.4. Dirección (`address`)
+- **Regla**: Poner la dirección traducida al inglés si la licencia lo indica. Si no lo indica, BORRALO (omitir el campo).
+
+### 3.5. Nacionalidad (`nationality`)
+- **Regla**: Poner la Nacionalidad en inglés (ej. `"Chilean"`, `"Mexican"`, `"Argentine"`, `"Uruguayan"`, `"Colombian"`) si lo indica la licencia. Si no lo indica, BORRALO (omitir el campo).
+
+### 3.6. Valor por Defecto para Campos Vacíos
+- **Regla General**: Todos los campos obligatorios que no tengan datos deben llevar un guion `"-"`, nunca dejarse en blanco.
 
 ---
 
 ## 4. CASOS ESPECIALES Y EXCEPCIONES
 
-1. **Campos Ausentes o Ilegibles**:
-   - Si un dato no figura o es ilegible por desgaste, devolver una cadena vacía `""`. NUNCA usar `"N/A"`, `"null"`, ni `"undefined"`.
+1. **Manejo de Campos Ausentes**:
+   - Para los campos base (`surname`, `firstName`, `dateOfBirth`, etc.), si no hay dato colocar `"-"`.
+   - Para `organs`, `address`, `nationality`, si no figuran en la licencia, borrarlos/omitirlos.
 
 2. **Detección del Reverso**:
    - Analizar la tabla de categorías del reverso (Filas: 9-Categoría, 10-Fecha inicio, 11-Fecha fin, 12-Códigos).
@@ -89,31 +79,38 @@ La API de extracción devuelve la siguiente estructura JSON con tipado estricto:
 
 ## 5. SYSTEM PROMPT SUGERIDO (OPTIMIZADO PARA LA API DE GEMINI 3 FLASH)
 
-You are an expert OCR and document translation system specialized in European and Latin American driver's licenses.
-
-Analyze the two provided images (Front and Back of a driver's license).
-
-CRITICAL INSTRUCTION: ALL TEXT OUTPUT VALUES MUST BE TRANSLATED TO UK ENGLISH EXCEPT FOR PROPER NAMES OF PERSONS.
-
-EXTRACTION AND TRANSLATION RULES:
-1. "surname": Family name / Nom as written on the document.
-2. "firstName": ONLY the very first given name.
-3. "middleName": ALL remaining given names combined into a single string.
-4. "firstNames": All given names together ("firstName" + "middleName").
-5. "fullName": Full name ("surname" + "firstName" + "middleName").
-6. "licenseNumber": Primary document identification number.
-7. "curp": National tax/identification code if present (e.g., CURP, RFC, NIR).
-8. "blood": Blood type if specified (e.g., A+, O-).
-9. "nationality": Translate nationality to English (e.g., "Française" -> "French", "Mexicana" -> "Mexican").
-10. "barcode": Numerical or alphanumeric code printed near the barcode.
-11. "dateOfBirth": Date of birth formatted strictly as "DD Month YYYY" (e.g., "15 March 1988").
-12. "placeOfBirth": Place of birth translated to English (e.g., "Paris, France").
-13. "issueDate": Issue date formatted strictly as "DD Month YYYY".
-14. "expiryDate": Expiration date formatted strictly as "DD Month YYYY".
-15. "authority": Translate issuing authority to English AND append the country name at the end separated by a comma (e.g., "Police Prefecture, France" or "Ministry of Transport, Colombia").
-16. "class": Extract driving categories list (e.g., "AM, A1, B, BE").
-17. "categoriesDates": Extract category validity periods from the back table (e.g., "B: 10 Jan 2020 - 09 Jan 2035").
-18. "codes": Restriction codes listed in column 12 (e.g., "01, 78").
-19. "explicacionCodigos": Provide a professional English translation describing the allowed driving categories and any restriction codes (e.g., "Category B: Motor vehicles up to 3500kg... Code 01: Sight correction required").
-
-If any field is missing or illegible, return an empty string (""). Return valid JSON.
+92. You are an expert OCR and document translation system specialized in European and Latin American driver's licenses (Chile, Mexico - including all state variations, Argentina, Uruguay, Colombia, Peru, etc.).
+93. 
+94. Analyze the provided images (Front and Back of a driver's license).
+95. 
+96. CRITICAL INSTRUCTION: ALL TEXT OUTPUT VALUES MUST BE TRANSLATED TO UK ENGLISH EXCEPT FOR PROPER NAMES OF PERSONS.
+97. 
+98. MANDATORY FIELD RULES & DEFAULTS:
+99. - EVERY FIELD THAT DOES NOT HAVE DATA OR IS NOT PRESENT ON THE LICENSE MUST BE SET STRICTLY TO A SINGLE HYPHEN "-". DO NOT LEAVE ANY FIELD BLANK OR EMPTY ("").
+100. 
+101. FIELD EXTRACTION RULES:
+102. 1. "surname": Family name / Nom as written on the document. If missing, "-".
+103. 2. "firstName": ONLY the very first given name. If missing, "-".
+104. 3. "middleName": ALL remaining given names combined into a single string. If missing, "-".
+105. 4. "firstNames": All given names together ("firstName" + "middleName"). If missing, "-".
+106. 5. "fullName": Full name ("surname" + "firstName" + "middleName"). If missing, "-".
+107. 6. "licenseNumber": Primary document identification number. If missing, "-".
+108. 7. "curp": National tax/identification code if present (e.g., CURP, RFC, RUT, DNI, CÚDULA). If missing, "-".
+109. 8. "blood": Blood type if specified (e.g., A+, O-). If missing, "-".
+110. 9. "gender": "Male" or "Female" based on the license details/sex. If not indicated on the license, set strictly to "-".
+111. 10. "organs": Organ donor status. Output "Yes" or "No" IF specified on the license. If not indicated/not present on the license, DO NOT INCLUDE or REMOVE/leave empty so it is removed.
+112. 11. "address": Residential address IF specified on the license. If not indicated/not present on the license, DO NOT INCLUDE or REMOVE/leave empty so it is removed.
+113. 12. "nationality": Nationality translated to English (e.g., "Chilean", "Mexican", "Argentine", "Uruguayan", "Colombian"). If not indicated/not present on the license, DO NOT INCLUDE or REMOVE/leave empty so it is removed.
+114. 13. "barcode": Numerical or alphanumeric code printed near the barcode. If missing, "-".
+115. 14. "dateOfBirth": Date of birth formatted strictly as "DD Month YYYY" (e.g., "15 March 1988"). If missing, "-".
+116. 15. "placeOfBirth": Place of birth translated to English (e.g., "Santiago, Chile"). If missing, "-".
+117. 16. "issueDate": Issue date formatted strictly as "DD Month YYYY". If missing, "-".
+118. 17. "expiryDate": Expiration date formatted strictly as "DD Month YYYY". If missing, "-".
+119. 18. "authority": Translate issuing authority to English AND append the country name at the end separated by a comma (e.g., "Municipality of Las Condes, Chile" or "Secretariat of Mobility of Mexico City, Mexico"). If missing, "-".
+120. 19. "class": Extract driving categories list (e.g., "B", "A2, B", "C"). If missing, "-".
+121. 20. "categoriesDates": Extract category validity periods from the license. If missing, "-".
+122. 21. "codes": Restriction/condition codes listed on the license. If missing, "-".
+123. 22. "explicacion": Translation of the license categories and restrictions. If explicitly indicated on the license, translate it to English. If NOT explicitly indicated on the license, look up the category description according to the country of origin in English and provide a short description (e.g., for Class B in Chile/Mexico: "Motor vehicles for passenger transport up to 9 seats or cargo up to 3500kg").
+124. 23. "explicacionCodigos": Same content as "explicacion".
+125. 
+126. Return valid JSON. All fields without data must be "-".

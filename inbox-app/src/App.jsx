@@ -1,17 +1,18 @@
 import React, { useState, useEffect } from 'react';
 import { useGoogleLogin, googleLogout } from '@react-oauth/google';
-import { Mail, Check, LogOut, RefreshCw, Inbox, FolderPlus, X, FolderKanban, CheckCircle2, FolderOpen, Trash2, Briefcase, Settings, ClipboardList, UploadCloud } from 'lucide-react';
+import { Mail, Check, LogOut, RefreshCw, Inbox, FolderPlus, X, FolderKanban, CheckCircle2, FolderOpen, Trash2, Briefcase, Settings, ClipboardList, UploadCloud, Zap } from 'lucide-react';
 import './index.css';
 import ImageEditorModal from './ImageEditorModal';
 import TranslationPreviewModal from './TranslationPreviewModal';
 import EmailPreviewModal from './EmailPreviewModal';
 import EmailDetailModal from './EmailDetailModal';
 import ManualUploadModal from './ManualUploadModal';
+import AutoOrganizeTab from './AutoOrganizeTab';
 import { extractLicenseData } from './utils/geminiApi';
 import { generateWordDocument, getAssignedNumber } from './utils/documentGenerator';
 import { sendEmailWithPdf } from './utils/gmailService';
 
-const GOOGLE_API_SCOPES = 'https://www.googleapis.com/auth/gmail.modify https://www.googleapis.com/auth/gmail.labels https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/drive.readonly';
+const GOOGLE_API_SCOPES = 'https://www.googleapis.com/auth/gmail.modify https://www.googleapis.com/auth/gmail.labels https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/drive.readonly https://www.googleapis.com/auth/drive.file';
 
 class ErrorBoundary extends React.Component {
   constructor(props) {
@@ -55,7 +56,7 @@ function App() {
   
   // UI states
   const [loading, setLoading] = useState(false);
-  const [activeTab, setActiveTab] = useState('inbox'); 
+  const [activeTab, setActiveTab] = useState('autoOrganize'); 
   const [selectedIds, setSelectedIds] = useState(new Set()); 
   
   // Modal states
@@ -156,7 +157,7 @@ function App() {
       const data = await res.json();
       setUser(data);
       localStorage.setItem('google_user', JSON.stringify(data));
-      refreshData(accessToken, 'inbox');
+      refreshData(accessToken, 'autoOrganize');
     } catch (err) {
       console.error('Failed to fetch user profile', err);
     }
@@ -166,7 +167,7 @@ function App() {
     setSelectedIds(new Set());
     if (tab === 'inbox') {
       fetchInbox(accessToken);
-    } else {
+    } else if (tab === 'progress') {
       fetchProgressLabels(accessToken);
     }
   };
@@ -1054,6 +1055,159 @@ function App() {
     }
   };
 
+  const extractDLNumbers = (folderName, docs = []) => {
+    const dls = new Set();
+    if (folderName) {
+      const match = folderName.match(/^([a-zA-Z0-9]+(?:\s*,\s*[a-zA-Z0-9]+)*)/);
+      if (match) {
+        const parts = match[1].split(',').map(s => s.trim());
+        const prefixMatch = parts[0].match(/^[a-zA-Z]+/);
+        const prefix = prefixMatch ? prefixMatch[0] : 'B';
+        parts.forEach(p => {
+          if (/^\d+$/.test(p)) {
+            dls.add((prefix + p).toUpperCase());
+          } else if (/^[a-zA-Z]+\d+$/.test(p)) {
+            dls.add(p.toUpperCase());
+          }
+        });
+      }
+      const allMatches = folderName.match(/\b[B|b]\d+\b/g);
+      if (allMatches) {
+        allMatches.forEach(m => dls.add(m.toUpperCase()));
+      }
+    }
+    if (docs && docs.length > 0) {
+      docs.forEach(doc => {
+        if (doc.name) {
+          const m = doc.name.match(/\b[B|b]?\d+\b/g);
+          if (m) {
+            m.forEach(val => {
+              const clean = val.toUpperCase().startsWith('B') ? val.toUpperCase() : `B${val}`;
+              dls.add(clean);
+            });
+          }
+        }
+      });
+    }
+    return Array.from(dls);
+  };
+
+  const getColumnLetter = (colIndex) => {
+    let temp, letter = '';
+    let col = colIndex + 1;
+    while (col > 0) {
+      temp = (col - 1) % 26;
+      letter = String.fromCharCode(temp + 65) + letter;
+      col = Math.floor((col - temp - 1) / 26);
+    }
+    return letter;
+  };
+
+  const updateSheetStatusCompleted = async (token, folderName, docs, currentSheetName) => {
+    try {
+      const targetDLs = extractDLNumbers(folderName, docs);
+      console.log("Actualizando Status a 'completed' para DLs:", targetDLs, "en carpeta:", folderName);
+      
+      const cleanSheetName = (currentSheetName || localStorage.getItem('sheetName') || 'July 2026').trim();
+      const escapedName = cleanSheetName.replace(/'/g, "\\'");
+      const driveQuery = `(name = '${escapedName}' or name contains '${escapedName}') and mimeType = 'application/vnd.google-apps.spreadsheet' and trashed = false`;
+      const driveUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(driveQuery)}&supportsAllDrives=true&includeItemsFromAllDrives=true&fields=files(id,name)`;
+      
+      const driveRes = await fetch(driveUrl, { headers: { Authorization: `Bearer ${token}` } });
+      if (!driveRes.ok) {
+        console.warn("No se pudo buscar el archivo en Drive:", driveRes.status);
+        return false;
+      }
+      const driveData = await driveRes.json();
+      if (!driveData.files || driveData.files.length === 0) {
+        console.warn(`No se encontró el archivo de Sheets "${cleanSheetName}" en Drive.`);
+        return false;
+      }
+      
+      const exactMatch = driveData.files.find(f => f.name.trim().toLowerCase() === cleanSheetName.toLowerCase());
+      const spreadsheetId = exactMatch ? exactMatch.id : driveData.files[0].id;
+      
+      const tabsToCheck = ['1HRGT', 'RVA'];
+      const updateRanges = [];
+
+      for (const tab of tabsToCheck) {
+        try {
+          const sheetRes = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${tab}!A1:Z1000`, {
+            headers: { Authorization: `Bearer ${token}` }
+          });
+          if (!sheetRes.ok) continue;
+          
+          const sheetData = await sheetRes.json();
+          const rows = sheetData.values || [];
+          if (rows.length === 0) continue;
+
+          // Buscar columna "Status" o "Estado" en las primeras filas
+          let statusColIdx = -1;
+          for (let r = 0; r < Math.min(3, rows.length); r++) {
+            const headerRow = rows[r] || [];
+            for (let c = 0; c < headerRow.length; c++) {
+              const val = String(headerRow[c] || '').trim().toLowerCase();
+              if (val === 'status' || val === 'estado') {
+                statusColIdx = c;
+                break;
+              }
+            }
+            if (statusColIdx !== -1) break;
+          }
+
+          // Fallback: Columna L (index 11) para 1HRGT o Columna K (index 10) para RVA
+          if (statusColIdx === -1) {
+            statusColIdx = tab === '1HRGT' ? 11 : 10;
+          }
+
+          const statusColLetter = getColumnLetter(statusColIdx);
+
+          // Buscar filas que coincidan con los números de consecutivo DL
+          for (let r = 0; r < rows.length; r++) {
+            const row = rows[r] || [];
+            const dlVal = String(row[4] || '').trim().toUpperCase(); // Columna E (index 4)
+            
+            const dlMatch = targetDLs.some(tdl => {
+              if (!tdl) return false;
+              const cleanTdl = tdl.toUpperCase();
+              const cleanDlVal = dlVal.toUpperCase();
+              return cleanDlVal === cleanTdl || cleanDlVal.includes(cleanTdl) || (cleanDlVal.replace(/\D/g, '') === cleanTdl.replace(/\D/g, '') && cleanDlVal.replace(/\D/g, '').length > 0);
+            });
+
+            if (dlMatch) {
+              const rowNum = r + 1; // 1-indexed para Google Sheets
+              updateRanges.push({
+                range: `${tab}!${statusColLetter}${rowNum}`,
+                values: [["completed"]]
+              });
+            }
+          }
+        } catch (tabErr) {
+          console.warn(`Error al revisar pestaña ${tab}:`, tabErr);
+        }
+      }
+
+      if (updateRanges.length > 0) {
+        console.log("Enviando actualización de Status a completed:", updateRanges);
+        const updateRes = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values:batchUpdate`, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            valueInputOption: 'USER_ENTERED',
+            data: updateRanges
+          })
+        });
+        return updateRes.ok;
+      } else {
+        console.warn("No se encontraron filas coincidentes en Sheets para DLs:", targetDLs);
+        return false;
+      }
+    } catch (err) {
+      console.error("Error al actualizar Status en Sheet:", err);
+      return false;
+    }
+  };
+
   const handleSendEmailFinal = async (pdfBlobsArray, finalEmailTo) => {
     try {
       if (!finalEmailTo) {
@@ -1087,13 +1241,16 @@ function App() {
       
       await sendEmailWithPdf(token, finalEmailTo, subject, htmlBody, pdfBlobsArray);
       
+      const sheetUpdated = await updateSheetStatusCompleted(token, editorFolder, processedDocs, sheetName);
       
-      alert("Correo enviado exitosamente a " + finalEmailTo);
+      if (sheetUpdated) {
+        alert(`✅ Correo enviado exitosamente a ${finalEmailTo}\n📊 Estado actualizado a 'completed' en la columna Status de Google Sheets.`);
+      } else {
+        alert(`✅ Correo enviado exitosamente a ${finalEmailTo}`);
+      }
       
       if (activeEmailItem) {
-        // Find label and add a 'sent' flag or remove it?
-        // Let's mark it as sent in state
-        setActiveLabels(prev => prev.map(l => l.id === activeEmailItem.id ? { ...l, sent: true } : l));
+        setActiveLabels(prev => prev.map(l => l.id === activeEmailItem.id ? { ...l, sent: true, completed: true } : l));
       }
       setIsEmailPreviewOpen(false);
       setIsTranslationModalOpen(false);
@@ -1152,6 +1309,14 @@ function App() {
       {/* Tabs */}
       <div className="tabs">
         <button 
+          className={`tab ${activeTab === 'autoOrganize' ? 'active' : ''}`}
+          onClick={() => handleTabSwitch('autoOrganize')}
+          style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}
+        >
+          <Zap size={16} color={activeTab === 'autoOrganize' ? 'var(--accent-color)' : '#f59e0b'} />
+          Organizar Inbox
+        </button>
+        <button 
           className={`tab ${activeTab === 'inbox' ? 'active' : ''}`}
           onClick={() => handleTabSwitch('inbox')}
         >
@@ -1164,6 +1329,19 @@ function App() {
           En Progreso
         </button>
       </div>
+
+      {activeTab === 'autoOrganize' && (
+        <AutoOrganizeTab 
+          token={token}
+          sheetName={sheetName}
+          handleAuthError={handleAuthError}
+          onRefreshTrigger={() => {
+            fetchProgressLabels(token);
+            fetchInbox(token);
+          }}
+          onNavigateTab={(t) => handleTabSwitch(t)}
+        />
+      )}
       
       {/* Target Folder Selector */}
       {activeTab === 'progress' && (
@@ -1180,14 +1358,14 @@ function App() {
         </div>
       )}
 
-      {loading && !isSettingsModalOpen && !isPreviewModalOpen ? (
+      {loading && !isSettingsModalOpen && !isPreviewModalOpen && activeTab !== 'autoOrganize' ? (
         <div className="loader-container">
           <svg className="spinner" width="40" height="40" viewBox="0 0 50 50">
             <circle cx="25" cy="25" r="20" fill="none" />
           </svg>
           <p>Cargando datos...</p>
         </div>
-      ) : (
+      ) : activeTab !== 'autoOrganize' ? (
         <div className="email-list">
           {activeTab === 'inbox' && (
             emails.length === 0 ? (
@@ -1290,10 +1468,10 @@ function App() {
             )
           )}
         </div>
-      )}
+      ) : null}
 
       {/* Action Bar */}
-      <div className={`action-bar ${selectedIds.size > 0 ? 'visible' : ''}`}>
+      <div className={`action-bar ${selectedIds.size > 0 && activeTab !== 'autoOrganize' ? 'visible' : ''}`}>
         <div className="selection-count">
           {selectedIds.size} {selectedIds.size === 1 ? 'sel.' : 'sel.'}
         </div>
@@ -1596,6 +1774,7 @@ function App() {
         processedDocs={processedDocs}
         folderName={editorFolder}
         customerEmail={activeCustomerEmail}
+        token={token}
         onSendEmail={handleSendEmailFinal}
         onBack={() => {
           setIsEmailPreviewOpen(false);
