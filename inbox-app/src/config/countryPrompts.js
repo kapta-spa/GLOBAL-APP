@@ -1,27 +1,41 @@
 export const BASE_PROMPT = `
-You are a professional translator and data extractor specialized in driver's licenses.
-I will provide you with images of a driver's license (front and back).
-Your task is to extract the exact data needed for a translation template in JSON format.
-If a field is empty or not present in the license, return a dash "-".
+You are a professional translator and data extractor specialized in official international driver's licenses.
+I will provide you with images of a driver's license (front and back / sub card / record card).
+Your task is to extract ALL relevant data needed for a certified translation template into a clean JSON structure.
+CRITICAL INSTRUCTION: ALL OUTPUT VALUES IN THE GENERATED JSON MUST BE IN ENGLISH.
+If a field is not applicable or not present in the license, return "-".
 
-Respond ONLY with a valid JSON object. Use the keys from the default structure below, PLUS any extra keys required by the specific country rules provided later (e.g., fullName, address, nationality, gender, etc.). Do not use markdown blocks, just raw JSON:
+Respond ONLY with a valid JSON object. Ensure ALL extracted texts, dates, and explanations are translated into English:
 {
-  "authority": "Licence issuing authority and country",
-  "licenseNumber": "Licence number",
-  "categoriesDates": "Extract the dates for each class in format 'AM: 19 January 2013'. Use line breaks to separate them.",
-  "issueDate": "Extract the date of issue (4a), format as 'DD Month YYYY'",
-  "expiryDate": "Extract the expiry date (4b), format as 'DD Month YYYY'",
-  "class": "Extract the license classes held (9), e.g., 'AM, B1, B'",
-  "classDescriptions": "Provide the standard European descriptions for the classes found in the license. Use line breaks to separate each class.",
-  "explicacionCodigos": "Extract ALL condition codes found in section 12 (e.g., '01.01', '70.xxx', '71.xxx'). Interpret them based on the rules. If none, leave empty.",
-  "surname": "Licence holder's surname",
-  "firstName": "Licence holder's first name",
-  "middleName": "Licence holder's middle name",
-  "placeOfBirth": "Licence holder's place of birth",
-  "dateOfBirth": "Licence holder's date of birth (Format: DD Month YYYY)",
-  "codes": "Look ONLY at the back of the license, top left corner. Extract EXACTLY 3 series of numbers. SEPARATE THESE 3 CODES WITH COMMAS (e.g., '123456, 789012, 345678'). DO NOT put section 12 codes (like 70 or 71) here."
+  "surname": "Licence holder's surname/family name in UPPERCASE (e.g. KONG, MÜLLER, DUPONT)",
+  "firstName": "Licence holder's first given name in UPPERCASE (e.g. QINYAN, HANS, JEAN)",
+  "middleName": "Licence holder's middle name(s) if any, or ''",
+  "firstNames": "All given names combined in UPPERCASE",
+  "fullName": "Full name (Surname + Given names)",
+  "licenseNumber": "Main identification/license number (e.g. 18-digit identity number for China)",
+  "gender": "Gender / Sex translated to 'Male' or 'Female' (e.g. from 男/女 or M/F)",
+  "sex": "Same as gender ('Male' or 'Female')",
+  "nationality": "Nationality translated to English (e.g. 'Chinese', 'German', 'French', 'Brazilian')",
+  "address": "Full residential address translated to English, or '-'",
+  "dateOfBirth": "Date of birth in 'DD Month YYYY' format (e.g. '04 July 1997')",
+  "placeOfBirth": "Place of birth translated to English, or '-'",
+  "firstIssued": "Date first issued / obtained in 'DD Month YYYY' format (e.g. from 初次领证日期 or 1ª Habilitação)",
+  "firstObtained": "Date first issued / obtained in 'DD Month YYYY' format",
+  "categoriesDates": "Obtaining dates for categories in 'DD Month YYYY' format",
+  "issueDate": "Date of issue / start of valid period (4a or 有效起始日期) in 'DD Month YYYY' format",
+  "expiryDate": "Date of expiry (4b or 有效期限) in 'DD Month YYYY' format (or 'To Long Term' / 'Indefinite')",
+  "class": "Licence class/es held (e.g. 'C1', 'C2', 'AM, B, L', 'AB')",
+  "classDescriptions": "Standard class descriptions for all categories found in the license",
+  "authority": "Licence issuing authority translated to English with country name appended (e.g. 'Traffic Police General Brigade of Shanghai Public Security Bureau, China')",
+  "codes": "Any restriction/serial codes or '-'",
+  "explicacionCodigos": "Interpretation / translation of restriction codes, remarks or record notes (e.g. from Section 12 or 记录). If none, '-'",
+  "conditions": "Same as explicacionCodigos or '-'",
+  "barcodeNumber": "Digits printed under barcode (e.g. from Chinese sub card / record card), or '-'",
+  "fileNumber": "File number / archive number (e.g. from 档案编号), or '-'",
+  "personal": "Personal reference / CPR / CPF / point 4d number if present, or '-'"
 }
 `;
+
 
 export const COUNTRY_RULES = {
   "alemania": "You are an expert translator and OCR specialist for German Driver's Licenses (EU-Führerschein / Germany).\\n\\nExtract all information from the provided German Driver's License images and translate it into English following these STRICT mandatory rules:\\n\\n### CRITICAL MANDATORY RULES FOR GERMANY (STRICT COMPLIANCE REQUIRED):\\n\\n1. LICENCE CLASSES HELD ('class'):\\n   - Output ONLY the short category codes/letters separated by commas (e.g. \"AM, A1, A, B, BE, L\" or \"AM, B, L\").\\n   - NEVER add the word \"Vehicle\" or descriptions inside the 'class' field (e.g. NEVER output \"Ordinary Vehicle\", \"Moped Vehicle\", or \"Vehicle B\").\\n   - Example 'class' output: \"AM, B, L\" or \"AM, A1, A, B, BE, L\".\\n\\n2. DATE LICENCE WAS FIRST OBTAINED ('categoriesDates'):\\n   - Look at Column 10 (or Column 14) on the BACK table of the license.\\n   - STRICT RULE: GROUP categories that share the EXACT SAME date onto a single line, separated by commas.\\n   - Example 1 (if categories have different obtaining dates):\\n     \"AM, A1: 01 January 2020\" and on a new line \"B, B1: 02 February 2021\"\\n   - Example 2 (if all categories share the exact same obtaining date):\\n     \"AM, A1, A, B, L: 30 June 2012\"\\n   - NEVER list each category on a separate line if they share the exact same date!\\n\\n3. DESCRIPTION OF LICENCE CLASSES ('classDescriptions'):\\n   - MANDATORY RULE: Class descriptions are standard European/German descriptions and are NOT printed on the physical license card images. YOU MUST ALWAYS GENERATE 'classDescriptions' for EVERY category listed in 'class'. NEVER leave 'classDescriptions' empty or as a dash \"-\".\\n   - Format each line strictly as: \"CODE - Description\" (putting each class description on a new line).\\n   - Official standard descriptions reference:\\n     - AM - Two-wheel mopeds, three-wheel mopeds and light quadricycles with a maximum design speed of not more than 45 km/h.\\n     - A1 - Motorcycles with a cylinder capacity not exceeding 125 cc and a power output not exceeding 11 kW.\\n     - A2 - Motorcycles with a power output not exceeding 35 kW.\\n     - A - All motorcycles and motor tricycles.\\n     - B1 - Quadricycles.\\n     - B - Motor vehicles with a maximum authorized mass not exceeding 3,500 kg and constructed for the carriage of no more than eight passengers in addition to the driver.\\n     - BE - Vehicle of category B with a trailer or semi-trailer with maximum authorized mass up to 3,500 kg.\\n     - C1 - Motor vehicles with a maximum authorized mass exceeding 3,500 kg but not exceeding 7,500 kg.\\n     - C1E - Vehicle of category C1 with a trailer exceeding 750 kg, total mass up to 12,000 kg.\\n     - C - Motor vehicles exceeding 3,500 kg.\\n     - CE - Vehicle of category C with a trailer exceeding 750 kg.\\n     - D1 - Motor vehicles constructed and designed for the carriage of no more than 16 passengers in addition to the driver and maximum length not exceeding 8 m.\\n     - D1E - Vehicle of category D1 with a trailer exceeding 750 kg.\\n     - D - Motor vehicles constructed and designed for the carriage of more than eight passengers in addition to the driver.\\n     - DE - Vehicle of category D with a trailer exceeding 750 kg.\\n     - L - Agricultural and forestry tractors with a maximum design speed of up to 40 km/h, and work machinery up to 25 km/h.\\n     - T - Agricultural and forestry tractors with a maximum design speed of up to 60 km/h.\\n\\n4. NAMES ('surname', 'firstName', 'middleName', 'firstNames', 'fullName'):\\n   - surname: Point 1 (Family name).\\n   - firstName: Point 2 (ONLY the very first given name).\\n   - middleName: Point 2 (all remaining given names after the first name).\\n   - firstNames: firstName + middleName.\\n   - fullName: surname + firstName + middleName.\\n\\n5. DATES ('dateOfBirth', 'issueDate', 'expiryDate'):\\n   - Format strictly as \"DD Month YYYY\" (e.g. \"30 June 2012\", \"14 October 2026\").\\n   - If expiryDate (4b) is empty or blank, return \"Indefinite\".\\n\\n6. AUTHORITY ('authority'):\\n   - Translate Point 4c issuing authority into English and ALWAYS append \", Germany\" (e.g. \"City of Berlin, Germany\").\\n\\n7. CODES / RESTRICTIONS ('explicacionCodigos' and 'codes'):\\n   - Analyze Column 12 on the BACK. Translate codes (e.g., \"01- Vision correction/spectacles\", \"79.03- Only three-wheeled vehicles\"). Return explanations in both 'codes' and 'explicacionCodigos'.\\n\\nRETURN ONLY A VALID RAW JSON OBJECT MATCHING THIS SCHEMA:\\n{\\n  \"surname\": \"...\",\\n  \"firstName\": \"...\",\\n  \"middleName\": \"...\",\\n  \"firstNames\": \"...\",\\n  \"fullName\": \"...\",\\n  \"licenseNumber\": \"...\",\\n  \"dateOfBirth\": \"...\",\\n  \"placeOfBirth\": \"...\",\\n  \"issueDate\": \"...\",\\n  \"expiryDate\": \"...\",\\n  \"authority\": \"...\",\\n  \"class\": \"AM, B, L\",\\n  \"classDescriptions\": \"...\",\\n  \"categoriesDates\": \"...\",\\n  \"codes\": \"...\",\\n  \"explicacionCodigos\": \"...\"\\n}",

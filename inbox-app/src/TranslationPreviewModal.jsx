@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { X, Save, Download, ArrowRight, RefreshCw } from 'lucide-react';
-import { generateClassDescriptions, generateBrazilClassDescriptions, formatCategoriesDates } from './utils/classDescriptions';
+import { generateClassDescriptions, generateBrazilClassDescriptions, generateChinaClassDescriptions, formatCategoriesDates } from './utils/classDescriptions';
 import { getAssignedNumber } from './utils/documentGenerator';
 
 export default function TranslationPreviewModal({ 
@@ -38,11 +38,34 @@ export default function TranslationPreviewModal({
         }
       }
 
-      const isBrazil = (normalized.nationality && normalized.nationality.toLowerCase().includes('brazil')) ||
-                       (normalized.authority && normalized.authority.toLowerCase().includes('brazil')) ||
+      const folderLower = (folderName || '').toLowerCase();
+      const isChina = Boolean(normalized.barcodeNumber && normalized.barcodeNumber !== '-') ||
+                      Boolean(normalized.fileNumber && normalized.fileNumber !== '-') ||
+                      (normalized.nationality && /chin/i.test(normalized.nationality)) ||
+                      (normalized.authority && /chin/i.test(normalized.authority)) ||
+                      /china|chinese|chino/i.test(folderLower);
+
+      const isBrazil = (normalized.nationality && /brazil|brasil/i.test(normalized.nationality)) ||
+                       (normalized.authority && /brazil|brasil/i.test(normalized.authority)) ||
                        Boolean(normalized.cpf && normalized.cpf !== '-') ||
                        Boolean(normalized.idDocument && normalized.idDocument !== '-') ||
-                       Boolean(folderName && /brazil|brasil/i.test(folderName));
+                       /brazil|brasil|cnh/i.test(folderLower);
+
+      // Default Nationality
+      if (!normalized.nationality || normalized.nationality.trim() === '' || normalized.nationality === '-') {
+        if (isChina) normalized.nationality = 'Chinese';
+        else if (isBrazil) normalized.nationality = 'Brazilian';
+        else if (/german|aleman|deutsch/i.test(folderLower)) normalized.nationality = 'German';
+        else if (/franc/i.test(folderLower)) normalized.nationality = 'French';
+        else if (/japan|japon/i.test(folderLower)) normalized.nationality = 'Japanese';
+        else if (/taiwan/i.test(folderLower)) normalized.nationality = 'Taiwanese';
+        else if (/denmark|dinamarca|danmark/i.test(folderLower)) normalized.nationality = 'Danish';
+        else if (/netherland|holand|dutch/i.test(folderLower)) normalized.nationality = 'Dutch';
+        else if (/swiss|suiz/i.test(folderLower)) normalized.nationality = 'Swiss';
+        else if (/canada/i.test(folderLower)) normalized.nationality = 'Canadian';
+        else if (/vietnam/i.test(folderLower)) normalized.nationality = 'Vietnamese';
+        else if (/hungar|hungri/i.test(folderLower)) normalized.nationality = 'Hungarian';
+      }
 
       // Sync citizen
       const defaultCitizen = (normalized.citizen && normalized.citizen.trim() !== '') 
@@ -54,7 +77,9 @@ export default function TranslationPreviewModal({
 
       // Auto-populate classDescriptions if missing, empty, or '-'
       if ((!normalized.classDescriptions || normalized.classDescriptions.trim() === '' || normalized.classDescriptions.trim() === '-') && normalized.class) {
-        if (isBrazil) {
+        if (isChina) {
+          normalized.classDescriptions = generateChinaClassDescriptions(normalized.class);
+        } else if (isBrazil) {
           normalized.classDescriptions = generateBrazilClassDescriptions(normalized.class);
         } else {
           normalized.classDescriptions = generateClassDescriptions(normalized.class);
@@ -62,16 +87,25 @@ export default function TranslationPreviewModal({
       }
 
       // Format categoriesDates grouping if present
-      if (normalized.categoriesDates && !isBrazil) {
+      if (normalized.categoriesDates && !isBrazil && !isChina) {
         normalized.categoriesDates = formatCategoriesDates(normalized.categoriesDates);
       }
 
-      // Sync firstObtained and categoriesDates
-      if (normalized.firstObtained && (!normalized.categoriesDates || normalized.categoriesDates === '-')) {
-        normalized.categoriesDates = normalized.firstObtained;
-      } else if (normalized.categoriesDates && (!normalized.firstObtained || normalized.firstObtained === '-')) {
-        normalized.firstObtained = normalized.categoriesDates;
+      // Sync firstIssued, firstObtained and categoriesDates
+      const firstDate = normalized.firstIssued || normalized.firstObtained || normalized.categoriesDates || '';
+      if (firstDate && firstDate !== '-') {
+        if (!normalized.firstIssued || normalized.firstIssued === '-') normalized.firstIssued = firstDate;
+        if (!normalized.firstObtained || normalized.firstObtained === '-') normalized.firstObtained = firstDate;
+        if (!normalized.categoriesDates || normalized.categoriesDates === '-') normalized.categoriesDates = firstDate;
       }
+
+      // Sync barcodeNumber & fileNumber
+      if (normalized.barcode && !normalized.barcodeNumber) normalized.barcodeNumber = normalized.barcode;
+      if (normalized.barcodeNumber && !normalized.barcode) normalized.barcode = normalized.barcodeNumber;
+      if (normalized.file && !normalized.fileNumber) normalized.fileNumber = normalized.file;
+      if (normalized.fileNo && !normalized.fileNumber) normalized.fileNumber = normalized.fileNo;
+      if (normalized.fileNumber && !normalized.file) normalized.file = normalized.fileNumber;
+      if (normalized.fileNumber && !normalized.fileNo) normalized.fileNo = normalized.fileNumber;
 
       // Sync reference and assignedNumber
       if (normalized.assignedNumber && (!normalized.reference || normalized.reference === '-')) {
@@ -80,9 +114,9 @@ export default function TranslationPreviewModal({
         normalized.assignedNumber = normalized.reference;
       }
 
-      // Middle name fallback: for Brazil leave empty string "", for other countries '-'
-      if (!normalized.middleName || normalized.middleName.trim() === '""' || (isBrazil && normalized.middleName.trim() === '-')) {
-        normalized.middleName = isBrazil ? '' : '-';
+      // Middle name fallback: for Brazil and China leave empty string "", for other countries '-'
+      if (!normalized.middleName || normalized.middleName.trim() === '""' || ((isBrazil || isChina) && normalized.middleName.trim() === '-')) {
+        normalized.middleName = (isBrazil || isChina) ? '' : '-';
       }
       
       // Sync codes, explicacionCodigos and conditions
@@ -138,23 +172,24 @@ export default function TranslationPreviewModal({
         normalized.eyeColor = finalEye;
       }
 
-      // Sync sex & gender
-      const finalSex = (normalized.sex && normalized.sex.trim() !== '') 
+      // Sync sex & gender with full translations (Male/Female)
+      let finalSex = (normalized.sex && normalized.sex.trim() !== '') 
         ? normalized.sex 
         : ((normalized.gender && normalized.gender.trim() !== '') ? normalized.gender : '');
+      if (finalSex === '男' || finalSex.toLowerCase() === 'm' || finalSex.toLowerCase() === 'male') {
+        finalSex = 'Male';
+      } else if (finalSex === '女' || finalSex.toLowerCase() === 'f' || finalSex.toLowerCase() === 'female') {
+        finalSex = 'Female';
+      }
       if (finalSex) {
         normalized.sex = finalSex;
         normalized.gender = finalSex;
       }
 
-      // Brazilian fields defaults
-      if (!normalized.nationality || normalized.nationality.trim() === '') {
-        normalized.nationality = 'Brazilian';
-      }
-
       setFormData(normalized);
     }
   }, [initialData, folderName]);
+
 
   if (!isOpen) return null;
 
@@ -343,12 +378,23 @@ export default function TranslationPreviewModal({
               <input type="text" name="parents" value={formData.parents || ''} onChange={handleChange} style={inputStyle} placeholder="Nombres de los padres" />
             </div>
             <div>
-              <label style={{ display: 'block', fontSize: '14px', fontWeight: 'bold', marginBottom: '4px', color: '#374151' }}>1ª Habilitação ({"{{firstObtained}}"})</label>
-              <input type="text" name="firstObtained" value={formData.firstObtained || ''} onChange={handleChange} style={inputStyle} placeholder="DD Month YYYY" />
+              <label style={{ display: 'block', fontSize: '14px', fontWeight: 'bold', marginBottom: '4px', color: '#374151' }}>1ª Habilitação / First Issued ({"{{firstObtained}}"} / {"{{firstIssued}}"})</label>
+              <input type="text" name="firstObtained" value={formData.firstObtained || formData.firstIssued || ''} onChange={handleChange} style={inputStyle} placeholder="DD Month YYYY" />
             </div>
             <div>
               <label style={{ display: 'block', fontSize: '14px', fontWeight: 'bold', marginBottom: '4px', color: '#374151' }}>Nationality ({"{{nationality}}"})</label>
-              <input type="text" name="nationality" value={formData.nationality || ''} onChange={handleChange} style={inputStyle} placeholder="Brazilian" />
+              <input type="text" name="nationality" value={formData.nationality || ''} onChange={handleChange} style={inputStyle} placeholder="Chinese / German / Brazilian" />
+            </div>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '24px' }}>
+            <div>
+              <label style={{ display: 'block', fontSize: '14px', fontWeight: 'bold', marginBottom: '4px', color: '#374151' }}>Barcode Number (China / {"{{barcodeNumber}}"})</label>
+              <input type="text" name="barcodeNumber" value={formData.barcodeNumber || formData.barcode || ''} onChange={handleChange} style={inputStyle} placeholder="ej. 3180019278004" />
+            </div>
+            <div>
+              <label style={{ display: 'block', fontSize: '14px', fontWeight: 'bold', marginBottom: '4px', color: '#374151' }}>File No. (China / {"{{fileNumber}}"} / {"{{file}}"})</label>
+              <input type="text" name="fileNumber" value={formData.fileNumber || formData.fileNo || formData.file || ''} onChange={handleChange} style={inputStyle} placeholder="ej. 110000123456" />
             </div>
           </div>
 
@@ -371,7 +417,7 @@ export default function TranslationPreviewModal({
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '24px' }}>
             <div>
               <label style={{ display: 'block', fontSize: '14px', fontWeight: 'bold', marginBottom: '4px', color: '#374151' }}>Date First Obtained ({"{{categoriesDates}}"})</label>
-              <textarea name="categoriesDates" value={formData.categoriesDates || ''} onChange={handleChange} style={{...inputStyle, height: '80px'}} />
+              <textarea name="categoriesDates" value={formData.categoriesDates || formData.firstIssued || ''} onChange={handleChange} style={{...inputStyle, height: '80px'}} />
             </div>
             <div>
               <div style={{ marginBottom: '16px' }}>
@@ -398,17 +444,23 @@ export default function TranslationPreviewModal({
               <button
                 type="button"
                 onClick={() => {
+                  const isChina = (formData.nationality && formData.nationality.toLowerCase().includes('chin')) ||
+                                  (formData.authority && formData.authority.toLowerCase().includes('chin')) ||
+                                  Boolean(formData.barcodeNumber && formData.barcodeNumber !== '-') ||
+                                  Boolean(folderName && /china|chinese|chino/i.test(folderName));
                   const isBrazil = (formData.nationality && formData.nationality.toLowerCase().includes('brazil')) ||
                                    (formData.authority && formData.authority.toLowerCase().includes('brazil')) ||
                                    Boolean(formData.cpf && formData.cpf !== '-') ||
                                    Boolean(folderName && /brazil|brasil/i.test(folderName));
-                  const generated = isBrazil 
-                    ? generateBrazilClassDescriptions(formData.class || '') 
-                    : generateClassDescriptions(formData.class || '');
+                  const generated = isChina
+                    ? generateChinaClassDescriptions(formData.class || '')
+                    : (isBrazil 
+                      ? generateBrazilClassDescriptions(formData.class || '') 
+                      : generateClassDescriptions(formData.class || ''));
                   if (generated) {
                     setFormData(prev => ({ ...prev, classDescriptions: generated }));
                   } else {
-                    alert("No se pudieron detectar categorías válidas en 'Licence Class/es Held'. Ingrese categorías como AM, A1, A, B, BE, C, D, E, ACC.");
+                    alert("No se pudieron detectar categorías válidas en 'Licence Class/es Held'.");
                   }
                 }}
                 style={{
@@ -490,26 +542,6 @@ export default function TranslationPreviewModal({
             </span>
           </div>
 
-          {(formData.nationality !== undefined || formData.address !== undefined || formData.reverse !== undefined || formData.code !== undefined || formData.blood !== undefined || formData.Blood !== undefined || formData.area !== undefined || formData.file !== undefined || formData.issuedDate !== undefined) && (
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '16px', marginBottom: '24px' }}>
-              <div>
-                <label style={{ display: 'block', fontSize: '14px', fontWeight: 'bold', marginBottom: '4px', color: '#374151' }}>Nationality / Address</label>
-                <input type="text" name="address" value={formData.address || formData.nationality || ''} onChange={handleChange} style={inputStyle} />
-              </div>
-              <div>
-                <label style={{ display: 'block', fontSize: '14px', fontWeight: 'bold', marginBottom: '4px', color: '#374151' }}>Area No. ({"{{area}}"})</label>
-                <input type="text" name="area" value={formData.area || ''} onChange={handleChange} style={inputStyle} />
-              </div>
-              <div>
-                <label style={{ display: 'block', fontSize: '14px', fontWeight: 'bold', marginBottom: '4px', color: '#374151' }}>File No. ({"{{file}}"})</label>
-                <input type="text" name="file" value={formData.file || formData.code || ''} onChange={handleChange} style={inputStyle} />
-              </div>
-              <div>
-                <label style={{ display: 'block', fontSize: '14px', fontWeight: 'bold', marginBottom: '4px', color: '#374151' }}>Issued Date ({"{{issuedDate}}"})</label>
-                <input type="text" name="issuedDate" value={formData.issuedDate || ''} onChange={handleChange} style={inputStyle} />
-              </div>
-            </div>
-          )}
 
         </div>
 

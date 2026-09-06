@@ -206,9 +206,15 @@ export const extractLicenseData = async (apiKey, base64Images, country, onChunk 
   const models = await getValidModels(apiKey);
   
   let countryKey = country ? country.toLowerCase() : '';
-  if (countryKey.includes('alemania') || countryKey.includes('germany') || countryKey.includes('deutschland')) {
+  if (countryKey.includes('alemania') || countryKey.includes('germany') || countryKey.includes('deutschland') || countryKey.includes('deutsch')) {
     countryKey = 'alemania';
-  } else if (countryKey.includes('denmark') || countryKey.includes('dinamarca') || countryKey.includes('danmark')) {
+  } else if (countryKey.includes('china') || countryKey.includes('chinese') || countryKey.includes('chino')) {
+    countryKey = 'china';
+  } else if (countryKey.includes('francia') || countryKey.includes('france') || countryKey.includes('french') || countryKey.includes('franc')) {
+    countryKey = 'francia';
+  } else if (countryKey.includes('japon') || countryKey.includes('japan') || countryKey.includes('japanese')) {
+    countryKey = 'japon';
+  } else if (countryKey.includes('denmark') || countryKey.includes('dinamarca') || countryKey.includes('danmark') || countryKey.includes('danish')) {
     countryKey = 'denmark';
   } else if (countryKey.includes('taiwan') || countryKey.includes('taiwán')) {
     countryKey = 'taiwan';
@@ -218,8 +224,14 @@ export const extractLicenseData = async (apiKey, base64Images, country, onChunk 
     countryKey = 'canada';
   } else if (countryKey.includes('netherlands') || countryKey.includes('holanda') || countryKey.includes('países bajos') || countryKey.includes('paises bajos') || countryKey.includes('dutch')) {
     countryKey = 'netherlands';
-  } else if (countryKey.includes('brasil') || countryKey.includes('brazil') || countryKey.includes('cnh')) {
+  } else if (countryKey.includes('brasil') || countryKey.includes('brazil') || countryKey.includes('cnh') || countryKey.includes('portuguese')) {
     countryKey = 'brazil';
+  } else if (countryKey.includes('hungria') || countryKey.includes('hungary')) {
+    countryKey = 'hungria';
+  } else if (countryKey.includes('vietnam') || countryKey.includes('vietnamese')) {
+    countryKey = 'vietnam';
+  } else if (countryKey.includes('indonesia')) {
+    countryKey = 'indonesia';
   } else if (countryKey.includes('chile') || countryKey.includes('mexico') || countryKey.includes('méxico') || countryKey.includes('argentina') || countryKey.includes('uruguay') || countryKey.includes('colombia') || countryKey.includes('peru') || countryKey.includes('perú') || countryKey.includes('latino')) {
     countryKey = 'latino';
   }
@@ -228,9 +240,12 @@ export const extractLicenseData = async (apiKey, base64Images, country, onChunk 
   let matchedKey = availableCountries.find(key => countryKey && (countryKey.includes(key) || key.includes(countryKey)));
   
   if (!matchedKey) {
-    // Default to japan rules if country key not specified
-    matchedKey = 'japon';
+    if (countryKey.includes('franc')) matchedKey = 'francia';
+    else if (countryKey.includes('chin')) matchedKey = 'china';
+    else if (countryKey.includes('aleman') || countryKey.includes('german')) matchedKey = 'alemania';
+    else matchedKey = 'japon';
   }
+
 
   const specificRules = COUNTRY_RULES[matchedKey] || COUNTRY_RULES['japon'];
   console.log("Using country rules for:", matchedKey);

@@ -31,6 +31,48 @@ export const BRAZIL_CLASS_DESCRIPTIONS = {
   "ACC": "ACC- Driver of mopeds up to 50 cc."
 };
 
+export const CHINA_CLASS_DESCRIPTIONS = {
+  "A1": "A1: Large passenger cars and A3, B1, B2.",
+  "A2": "A2: Heavy towing trailers and B1, B2, C6.",
+  "A3": "A3: City buses and C1.",
+  "B1": "B1: Medium passenger cars and C1, M.",
+  "B2": "B2: Large trucks and C1, M.",
+  "C1": "C1: Small passenger cars and C2, C3.",
+  "C2": "C2: Small automatic passenger cars.",
+  "C3": "C3: Low-speed trucks and C4.",
+  "C4": "C4: Three-wheeled motor vehicles.",
+  "C5": "C5: Small automatic passenger cars for disabled persons.",
+  "C6": "C6: Light towing trailers.",
+  "D": "D: For Ordinary three wheeled motorcycles (over 50cc / 50km/h) & E.",
+  "E": "E: For two-wheeled motorcycles (over 50cc / 50km/h) & F.",
+  "F": "F: For mopeds (max. 50cc / 50km/h).",
+  "M": "M: For wheel type vehicles.",
+  "N": "N: For trolleybuses.",
+  "P": "P: For trams."
+};
+
+export const generateChinaClassDescriptions = (classString) => {
+  return [
+    "A1: Large passenger cars and A3, B1, B2.",
+    "A2: Heavy towing trailers and B1, B2, C6.",
+    "A3: City buses and C1.",
+    "B1: Medium passenger cars and C1, M.",
+    "B2: Large trucks and C1, M.",
+    "C1: Small passenger cars and C2, C3.",
+    "C2: Small automatic passenger cars.",
+    "C3: Low-speed trucks and C4.",
+    "C4: Three-wheeled motor vehicles.",
+    "C5: Small automatic passenger cars for disabled persons.",
+    "C6: Light towing trailers.",
+    "D: For Ordinary three wheeled motorcycles (over 50cc / 50km/h) & E.",
+    "E: For two-wheeled motorcycles (over 50cc / 50km/h) & F.",
+    "F: For mopeds (max. 50cc / 50km/h).",
+    "M: For wheel type vehicles.",
+    "N: For trolleybuses.",
+    "P: For trams."
+  ].join('\n');
+};
+
 export const generateBrazilClassDescriptions = (classString) => {
   const rawUpper = (classString || '').toUpperCase();
   const heldClasses = [];

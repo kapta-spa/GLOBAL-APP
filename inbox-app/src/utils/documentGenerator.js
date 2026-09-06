@@ -2,7 +2,9 @@ import Docxtemplater from "docxtemplater";
 import PizZip from "pizzip";
 import { saveAs } from "file-saver";
 import ImageModule from "docxtemplater-image-module-free";
-import { generateClassDescriptions, formatCategoriesDates } from "./classDescriptions";
+import { generateClassDescriptions, generateBrazilClassDescriptions, generateChinaClassDescriptions, formatCategoriesDates } from "./classDescriptions";
+
+const TRANSPARENT_1X1_PNG = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=";
 
 function getImageDimensionsFromBuffer(buffer) {
   if (!buffer || buffer.byteLength < 8) return null;
@@ -58,14 +60,19 @@ function base64DataURLToArrayBuffer(dataURL) {
   if (!dataURL) return new ArrayBuffer(0);
   const cleanUrl = typeof dataURL === 'string' ? dataURL.split('|')[0] : dataURL;
   if (!cleanUrl.includes(',')) return new ArrayBuffer(0);
-  const base64 = cleanUrl.split(',')[1];
-  const binary_string = window.atob(base64);
-  const len = binary_string.length;
-  const bytes = new Uint8Array(len);
-  for (let i = 0; i < len; i++) {
-    bytes[i] = binary_string.charCodeAt(i);
+  try {
+    const base64 = cleanUrl.split(',')[1];
+    const binary_string = window.atob(base64);
+    const len = binary_string.length;
+    const bytes = new Uint8Array(len);
+    for (let i = 0; i < len; i++) {
+      bytes[i] = binary_string.charCodeAt(i);
+    }
+    return bytes.buffer;
+  } catch (e) {
+    console.warn("Error converting base64 data to ArrayBuffer:", e);
+    return new ArrayBuffer(0);
   }
-  return bytes.buffer;
 }
 
 export const getAssignedNumber = (folderName, docIndex = 0) => {
@@ -87,23 +94,28 @@ export const getAssignedNumber = (folderName, docIndex = 0) => {
     return assignedNumber;
 };
 
-export const generateWordDocument = async (templateArrayBuffer, data, imagesBase64, folderName, docIndex = 0) => {
+export const generateWordDocument = async (templateArrayBuffer, data, imagesBase64 = [], folderName = '', docIndex = 0) => {
   const zip = new PizZip(templateArrayBuffer);
   
   const imageOptions = {
     centered: false,
     getImage(tagValue, tagName) {
-      if (!tagValue) return new ArrayBuffer(0);
+      if (!tagValue || typeof tagValue !== 'string' || !tagValue.startsWith('data:image/')) {
+        return base64DataURLToArrayBuffer(TRANSPARENT_1X1_PNG);
+      }
       return base64DataURLToArrayBuffer(tagValue);
     },
     getSize(img, tagValue, tagName) {
-      const maxWidth = 360;
-      const maxHeight = 240;
+      if (!tagValue || typeof tagValue !== 'string' || !tagValue.startsWith('data:image/') || tagValue === TRANSPARENT_1X1_PNG) {
+        return [1, 1];
+      }
+      const maxWidth = 480;
+      const maxHeight = 300;
       
       let origWidth = 0;
       let origHeight = 0;
 
-      if (typeof tagValue === 'string' && tagValue.includes('|')) {
+      if (tagValue.includes('|')) {
         const parts = tagValue.split('|');
         origWidth = parseFloat(parts[1]) || 0;
         origHeight = parseFloat(parts[2]) || 0;
@@ -122,8 +134,7 @@ export const generateWordDocument = async (templateArrayBuffer, data, imagesBase
         return [Math.round(origWidth * ratio), Math.round(origHeight * ratio)];
       }
 
-      // Default fallback if dimensions cannot be calculated
-      return [maxWidth, maxHeight]; 
+      return [360, 240]; 
     }
   };
   
@@ -148,9 +159,34 @@ export const generateWordDocument = async (templateArrayBuffer, data, imagesBase
     
     const today = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'long', year: 'numeric' });
 
-    const defaultClassDescriptions = (data.classDescriptions && data.classDescriptions.trim() !== '' && data.classDescriptions.trim() !== '-')
+    // Country detection helpers
+    const folderLower = (folderName || '').toLowerCase();
+    const isChina = Boolean(data.barcodeNumber && data.barcodeNumber !== '-') ||
+                    Boolean(data.fileNumber && data.fileNumber !== '-') ||
+                    (data.nationality && /chin/i.test(data.nationality)) ||
+                    (data.authority && /chin/i.test(data.authority)) ||
+                    /china|chinese|chino/i.test(folderLower);
+
+    const isBrazil = (data.nationality && /brazil|brasil/i.test(data.nationality)) ||
+                     (data.authority && /brazil|brasil/i.test(data.authority)) ||
+                     Boolean(data.cpf && data.cpf !== '-') ||
+                     Boolean(data.idDocument && data.idDocument !== '-') ||
+                     /brazil|brasil|cnh/i.test(folderLower);
+
+    // Class descriptions fallback
+    let defaultClassDescriptions = (data.classDescriptions && data.classDescriptions.trim() !== '' && data.classDescriptions.trim() !== '-')
       ? data.classDescriptions
-      : generateClassDescriptions(data.class || '');
+      : '';
+    
+    if (!defaultClassDescriptions) {
+      if (isChina) {
+        defaultClassDescriptions = generateChinaClassDescriptions(data.class || '');
+      } else if (isBrazil) {
+        defaultClassDescriptions = generateBrazilClassDescriptions(data.class || '');
+      } else {
+        defaultClassDescriptions = generateClassDescriptions(data.class || '');
+      }
+    }
 
     const defaultCitizen = (data.citizen && data.citizen.trim() !== '' && data.citizen.trim() !== '-')
       ? data.citizen
@@ -174,9 +210,20 @@ export const generateWordDocument = async (templateArrayBuffer, data, imagesBase
       ? data.eye
       : ((data.eyeColor && data.eyeColor.trim() !== '' && data.eyeColor.trim() !== '-') ? data.eyeColor : '-');
 
-    const defaultSex = (data.sex && data.sex.trim() !== '' && data.sex.trim() !== '-')
-      ? data.sex
-      : ((data.gender && data.gender.trim() !== '' && data.gender.trim() !== '-') ? data.gender : '-');
+    // Robust gender / sex resolution
+    let defaultSex = (data.gender && data.gender.trim() !== '' && data.gender.trim() !== '-')
+      ? data.gender.trim()
+      : ((data.sex && data.sex.trim() !== '' && data.sex.trim() !== '-') ? data.sex.trim() : '');
+
+    if (!defaultSex && (data.Gender || data.Sex)) {
+      defaultSex = (data.Gender || data.Sex).trim();
+    }
+    if (defaultSex === '男' || defaultSex.toLowerCase() === 'm' || defaultSex.toLowerCase() === 'male' || defaultSex.toLowerCase() === 'masculino' || defaultSex.toLowerCase() === 'masculin') {
+      defaultSex = 'Male';
+    } else if (defaultSex === '女' || defaultSex.toLowerCase() === 'f' || defaultSex.toLowerCase() === 'female' || defaultSex.toLowerCase() === 'femenino' || defaultSex.toLowerCase() === 'féminin') {
+      defaultSex = 'Female';
+    }
+    if (!defaultSex) defaultSex = '-';
 
     const defaultPersonal = (data.personal && data.personal.trim() !== '' && data.personal.trim() !== '-')
       ? data.personal
@@ -186,23 +233,74 @@ export const generateWordDocument = async (templateArrayBuffer, data, imagesBase
       ? data.assignedNumber.trim()
       : ((data.reference && data.reference.trim() !== '' && data.reference.trim() !== '-') ? data.reference.trim() : (assignedNumber || '-'));
 
-    const firstObtainedVal = (data.firstObtained && data.firstObtained.trim() !== '' && data.firstObtained !== '-')
-      ? data.firstObtained.trim()
-      : ((data.categoriesDates && data.categoriesDates.trim() !== '' && data.categoriesDates !== '-') ? data.categoriesDates.trim() : '-');
+    const firstObtainedVal = (data.firstIssued && data.firstIssued.trim() !== '' && data.firstIssued !== '-')
+      ? data.firstIssued.trim()
+      : ((data.firstObtained && data.firstObtained.trim() !== '' && data.firstObtained !== '-') 
+        ? data.firstObtained.trim()
+        : ((data.categoriesDates && data.categoriesDates.trim() !== '' && data.categoriesDates !== '-') ? data.categoriesDates.trim() : '-'));
 
     const cardNumVal = (data.cardNumber && data.cardNumber.trim() !== '' && data.cardNumber !== '-') ? data.cardNumber.trim() : '';
     const idDocVal = (data.idDocument && data.idDocument.trim() !== '' && data.idDocument !== '-') ? data.idDocument.trim() : '';
     const cpfVal = (data.cpf && data.cpf.trim() !== '' && data.cpf !== '-') ? data.cpf.trim() : '';
     const parentsVal = (data.parents && data.parents.trim() !== '' && data.parents !== '-') ? data.parents.trim() : '';
+    
+    const barcodeVal = (data.barcodeNumber && data.barcodeNumber.trim() !== '' && data.barcodeNumber !== '-')
+      ? data.barcodeNumber.trim()
+      : ((data.barcode && data.barcode.trim() !== '' && data.barcode !== '-') ? data.barcode.trim() : '');
 
+    const fileNumVal = (data.fileNumber && data.fileNumber.trim() !== '' && data.fileNumber !== '-')
+      ? data.fileNumber.trim()
+      : ((data.fileNo && data.fileNo.trim() !== '' && data.fileNo !== '-') 
+        ? data.fileNo.trim() 
+        : ((data.file && data.file.trim() !== '' && data.file !== '-') ? data.file.trim() : ''));
+
+    let defaultNationality = (data.nationality && data.nationality.trim() !== '' && data.nationality !== '-')
+      ? data.nationality.trim()
+      : '';
+    if (!defaultNationality) {
+      if (isChina) defaultNationality = 'Chinese';
+      else if (isBrazil) defaultNationality = 'Brazilian';
+      else if (/german|aleman|deutsch/i.test(folderLower)) defaultNationality = 'German';
+      else if (/franc/i.test(folderLower)) defaultNationality = 'French';
+      else if (/japan|japon/i.test(folderLower)) defaultNationality = 'Japanese';
+      else if (/taiwan/i.test(folderLower)) defaultNationality = 'Taiwanese';
+      else if (/denmark|dinamarca|danmark/i.test(folderLower)) defaultNationality = 'Danish';
+      else if (/netherland|holand|dutch/i.test(folderLower)) defaultNationality = 'Dutch';
+      else if (/swiss|suiz/i.test(folderLower)) defaultNationality = 'Swiss';
+      else if (/canada/i.test(folderLower)) defaultNationality = 'Canadian';
+      else if (/vietnam/i.test(folderLower)) defaultNationality = 'Vietnamese';
+      else if (/hungar|hungri/i.test(folderLower)) defaultNationality = 'Hungarian';
+    }
+
+    // Build relevant details block for "Any other relevant licence details"
     const relevantLines = [];
-    if (cardNumVal) relevantLines.push(`Card Number: ${cardNumVal}`);
-    if (idDocVal) relevantLines.push(`ID Document: ${idDocVal}`);
-    if (cpfVal) relevantLines.push(`Individual Taxpayer Number: ${cpfVal}`);
-    if (parentsVal) relevantLines.push(`Name of Parents:${parentsVal}`);
+    if (isChina) {
+      if (defaultNationality) relevantLines.push(`Nationality: ${defaultNationality}`);
+      if (barcodeVal) relevantLines.push(`Barcode number: ${barcodeVal}`);
+      if (fileNumVal) relevantLines.push(`File No. ${fileNumVal}`);
+    } else if (isBrazil) {
+      if (cardNumVal) relevantLines.push(`Card Number: ${cardNumVal}`);
+      if (idDocVal) relevantLines.push(`ID Document: ${idDocVal}`);
+      if (cpfVal) relevantLines.push(`Individual Taxpayer Number: ${cpfVal}`);
+      if (parentsVal) relevantLines.push(`Name of Parents:${parentsVal}`);
+    } else {
+      if (defaultNationality && defaultNationality !== '-') relevantLines.push(`Nationality: ${defaultNationality}`);
+      if (cardNumVal) relevantLines.push(`Card Number: ${cardNumVal}`);
+      if (idDocVal) relevantLines.push(`ID Document: ${idDocVal}`);
+      if (cpfVal) relevantLines.push(`Individual Taxpayer Number: ${cpfVal}`);
+      if (parentsVal) relevantLines.push(`Name of Parents:${parentsVal}`);
+      if (barcodeVal) relevantLines.push(`Barcode number: ${barcodeVal}`);
+      if (fileNumVal) relevantLines.push(`File No. ${fileNumVal}`);
+    }
     const detailsVal = relevantLines.length > 0 ? relevantLines.join('\n') : '-';
 
     const middleNameVal = (data.middleName && data.middleName !== '-' && data.middleName.trim() !== '""') ? data.middleName.trim() : '';
+
+    // Prepared image buffers
+    const frontImg = imagesBase64[0] || "";
+    const backImg = imagesBase64[1] || imagesBase64[0] || "";
+    const img3 = imagesBase64[2] || "";
+    const img4 = imagesBase64[3] || "";
 
     const renderData = {
       // Default fallbacks for empty fields
@@ -222,17 +320,30 @@ export const generateWordDocument = async (templateArrayBuffer, data, imagesBase
       eyeColor: defaultEye,
       sex: defaultSex,
       gender: defaultSex,
+      Sex: defaultSex,
+      Gender: defaultSex,
       address: (data.address && data.address.trim() !== '') ? data.address : '-',
+      Address: (data.address && data.address.trim() !== '') ? data.address : '-',
       reference: assignedNumberVal,
       placeOfBirth: (data.placeOfBirth && data.placeOfBirth.trim() !== '') ? data.placeOfBirth : '-',
-      area: "-",
-      file: "-",
+      area: (data.area && data.area.trim() !== '') ? data.area : '-',
+      file: fileNumVal || "-",
+      fileNumber: fileNumVal || "-",
+      fileNo: fileNumVal || "-",
+      barcodeNumber: barcodeVal || "-",
+      barcode: barcodeVal || "-",
+      barcode_number: barcodeVal || "-",
       issuedDate: data.issueDate || "-",
+      dateIssued: data.issueDate || "-",
+      issueDate: data.issueDate || "-",
+      expiryDate: data.expiryDate || "-",
+      dateExpiry: data.expiryDate || "-",
       categoriesDates: firstObtainedVal,
       firstObtained: firstObtainedVal,
       dateFirstObtained: firstObtainedVal,
       firstIssued: firstObtainedVal,
-      gold: "-",
+      dateFirstIssued: firstObtainedVal,
+      gold: (data.gold && data.gold.trim() !== '') ? data.gold : "-",
       today: today,
       fechaHoy: today,
       assignedNumber: assignedNumberVal,
@@ -247,24 +358,94 @@ export const generateWordDocument = async (templateArrayBuffer, data, imagesBase
       nameOfParents: parentsVal || '-',
       filiação: parentsVal || '-',
       filiacao: parentsVal || '-',
-      nationality: (data.nationality && data.nationality.trim() !== '') ? data.nationality : 'Brazilian',
+      nationality: defaultNationality || '-',
+      Nationality: defaultNationality || '-',
       relevantDetails: detailsVal,
       otherDetails: detailsVal,
       details: detailsVal,
       anyOtherRelevantLicenceDetails: detailsVal,
-      language: data.language || 'Portuguese',
+      anyOtherRelevantLicenseDetails: detailsVal,
+      language: data.language || (isChina ? 'Chinese' : (isBrazil ? 'Portuguese' : 'English')),
       documentType: data.documentType || 'Scan or photograph of the original document',
       comments: data.comments || '-',
       translatorName: data.translatorName || 'Nura Majzoub Sapir',
+      
+      // Complete Image Aliases for Front / Back / Multiple images (UK, US, Spanish conventions)
+      license_front: frontImg,
+      licence_front: frontImg,
+      licenseFront: frontImg,
+      licenceFront: frontImg,
+      license_image_front: frontImg,
+      licence_image_front: frontImg,
+      foto_frente: frontImg,
+      fotoFrente: frontImg,
+      licencia_frente: frontImg,
+      licenciaFrente: frontImg,
+      image1: frontImg,
+      image_1: frontImg,
+      img1: frontImg,
+      img_1: frontImg,
+      front: frontImg,
+      frontImage: frontImg,
+      front_image: frontImg,
+      photo1: frontImg,
+      photo_1: frontImg,
+      photoFront: frontImg,
+      photo_front: frontImg,
+      image: frontImg,
+      foto: frontImg,
+      photo: frontImg,
+      doc_front: frontImg,
+      document_front: frontImg,
+      main_card: frontImg,
+      card_front: frontImg,
+      card1: frontImg,
+
+      license_back: backImg,
+      licence_back: backImg,
+      licenseBack: backImg,
+      licenceBack: backImg,
+      license_image_back: backImg,
+      licence_image_back: backImg,
+      foto_reverso: backImg,
+      fotoReverso: backImg,
+      foto_atras: backImg,
+      fotoAtras: backImg,
+      licencia_reverso: backImg,
+      licenciaReverso: backImg,
+      image2: backImg,
+      image_2: backImg,
+      img2: backImg,
+      img_2: backImg,
+      back: backImg,
+      backImage: backImg,
+      back_image: backImg,
+      photo2: backImg,
+      photo_2: backImg,
+      photoBack: backImg,
+      photo_back: backImg,
+      doc_back: backImg,
+      document_back: backImg,
+      sub_card: backImg,
+      record_card: backImg,
+      card_back: backImg,
+      card2: backImg,
+
+      image3: img3,
+      image_3: img3,
+      img3: img3,
+      photo3: img3,
+      image4: img4,
+      image_4: img4,
+      img4: img4,
+      photo4: img4,
+      images: imagesBase64.map((img, i) => ({ image: img, img: img, url: img, index: i + 1 })),
+
       // User edits from modal take highest priority!
       ...data,
-      // System images and aliases
-      license_front: imagesBase64[0] || "",
-      foto_frente: imagesBase64[0] || "",
-      license_back: imagesBase64[1] || "",
-      foto_reverso: imagesBase64[1] || "",
     };
 
+    // Re-apply critical fallbacks if user edits left them blank
     if (!renderData.assignedNumber || renderData.assignedNumber === '-' || renderData.assignedNumber.trim() === '') {
       renderData.assignedNumber = assignedNumberVal;
     }
@@ -277,10 +458,37 @@ export const generateWordDocument = async (templateArrayBuffer, data, imagesBase
     if (renderData.middleName === '-' || !renderData.middleName) {
       renderData.middleName = '';
     }
+    if (!renderData.sex || renderData.sex === '-') {
+      renderData.sex = defaultSex;
+    }
+    if (!renderData.gender || renderData.gender === '-') {
+      renderData.gender = defaultSex;
+    }
+    if (!renderData.classDescriptions || renderData.classDescriptions === '-') {
+      renderData.classDescriptions = defaultClassDescriptions;
+    }
+    if (!renderData.details || renderData.details === '-') {
+      renderData.details = detailsVal;
+      renderData.relevantDetails = detailsVal;
+      renderData.otherDetails = detailsVal;
+      renderData.anyOtherRelevantLicenceDetails = detailsVal;
+    }
 
-    // Convert any remaining empty strings, nulls or undefined values to "-" (excluding system images and middleName)
+    // Convert any remaining empty strings, nulls or undefined values to "-" (excluding images and middleName)
+    const imageKeySet = new Set([
+      'license_front', 'licence_front', 'licenseFront', 'licenceFront', 'license_image_front', 'licence_image_front',
+      'foto_frente', 'fotoFrente', 'licencia_frente', 'licenciaFrente', 'image1', 'image_1', 'img1', 'img_1',
+      'front', 'frontImage', 'front_image', 'photo1', 'photo_1', 'photoFront', 'photo_front', 'image', 'foto', 'photo',
+      'doc_front', 'document_front', 'main_card', 'card_front', 'card1',
+      'license_back', 'licence_back', 'licenseBack', 'licenceBack', 'license_image_back', 'licence_image_back',
+      'foto_reverso', 'fotoReverso', 'foto_atras', 'fotoAtras', 'licencia_reverso', 'licenciaReverso',
+      'image2', 'image_2', 'img2', 'img_2', 'back', 'backImage', 'back_image', 'photo2', 'photo_2', 'photoBack', 'photo_back',
+      'doc_back', 'document_back', 'sub_card', 'record_card', 'card_back', 'card2',
+      'image3', 'image_3', 'img3', 'photo3', 'image4', 'image_4', 'img4', 'photo4', 'images'
+    ]);
+
     for (const key of Object.keys(renderData)) {
-      if (key !== 'license_front' && key !== 'license_back' && key !== 'foto_frente' && key !== 'foto_reverso' && key !== 'middleName') {
+      if (!imageKeySet.has(key) && key !== 'middleName') {
         const val = renderData[key];
         if (val === undefined || val === null || val === 'null' || val === 'undefined' || (typeof val === 'string' && val.trim() === '')) {
           renderData[key] = '-';
@@ -309,3 +517,4 @@ export const generateWordDocument = async (templateArrayBuffer, data, imagesBase
 
   return out;
 };
+
