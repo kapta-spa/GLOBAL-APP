@@ -46,9 +46,11 @@ export default function TranslationPreviewModal({
                       /china|chinese|chino/i.test(folderLower);
 
       const isBrazil = (normalized.nationality && /brazil|brasil/i.test(normalized.nationality)) ||
-                       (normalized.authority && /brazil|brasil/i.test(normalized.authority)) ||
+                       (normalized.authority && /brazil|brasil|detran|denatran|senatran/i.test(normalized.authority)) ||
                        Boolean(normalized.cpf && normalized.cpf !== '-') ||
                        Boolean(normalized.idDocument && normalized.idDocument !== '-') ||
+                       Boolean(normalized.cardNumber && normalized.cardNumber !== '-') ||
+                       Boolean(normalized.parents && normalized.parents !== '-') ||
                        /brazil|brasil|cnh/i.test(folderLower);
 
       // Default Nationality
@@ -65,6 +67,11 @@ export default function TranslationPreviewModal({
         else if (/canada/i.test(folderLower)) normalized.nationality = 'Canadian';
         else if (/vietnam/i.test(folderLower)) normalized.nationality = 'Vietnamese';
         else if (/hungar|hungri/i.test(folderLower)) normalized.nationality = 'Hungarian';
+      }
+
+      if (isBrazil && (!normalized.gender || normalized.gender === '-' || normalized.gender.toLowerCase() === 'not stated')) {
+        normalized.gender = 'Not stated';
+        normalized.sex = 'Not stated';
       }
 
       // Sync citizen
@@ -223,6 +230,19 @@ export default function TranslationPreviewModal({
       if (name === 'categoriesDates') updated.firstObtained = value;
       if (name === 'eye') updated.eyeColor = value;
       if (name === 'eyeColor') updated.eye = value;
+      if (name === 'cardNumber') updated.CardNumber = value;
+      if (name === 'idDocument') updated.IdDocument = value;
+      if (name === 'cpf') {
+        updated.CPF = value;
+        updated.individualTaxpayerNumber = value;
+        updated.personal = value;
+      }
+      if (name === 'parents') {
+        updated.Parents = value;
+        updated.nameOfParents = value;
+        updated.filiação = value;
+        updated.filiacao = value;
+      }
       if (name === 'sex') updated.gender = value;
       if (name === 'gender') updated.sex = value;
       return updated;

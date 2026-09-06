@@ -7,29 +7,33 @@ If a field is not applicable or not present in the license, return "-".
 
 Respond ONLY with a valid JSON object. Ensure ALL extracted texts, dates, and explanations are translated into English:
 {
-  "surname": "Licence holder's surname/family name in UPPERCASE (e.g. KONG, MÜLLER, DUPONT)",
-  "firstName": "Licence holder's first given name in UPPERCASE (e.g. QINYAN, HANS, JEAN)",
-  "middleName": "Licence holder's middle name(s) if any, or ''",
+  "surname": "Licence holder's surname/family name in UPPERCASE (e.g. BARCELLOS, KONG, MÜLLER)",
+  "firstName": "Licence holder's first given name in UPPERCASE (e.g. FAGNER, QINYAN, HANS)",
+  "middleName": "Licence holder's middle name(s) in UPPERCASE if any, or ''",
   "firstNames": "All given names combined in UPPERCASE",
   "fullName": "Full name (Surname + Given names)",
-  "licenseNumber": "Main identification/license number (e.g. 18-digit identity number for China)",
-  "gender": "Gender / Sex translated to 'Male' or 'Female' (e.g. from 男/女 or M/F)",
-  "sex": "Same as gender ('Male' or 'Female')",
-  "nationality": "Nationality translated to English (e.g. 'Chinese', 'German', 'French', 'Brazilian')",
-  "address": "Full residential address translated to English, or '-'",
-  "dateOfBirth": "Date of birth in 'DD Month YYYY' format (e.g. '04 July 1997')",
-  "placeOfBirth": "Place of birth translated to English, or '-'",
-  "firstIssued": "Date first issued / obtained in 'DD Month YYYY' format (e.g. from 初次领证日期 or 1ª Habilitação)",
-  "firstObtained": "Date first issued / obtained in 'DD Month YYYY' format",
+  "licenseNumber": "Main identification/license number (e.g. Nº Registro for Brazil, 18-digit identity number for China)",
+  "cardNumber": "Card / Espelho serial number (e.g. vertical number on left border for Brazil CNH), or '-'",
+  "idDocument": "Identity document number and issuing body (e.g. Section 4c Doc. Identidade for Brazil, e.g. '2066946852 SJS RS'), or '-'",
+  "cpf": "Individual Taxpayer Number / CPF (e.g. Section 4d CPF for Brazil 'xxx.xxx.xxx-xx'), or '-'",
+  "parents": "Parents' names / Filiação in UPPERCASE (e.g. from Brazilian CNH Filiação), or '-'",
+  "gender": "Gender / Sex translated to 'Male', 'Female', or 'Not stated' (e.g. for Brazil CNH use 'Not stated')",
+  "sex": "Same as gender ('Male', 'Female', or 'Not stated')",
+  "nationality": "Nationality translated to English (e.g. 'Brazilian', 'Chinese', 'German', 'French')",
+  "address": "Full residential address translated to English, or 'Not provided' / '-'",
+  "dateOfBirth": "Date of birth in 'DD Month YYYY' format (e.g. '04 December 1987')",
+  "placeOfBirth": "Place of birth (City, State, Country) translated to English (e.g. 'Porto Alegre, Rio Grande do Sul, Brazil'), or '-'",
+  "firstIssued": "Date first issued / obtained in 'DD Month YYYY' format (e.g. from 1ª Habilitação or 初次领证日期)",
+  "firstObtained": "Date first issued / obtained in 'DD Month YYYY' format (e.g. 1ª Habilitação)",
   "categoriesDates": "Obtaining dates for categories in 'DD Month YYYY' format",
   "issueDate": "Date of issue / start of valid period (4a or 有效起始日期) in 'DD Month YYYY' format",
-  "expiryDate": "Date of expiry (4b or 有效期限) in 'DD Month YYYY' format (or 'To Long Term' / 'Indefinite')",
-  "class": "Licence class/es held (e.g. 'C1', 'C2', 'AM, B, L', 'AB')",
+  "expiryDate": "Date of expiry (4b or 有效期限) in 'DD Month YYYY' format",
+  "class": "Licence class/es held (e.g. 'B', 'AB', 'C1', 'AM, B, L')",
   "classDescriptions": "Standard class descriptions for all categories found in the license",
-  "authority": "Licence issuing authority translated to English with country name appended (e.g. 'Traffic Police General Brigade of Shanghai Public Security Bureau, China')",
-  "codes": "Any restriction/serial codes or '-'",
-  "explicacionCodigos": "Interpretation / translation of restriction codes, remarks or record notes (e.g. from Section 12 or 记录). If none, '-'",
-  "conditions": "Same as explicacionCodigos or '-'",
+  "authority": "Licence issuing authority translated to English with country name appended (e.g. 'State Traffic Department, Rio de Janeiro, Brazil')",
+  "codes": "Any restriction/serial codes or 'None' / '-'",
+  "explicacionCodigos": "Interpretation / translation of restriction codes (e.g. from Section 12 Observações). If none, 'None' / '-'",
+  "conditions": "Same as explicacionCodigos ('None' / '-')",
   "barcodeNumber": "Digits printed under barcode (e.g. from Chinese sub card / record card), or '-'",
   "fileNumber": "File number / archive number (e.g. from 档案编号), or '-'",
   "personal": "Personal reference / CPR / CPF / point 4d number if present, or '-'"
@@ -46,27 +50,30 @@ Analyze these two images corresponding to the Front and Back of a Brazilian CNH.
 CRITICAL REQUIREMENTS:
 1. ALL TEXT OUTPUT VALUES MUST BE TRANSLATED INTO ENGLISH (UK).
 2. ALL DATES MUST BE FORMATTED AS "DD Month YYYY" (e.g., "19 August 1990", "25 September 2008", "29 September 2023", "29 September 2033").
-3. AUTHORITY (Point 4c / Emissor / Header):
+3. AUTHORITY (Point 4c / Emissor / Header / DETRAN):
    - Translate DETRAN / issuing authority to "State Traffic Department, <Full State Name in English>, Brazil".
-   - Identify the state from the CNH header, footer, issuing authority or municipality (e.g. RS -> Rio Grande do Sul, SP -> São Paulo, RJ -> Rio de Janeiro, MG -> Minas Gerais, PR -> Paraná, SC -> Santa Catarina, etc.).
+   - Identify the state from the CNH header, footer, issuing authority or municipality (e.g. RS -> Rio Grande do Sul, SP -> São Paulo, RJ -> Rio de Janeiro, MG -> Minas Gerais, PR -> Paraná, SC -> Santa Catarina, BA -> Bahia, DF -> Federal District, etc.).
    - Example: "PORTO ALEGRE RS" / "DETRAN RS" / "SJS RS" -> "State Traffic Department, Rio Grande do Sul, Brazil".
    - Example: "DETRAN SP" -> "State Traffic Department, São Paulo, Brazil".
    - Authority must ALWAYS end with ", Brazil".
-4. NAMES BREAKDOWN:
-   - "surname": Family name(s) in UPPERCASE (e.g. "SCHMITT").
-   - "firstName": ONLY the very first given name in UPPERCASE (e.g. "FILIPE").
-   - "middleName": Remaining given name(s). If none, output empty string "".
-   - "firstNames": Combination of firstName + middleName.
-   - "fullName": Full name (surname + firstName + middleName).
+4. NAMES BREAKDOWN (IN UPPERCASE):
+   - "surname": Family name(s) in UPPERCASE (e.g. "BARCELLOS").
+   - "firstName": ONLY the very first given name in UPPERCASE (e.g. "FAGNER").
+   - "middleName": Remaining given name(s) in UPPERCASE (e.g. "DA CUNHA"). If none, output empty string "".
+   - "firstNames": Combination of firstName + middleName (e.g. "FAGNER DA CUNHA").
+   - "fullName": Full name (surname + firstName + middleName, e.g. "BARCELLOS FAGNER DA CUNHA").
 5. IDENTIFICATION & TAX NUMBERS:
    - "licenseNumber": Main central registration number (Nº Registro, e.g. "04464418418").
-   - "cardNumber": Vertical serial/security number on the left border (Nº Espelho, e.g. "2683968760").
-   - "idDocument": Identity document number, issuing body and state from Section 4c (Doc. Identidade, e.g. "2066946852 SJS RS").
-   - "cpf": Taxpayer number from Section 4d (CPF, format "025.810.390-60").
+   - "cardNumber": Vertical serial/security number on the left border (Nº Espelho / Espelho do documento).
+   - "idDocument": Identity document number, issuing body and state from Section 4c (Doc. Identidade, e.g. "2066946852 SJS RS" or "392634570 SSP SP").
+   - "cpf": Taxpayer number from Section 4d (CPF, maintain format "025.810.390-60").
    - "parents": Parents' names listed in 'FILIAÇÃO' in UPPERCASE (e.g. "JULIO FREDERICO SCHMITT, SUSAN TEIXEIRA SCHMITT").
    - "firstObtained": Look at the box '1ª HABILITAÇÃO' (top right). Extract the date and format as "DD Month YYYY" (e.g. "25 September 2008"). MUST NOT BE EMPTY.
 6. CONDITIONS / RESTRICTIONS (Section 12 - Observações):
-   - If restriction codes are present (e.g. 'A' -> "Prescribed spectacles / Corrective lenses", 'EAR' -> "Exercises remunerated activity", 'B' -> "Hearing aid mandatory"), translate them.
+   - If restriction codes are present, translate to English:
+     * 'A' -> "Prescribed spectacles / Corrective lenses"
+     * 'EAR' -> "Exercises remunerated activity"
+     * 'B' -> "Hearing aid mandatory"
    - If NO medical/professional restrictions are present, output strictly "None".
 7. OTHER FIELDS:
    - "class": Vehicle categories held from Section 9 (Categoria, e.g. "B" or "AB").
@@ -76,16 +83,16 @@ A- Driver of a two or three-wheeled motor vehicle, with or without sidecar.
 B- Driver of a motor vehicle, not covered by category A, with a total gross weight not exceeding 3,500 kg and having not more than 8 seats, excluding the driver's seat.
 Source:
 https://www.detran.sp.gov.br/wps/portal/portaldetran/cidadao/habilitacao/fichaservico/
-   - "placeOfBirth": City and full State from Section 3 (Localidade), e.g. "Novo Hamburgo, Rio Grande do Sul, Brazil".
+   - "placeOfBirth": City and full State from Section 3 (Localidade), e.g. "Porto Alegre, Rio Grande do Sul, Brazil".
    - "nationality": "Brazilian".
-   - "gender": If not printed on the card, output "Not stated".
+   - "gender": "Not stated".
    - "address": "Not provided".
 
 EXTRACT DATA INTO THE FOLLOWING JSON SCHEMA:
 {
   "surname": "Family name(s) in UPPERCASE",
   "firstName": "ONLY the very first given name in UPPERCASE",
-  "middleName": "Remaining given name(s) or ''",
+  "middleName": "Remaining given name(s) in UPPERCASE or ''",
   "firstNames": "Combination of firstName + middleName",
   "fullName": "Full name",
   "licenseNumber": "Main central registration number (Nº Registro)",

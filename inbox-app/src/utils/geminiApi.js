@@ -199,23 +199,82 @@ const getValidModels = async (apiKey) => {
   return priorityOrder;
 };
 
-export const extractLicenseData = async (apiKey, base64Images, country, onChunk = null) => {
+const monthNamesEn = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+const ptMonthMap = {
+  'janeiro': 'January', 'jan': 'January',
+  'fevereiro': 'February', 'fev': 'February',
+  'março': 'March', 'marco': 'March', 'mar': 'March',
+  'abril': 'April', 'abr': 'April',
+  'maio': 'May', 'mai': 'May',
+  'junho': 'June', 'jun': 'June',
+  'julho': 'July', 'jul': 'July',
+  'agosto': 'August', 'ago': 'August',
+  'setembro': 'September', 'set': 'September',
+  'outubro': 'October', 'out': 'October',
+  'novembro': 'November', 'nov': 'November',
+  'dezembro': 'December', 'dez': 'December'
+};
+
+const normalizeDateToEnglish = (dateStr) => {
+  if (!dateStr || typeof dateStr !== 'string') return dateStr;
+  let s = dateStr.trim();
+  if (s === '-' || s.toLowerCase() === 'indefinite' || s.toLowerCase() === 'none') return s;
+
+  // Case: DD/MM/YYYY or DD-MM-YYYY or DD.MM.YYYY
+  const numMatch = s.match(/^(\d{1,2})[\/\.-](\d{1,2})[\/\.-](\d{4})$/);
+  if (numMatch) {
+    const day = numMatch[1].padStart(2, '0');
+    const monthIdx = parseInt(numMatch[2], 10) - 1;
+    const year = numMatch[3];
+    if (monthIdx >= 0 && monthIdx < 12) {
+      return `${day} ${monthNamesEn[monthIdx]} ${year}`;
+    }
+  }
+
+  // Case: YYYY/MM/DD
+  const ymdMatch = s.match(/^(\d{4})[\/\.-](\d{1,2})[\/\.-](\d{1,2})$/);
+  if (ymdMatch) {
+    const year = ymdMatch[1];
+    const monthIdx = parseInt(ymdMatch[2], 10) - 1;
+    const day = ymdMatch[3].padStart(2, '0');
+    if (monthIdx >= 0 && monthIdx < 12) {
+      return `${day} ${monthNamesEn[monthIdx]} ${year}`;
+    }
+  }
+
+  // Case: DD [de] MonthName [de] YYYY in Portuguese/Spanish
+  for (const [ptMonth, enMonth] of Object.entries(ptMonthMap)) {
+    const regex = new RegExp(`(\\d{1,2})(?:\\s+de|\\s+)?\\s+${ptMonth}\\s+(?:de\\s+)?(\\d{4})`, 'i');
+    const m = s.match(regex);
+    if (m) {
+      const day = m[1].padStart(2, '0');
+      const year = m[2];
+      return `${day} ${enMonth} ${year}`;
+    }
+  }
+
+  return s;
+};
+
+export const extractLicenseData = async (apiKey, base64Images, country = '', onChunk = null) => {
   if (!apiKey) throw new Error("API Key de Gemini no encontrada. Agrégala en Settings.");
   
   const genAI = new GoogleGenerativeAI(apiKey);
   const models = await getValidModels(apiKey);
   
   let countryKey = country ? country.toLowerCase() : '';
-  if (countryKey.includes('alemania') || countryKey.includes('germany') || countryKey.includes('deutschland') || countryKey.includes('deutsch')) {
+  if (countryKey.includes('brazil') || countryKey.includes('brasil') || countryKey.includes('cnh') || countryKey.includes('portuguese')) {
+    countryKey = 'brazil';
+  } else if (countryKey.includes('dinamarca') || countryKey.includes('danmark') || countryKey.includes('denmark') || countryKey.includes('danish')) {
+    countryKey = 'denmark';
+  } else if (countryKey.includes('alemania') || countryKey.includes('germany') || countryKey.includes('deutschland') || countryKey.includes('deutsch')) {
     countryKey = 'alemania';
-  } else if (countryKey.includes('china') || countryKey.includes('chinese') || countryKey.includes('chino')) {
-    countryKey = 'china';
   } else if (countryKey.includes('francia') || countryKey.includes('france') || countryKey.includes('french') || countryKey.includes('franc')) {
     countryKey = 'francia';
+  } else if (countryKey.includes('china') || countryKey.includes('chinese') || countryKey.includes('chino')) {
+    countryKey = 'china';
   } else if (countryKey.includes('japon') || countryKey.includes('japan') || countryKey.includes('japanese')) {
     countryKey = 'japon';
-  } else if (countryKey.includes('denmark') || countryKey.includes('dinamarca') || countryKey.includes('danmark') || countryKey.includes('danish')) {
-    countryKey = 'denmark';
   } else if (countryKey.includes('taiwan') || countryKey.includes('taiwán')) {
     countryKey = 'taiwan';
   } else if (countryKey.includes('suiza') || countryKey.includes('swiss') || countryKey.includes('switzerland')) {
@@ -224,8 +283,6 @@ export const extractLicenseData = async (apiKey, base64Images, country, onChunk 
     countryKey = 'canada';
   } else if (countryKey.includes('netherlands') || countryKey.includes('holanda') || countryKey.includes('países bajos') || countryKey.includes('paises bajos') || countryKey.includes('dutch')) {
     countryKey = 'netherlands';
-  } else if (countryKey.includes('brasil') || countryKey.includes('brazil') || countryKey.includes('cnh') || countryKey.includes('portuguese')) {
-    countryKey = 'brazil';
   } else if (countryKey.includes('hungria') || countryKey.includes('hungary')) {
     countryKey = 'hungria';
   } else if (countryKey.includes('vietnam') || countryKey.includes('vietnamese')) {
@@ -239,18 +296,48 @@ export const extractLicenseData = async (apiKey, base64Images, country, onChunk 
   const availableCountries = Object.keys(COUNTRY_RULES);
   let matchedKey = availableCountries.find(key => countryKey && (countryKey.includes(key) || key.includes(countryKey)));
   
-  if (!matchedKey) {
+  if (!matchedKey && countryKey) {
     if (countryKey.includes('franc')) matchedKey = 'francia';
     else if (countryKey.includes('chin')) matchedKey = 'china';
     else if (countryKey.includes('aleman') || countryKey.includes('german')) matchedKey = 'alemania';
-    else matchedKey = 'japon';
+    else if (countryKey.includes('brazil') || countryKey.includes('brasil') || countryKey.includes('cnh')) matchedKey = 'brazil';
+    else if (countryKey.includes('japon') || countryKey.includes('japan')) matchedKey = 'japon';
   }
 
-
-  const specificRules = COUNTRY_RULES[matchedKey] || COUNTRY_RULES['japon'];
-  console.log("Using country rules for:", matchedKey);
+  let specificRules = matchedKey ? (COUNTRY_RULES[matchedKey] || '') : '';
+  if (!specificRules) {
+    // Universal auto-detection prompt if country is not explicitly specified in folder
+    specificRules = `
+### AUTO-DETECT COUNTRY & DOCUMENT TYPE:
+Carefully inspect the driver's license images and identify the issuing jurisdiction:
+1. IF BRAZIL (Carteira Nacional de Habilitação - CNH / DETRAN / REPÚBLICA FEDERATIVA DO BRASIL):
+   - All text output in English.
+   - All dates formatted as "DD Month YYYY" (e.g. "04 December 1987").
+   - "authority": Translate DETRAN/authority to "State Traffic Department, <State in English>, Brazil".
+   - "surname", "firstName", "middleName", "firstNames", "fullName" in UPPERCASE.
+   - "licenseNumber": Main central registration number (Nº Registro).
+   - "cardNumber": Left margin vertical serial number (Nº Espelho).
+   - "idDocument": Section 4c (Doc. Identidade, e.g. "2066946852 SJS RS" or "392634570 SSP SP").
+   - "cpf": Section 4d (CPF, e.g. "025.810.390-60").
+   - "parents": Parents' names from FILIAÇÃO in UPPERCASE.
+   - "firstObtained": Date from 1ª HABILITAÇÃO formatted as "DD Month YYYY".
+   - "placeOfBirth": Section 3 (Localidade, e.g. "Porto Alegre, Rio Grande do Sul, Brazil").
+   - "conditions": Translate Section 12 Observações ('A' -> 'Prescribed spectacles / Corrective lenses', 'EAR' -> 'Exercises remunerated activity', 'B' -> 'Hearing aid mandatory', or 'None').
+   - "nationality": "Brazilian".
+   - "gender": "Not stated".
+2. IF CHINA (中华人民共和国机动车驾驶证):
+   - "licenseNumber": 18-digit identity number.
+   - "barcodeNumber": Digits printed under barcode.
+   - "fileNumber": File number (档案编号).
+   - "class": e.g. "C1", "C2".
+   - "nationality": "Chinese".
+3. IF GERMANY / FRANCE / EU:
+   - Extract point 4c authority, point 4d personal number, category dates and section 12 codes.
+`;
+  }
+  console.log("Using country rules for:", matchedKey || 'auto-detect');
   
-  const fullPrompt = `${BASE_PROMPT}\n\n### MANDATORY COUNTRY RULES:\n${specificRules}\n\nSTRICT FINAL OVERRIDE INSTRUCTIONS:\n- NEVER OUTPUT ANY JAPANESE CHARACTERS (Kanji, Hiragana, Katakana) OR PARENTHESES WITH JAPANESE in any output JSON field.\n- Translate all names, categories, and conditions strictly to English in Title Case.\n- Follow the mandatory country rules above.\n\nAnalyze the provided driver's license images and extract the data as instructed.`;
+  const fullPrompt = `${BASE_PROMPT}\n\n### MANDATORY COUNTRY RULES:\n${specificRules}\n\nSTRICT FINAL OVERRIDE INSTRUCTIONS:\n- Translate all names, categories, and conditions strictly to English.\n- Format all dates as 'DD Month YYYY' (e.g., '04 December 1987').\n- Extract EVERY available identification field (licenseNumber, cardNumber, idDocument, cpf, parents, firstObtained, etc.).\n\nAnalyze the provided driver's license images and extract the data as instructed.`;
   
   // Optimize & resize images in parallel before sending to Gemini API
   const optimizedBase64s = await Promise.all(
@@ -561,7 +648,16 @@ export const extractLicenseData = async (apiKey, base64Images, country, onChunk 
       const finalCodes = (rawCodes && rawCodes.trim() !== '') ? rawCodes : '-';
       extractedData.codes = finalCodes;
       extractedData.explicacionCodigos = finalCodes;
-    } else if (matchedKey === 'brazil' || matchedKey === 'brasil') {
+    }
+
+    const isBrazilDoc = matchedKey === 'brazil' || matchedKey === 'brasil' ||
+      (extractedData.nationality && /brazil|brasil/i.test(extractedData.nationality)) ||
+      (extractedData.authority && /brazil|brasil|detran|denatran|senatran/i.test(extractedData.authority)) ||
+      (extractedData.cpf && extractedData.cpf !== '-' && /^\d{3}\.\d{3}\.\d{3}-\d{2}$/.test(extractedData.cpf)) ||
+      (extractedData.idDocument && extractedData.idDocument !== '-' && /ssp|sjs|detran|cnh/i.test(extractedData.idDocument)) ||
+      Boolean(extractedData.parents && extractedData.parents !== '-' && extractedData.parents.trim().length > 3 && !extractedData.barcodeNumber);
+
+    if (isBrazilDoc) {
       const stateMap = {
         'ac': 'Acre', 'al': 'Alagoas', 'ap': 'Amapá', 'am': 'Amazonas',
         'ba': 'Bahia', 'ce': 'Ceará', 'df': 'Federal District', 'es': 'Espírito Santo',
@@ -750,10 +846,18 @@ export const extractLicenseData = async (apiKey, base64Images, country, onChunk 
       extractedData.sex = extractedData.gender;
     }
 
+    // Universal Date Formatting to "DD Month YYYY"
+    const dateKeys = ['dateOfBirth', 'issueDate', 'expiryDate', 'firstIssued', 'firstObtained', 'categoriesDates'];
+    dateKeys.forEach(dk => {
+      if (extractedData[dk] && typeof extractedData[dk] === 'string') {
+        extractedData[dk] = normalizeDateToEnglish(extractedData[dk]);
+      }
+    });
+
     const cd = extractedData.classDescriptions;
     if (!cd || typeof cd !== 'string' || cd.trim() === '' || cd.trim() === '-') {
       if (extractedData.class) {
-        if (matchedKey === 'brazil' || matchedKey === 'brasil') {
+        if (isBrazilDoc) {
           extractedData.classDescriptions = generateBrazilClassDescriptions(extractedData.class);
         } else {
           extractedData.classDescriptions = generateClassDescriptions(extractedData.class);
