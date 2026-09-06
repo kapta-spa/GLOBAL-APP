@@ -79,8 +79,26 @@ export default function EmailPreviewModal({
   return (
     <div className="modal-overlay open">
       <div className="modal-content email-preview-modal" style={{ maxWidth: '800px', width: '90%', maxHeight: '90vh', overflowY: 'auto' }}>
-        <div className="modal-header">
-          <h2>Enviar Traducción Final</h2>
+        <div className="modal-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+            <h2 style={{ margin: 0 }}>Enviar Traducción Final</h2>
+            {folderName && (
+              <span style={{ 
+                backgroundColor: '#10b981', 
+                color: '#ffffff', 
+                padding: '4px 12px', 
+                borderRadius: '6px', 
+                fontWeight: 'bold', 
+                fontSize: '13px',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '4px'
+              }}>
+                🏷️ DL: {folderName.match(/\b([A-Za-z]?\d{3,6})\b/)?.[0]?.toUpperCase() || folderName}
+              </span>
+            )}
+            <span style={{ fontSize: '13px', color: '#6b7280' }}>({folderName})</span>
+          </div>
           <button className="icon-btn" onClick={onClose}>
             <X size={24} />
           </button>

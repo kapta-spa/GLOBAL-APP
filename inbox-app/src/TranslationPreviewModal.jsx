@@ -227,8 +227,24 @@ export default function TranslationPreviewModal({
   return (
     <div className="modal-overlay open" onClick={onClose}>
       <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: '800px', width: '90%', maxHeight: '90vh', display: 'flex', flexDirection: 'column' }}>
-        <div className="modal-header">
-          <h2 className="modal-title">Revisar Datos Extraídos (IA)</h2>
+        <div className="modal-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+            <h2 className="modal-title" style={{ margin: 0 }}>Revisar Datos Extraídos (IA)</h2>
+            <span style={{ 
+              backgroundColor: '#3b82f6', 
+              color: '#ffffff', 
+              padding: '4px 12px', 
+              borderRadius: '6px', 
+              fontWeight: 'bold', 
+              fontSize: '13px',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '4px'
+            }}>
+              🏷️ DL: {formData.assignedNumber || formData.reference || getAssignedNumber(folderName) || (folderName ? folderName.match(/\b([A-Za-z]?\d{3,6})\b/)?.[0]?.toUpperCase() : '') || 'En Proceso'}
+            </span>
+            {folderName && <span style={{ fontSize: '13px', color: '#6b7280' }}>({folderName})</span>}
+          </div>
           <button className="btn-icon" onClick={onClose}>
             <X size={24} />
           </button>

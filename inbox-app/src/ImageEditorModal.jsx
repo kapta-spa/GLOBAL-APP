@@ -133,10 +133,28 @@ export default function ImageEditorModal({
         onClick={e => e.stopPropagation()} 
         style={{ height: '92vh', maxWidth: '850px', width: '94%', display: 'flex', flexDirection: 'column', borderRadius: '16px', overflow: 'hidden' }}
       >
-        <div className="modal-header" style={{ padding: '16px 20px', borderBottom: '1px solid var(--border-color)', margin: 0 }}>
-          <h2 className="modal-title" style={{ fontSize: '1.15rem' }}>
-            Editar Foto: {folderName} {localUrls.length > 0 ? `(${currentIndex + 1} de ${localUrls.length})` : '(Sin fotos)'}
-          </h2>
+        <div className="modal-header" style={{ padding: '16px 20px', borderBottom: '1px solid var(--border-color)', margin: 0, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+            <h2 className="modal-title" style={{ fontSize: '1.15rem', margin: 0 }}>
+              Editar Fotos {localUrls.length > 0 ? `(${currentIndex + 1} de ${localUrls.length})` : ''}
+            </h2>
+            {folderName && (
+              <span style={{ 
+                backgroundColor: '#2563eb', 
+                color: '#ffffff', 
+                padding: '3px 10px', 
+                borderRadius: '6px', 
+                fontWeight: 'bold', 
+                fontSize: '13px',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '4px'
+              }}>
+                🏷️ DL: {folderName.match(/\b([A-Za-z]?\d{3,6})\b/)?.[0]?.toUpperCase() || folderName}
+              </span>
+            )}
+            <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>{folderName}</span>
+          </div>
           <button className="btn-icon" onClick={onClose}>
             <X size={24} />
           </button>

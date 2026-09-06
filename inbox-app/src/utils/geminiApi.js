@@ -22,7 +22,7 @@ const cleanAndParseJSON = (text) => {
   }
 };
 
-const optimizeBase64Image = (base64Str, maxDimension = 1600, quality = 0.85) => {
+const optimizeBase64Image = (base64Str, maxDimension = 2400, quality = 0.95) => {
   return new Promise((resolve) => {
     if (typeof window === 'undefined' || !base64Str || !base64Str.startsWith('data:image/')) {
       return resolve(base64Str);
@@ -70,11 +70,24 @@ const generateWithRetryAndFallback = async (genAI, promptParts, modelList, shoul
     while (retries > 0) {
       try {
         console.log(`Ejecutando modelo: ${modelName} (Intento ${3 - retries})`);
-        const model = genAI.getGenerativeModel({ model: modelName });
         
-        // 25-second timeout promise race for fast failover
+        let model;
+        try {
+          model = genAI.getGenerativeModel({ 
+            model: modelName,
+            generationConfig: {
+              temperature: 0.1,
+              maxOutputTokens: 8192,
+              ...(shouldParseJson ? { responseMimeType: "application/json" } : {})
+            }
+          });
+        } catch (configErr) {
+          model = genAI.getGenerativeModel({ model: modelName });
+        }
+        
+        // 28-second timeout promise race for fast failover
         const timeoutPromise = new Promise((_, reject) => 
-          setTimeout(() => reject(new Error(`Timeout alcanzado en ${modelName}`)), 25000)
+          setTimeout(() => reject(new Error(`Timeout alcanzado en ${modelName}`)), 28000)
         );
         
         let text = '';
@@ -144,12 +157,13 @@ const getValidModels = async (apiKey) => {
   if (cachedModelsList && cachedModelsList.length > 0) return cachedModelsList;
 
   const priorityOrder = [
+    "gemini-2.5-flash",
     "gemini-2.0-flash",
-    "gemini-2.0-flash-lite",
+    "gemini-1.5-pro",
     "gemini-1.5-flash",
     "gemini-2.0-flash-exp",
-    "gemini-1.5-pro",
-    "gemini-1.5-flash-8b"
+    "gemini-2.5-pro",
+    "gemini-2.0-flash-lite"
   ];
 
   try {
@@ -684,6 +698,41 @@ export const extractLicenseData = async (apiKey, base64Images, country, onChunk 
           extractedData[f] = '-';
         }
       });
+    }
+
+    // Universal field synchronization and completion across all countries
+    if (extractedData.firstName && !extractedData.firstNames) {
+      extractedData.firstNames = extractedData.firstName;
+    } else if (extractedData.firstNames && !extractedData.firstName) {
+      extractedData.firstName = extractedData.firstNames;
+    }
+
+    if (!extractedData.fullName || extractedData.fullName === '-' || extractedData.fullName.trim() === '') {
+      const nameParts = [extractedData.surname, extractedData.firstName, extractedData.middleName].filter(p => p && p !== '-' && p.trim() !== '');
+      if (nameParts.length > 0) {
+        extractedData.fullName = nameParts.join(' ');
+      }
+    }
+
+    // Sync categoriesDates and firstObtained
+    if (extractedData.firstObtained && (!extractedData.categoriesDates || extractedData.categoriesDates === '-')) {
+      extractedData.categoriesDates = extractedData.firstObtained;
+    } else if (extractedData.categoriesDates && (!extractedData.firstObtained || extractedData.firstObtained === '-')) {
+      extractedData.firstObtained = extractedData.categoriesDates;
+    }
+
+    // Sync eye and eyeColor
+    if (extractedData.eye && (!extractedData.eyeColor || extractedData.eyeColor === '-')) {
+      extractedData.eyeColor = extractedData.eye;
+    } else if (extractedData.eyeColor && (!extractedData.eye || extractedData.eye === '-')) {
+      extractedData.eye = extractedData.eyeColor;
+    }
+
+    // Sync sex and gender
+    if (extractedData.sex && (!extractedData.gender || extractedData.gender === '-')) {
+      extractedData.gender = extractedData.sex;
+    } else if (extractedData.gender && (!extractedData.sex || extractedData.sex === '-')) {
+      extractedData.sex = extractedData.gender;
     }
 
     const cd = extractedData.classDescriptions;

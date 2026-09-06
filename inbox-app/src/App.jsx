@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useGoogleLogin, googleLogout } from '@react-oauth/google';
-import { Mail, Check, LogOut, RefreshCw, Inbox, FolderPlus, X, FolderKanban, CheckCircle2, FolderOpen, Trash2, Briefcase, Settings, ClipboardList, UploadCloud, Zap } from 'lucide-react';
+import { Mail, Check, LogOut, RefreshCw, Inbox, FolderPlus, X, FolderKanban, CheckCircle2, FolderOpen, Trash2, Briefcase, Settings, ClipboardList, UploadCloud, Zap, Tag, Search, FolderSymlink } from 'lucide-react';
 import './index.css';
 import ImageEditorModal from './ImageEditorModal';
 import TranslationPreviewModal from './TranslationPreviewModal';
@@ -83,6 +83,12 @@ function App() {
   const [viewingEmail, setViewingEmail] = useState(null);
   const [isManualUploadOpen, setIsManualUploadOpen] = useState(false);
   const [manualUploadLabel, setManualUploadLabel] = useState(null);
+  
+  // Move to 0. Dx Label states
+  const [isMoveToLabelModalOpen, setIsMoveToLabelModalOpen] = useState(false);
+  const [dxSubLabels, setDxSubLabels] = useState([]);
+  const [labelSearchQuery, setLabelSearchQuery] = useState('');
+  const [loadingLabels, setLoadingLabels] = useState(false);
   
   // Settings & Persisted
   const [targetMonthFolder, setTargetMonthFolder] = useState(() => {
@@ -678,6 +684,57 @@ function App() {
     }
   };
 
+  const getMonthFolderLabel = async (accessToken) => {
+    if (targetMonthFolder && targetMonthFolder.name) {
+      return targetMonthFolder;
+    }
+
+    const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+    const currentMonth = monthNames[new Date().getMonth()];
+    
+    const res = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/labels', {
+      headers: { Authorization: `Bearer ${accessToken}` }
+    });
+    handleAuthError(res.status);
+    const data = await res.json();
+    const allLabels = data.labels || [];
+
+    const currentMonthRegex = new RegExp(`0\\.\\s*Dx\\s+${currentMonth}`, 'i');
+    let found = allLabels.find(l => currentMonthRegex.test(l.name));
+
+    if (!found) {
+      found = allLabels.find(l => /0\.\s*Dx\s+[A-Za-z]+/i.test(l.name));
+    }
+
+    if (!found) {
+      const monthPrefix = `0. Work/0. 1 HOUR/`;
+      found = allLabels.find(l => l.name.startsWith(monthPrefix) && l.name.toLowerCase().includes(currentMonth.toLowerCase()) && !l.name.includes('DL IN PROGRESS'));
+    }
+
+    if (found) {
+      const displayName = found.name.split('/').pop();
+      const folderObj = { id: found.id, name: found.name, displayName };
+      setTargetMonthFolder(folderObj);
+      localStorage.setItem('targetMonthFolder', JSON.stringify(folderObj));
+      return folderObj;
+    }
+
+    const hasWorkPrefix = allLabels.some(l => l.name.startsWith('0. Work/0. 1 HOUR'));
+    const newFolderName = hasWorkPrefix ? `0. Work/0. 1 HOUR/0. Dx ${currentMonth}` : `0. Dx ${currentMonth}`;
+    
+    const createRes = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/labels', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: newFolderName, labelListVisibility: 'labelShow', messageListVisibility: 'show' })
+    });
+    handleAuthError(createRes.status);
+    const createData = await createRes.json();
+    const folderObj = { id: createData.id, name: newFolderName, displayName: `0. Dx ${currentMonth}` };
+    setTargetMonthFolder(folderObj);
+    localStorage.setItem('targetMonthFolder', JSON.stringify(folderObj));
+    return folderObj;
+  };
+
   const openFolderPicker = async () => {
     setIsFolderModalOpen(true);
     setLoading(true);
@@ -688,20 +745,26 @@ function App() {
       handleAuthError(res.status);
       const data = await res.json();
       if (data.labels) {
-        const prefix = '0. Work/0. 1 HOUR/';
         const availableFolders = data.labels.filter(l => 
-          l.name.startsWith(prefix) && 
-          l.name !== prefix && 
-          l.name !== '0. Work/0. 1 HOUR/0. DL IN PROGRESS' &&
-          l.name.split('/').length === 3 
+          (l.name.startsWith('0. Work/0. 1 HOUR/') || /0\.\s*Dx\s+/i.test(l.name)) && 
+          !l.name.includes('DL IN PROGRESS') &&
+          l.name !== '0. Work/0. 1 HOUR'
         ).map(l => ({
           id: l.id,
           name: l.name,
-          displayName: l.name.replace(prefix, '')
+          displayName: l.name.split('/').pop()
         }));
         
-        availableFolders.sort((a, b) => b.displayName.localeCompare(a.displayName));
-        setMonthLabels(availableFolders);
+        const uniqueFolders = [];
+        const seen = new Set();
+        for (const f of availableFolders) {
+          if (!seen.has(f.name)) {
+            seen.add(f.name);
+            uniqueFolders.push(f);
+          }
+        }
+        uniqueFolders.sort((a, b) => a.displayName.localeCompare(b.displayName));
+        setMonthLabels(uniqueFolders);
       }
     } catch(err) {
       console.error('Failed to fetch month folders', err);
@@ -718,19 +781,18 @@ function App() {
 
   const handleFinalizeLabels = async () => {
     if (selectedIds.size === 0) return;
-    if (!targetMonthFolder) {
-      alert("Por favor selecciona primero la carpeta del mes.");
-      openFolderPicker();
-      return;
-    }
     
     setProcessing(true);
-    
     try {
+      const monthFolder = await getMonthFolderLabel(token);
+      if (!monthFolder || !monthFolder.name) {
+        throw new Error("No se pudo obtener la carpeta del mes.");
+      }
+      
       const labelsToMove = activeLabels.filter(l => selectedIds.has(l.id));
 
       for (const label of labelsToMove) {
-        const newName = `${targetMonthFolder.name}/${label.displayName}`;
+        const newName = `${monthFolder.name}/${label.displayName}`;
         
         const res = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/labels/${label.id}`, {
           method: 'PATCH',
@@ -747,7 +809,78 @@ function App() {
     } catch (err) {
       console.error('Failed to move labels', err);
       if (err.message !== "Unauthorized") {
-        alert('Error al mover etiquetas. Puede que ya exista una con ese nombre.');
+        alert('Error al mover etiquetas: ' + err.message);
+      }
+    } finally {
+      setProcessing(false);
+    }
+  };
+
+  const openMoveToLabelModal = async () => {
+    if (selectedIds.size === 0) return;
+    setIsMoveToLabelModalOpen(true);
+    setLoadingLabels(true);
+    setLabelSearchQuery('');
+    try {
+      const res = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/labels', {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      handleAuthError(res.status);
+      const data = await res.json();
+      const allLabels = data.labels || [];
+
+      // Find sub-labels under 0. Dx <Month> or month folders
+      const subLabels = allLabels.filter(l => {
+        const isDxChild = /0\.\s*Dx\s+[^/]+\/.+/i.test(l.name) || (l.name.includes('0. Dx') && l.name.split('/').length > 1);
+        const isProgressChild = l.name.startsWith('0. Work/0. 1 HOUR/0. DL IN PROGRESS/') && l.name !== '0. Work/0. 1 HOUR/0. DL IN PROGRESS/';
+        const isOneHourChild = l.name.startsWith('0. Work/0. 1 HOUR/') && l.name.split('/').length >= 4;
+        return isDxChild || isProgressChild || isOneHourChild;
+      }).map(l => {
+        const parts = l.name.split('/');
+        const childName = parts[parts.length - 1];
+        const parentName = parts.slice(0, parts.length - 1).join('/');
+        return {
+          id: l.id,
+          name: l.name,
+          displayName: childName,
+          parentName: parentName
+        };
+      });
+
+      subLabels.sort((a, b) => a.displayName.localeCompare(b.displayName));
+      setDxSubLabels(subLabels);
+    } catch (err) {
+      console.error("Error al cargar etiquetas de 0. Dx:", err);
+      alert("Error al cargar etiquetas: " + err.message);
+    } finally {
+      setLoadingLabels(false);
+    }
+  };
+
+  const handleMoveEmailsToSelectedLabel = async (targetLabel) => {
+    if (selectedIds.size === 0 || !targetLabel) return;
+    setProcessing(true);
+    try {
+      const count = selectedIds.size;
+      const res = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages/batchModify', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ids: Array.from(selectedIds),
+          addLabelIds: [targetLabel.id],
+          removeLabelIds: ['INBOX']
+        })
+      });
+      handleAuthError(res.status);
+
+      setEmails(prev => prev.filter(e => !selectedIds.has(e.id)));
+      setSelectedIds(new Set());
+      setIsMoveToLabelModalOpen(false);
+      alert(`✅ ${count} correo(s) movido(s) a "${targetLabel.displayName}" y removido(s) de Inbox.`);
+    } catch (err) {
+      console.error("Error al mover correos a la etiqueta:", err);
+      if (err.message !== "Unauthorized") {
+        alert("Error al mover correos: " + err.message);
       }
     } finally {
       setProcessing(false);
@@ -1305,7 +1438,27 @@ function App() {
       }
       
       if (activeEmailItem) {
-        setActiveLabels(prev => prev.map(l => l.id === activeEmailItem.id ? { ...l, sent: true, completed: true } : l));
+        try {
+          const monthFolder = await getMonthFolderLabel(token);
+          if (monthFolder && monthFolder.name) {
+            const newName = `${monthFolder.name}/${activeEmailItem.displayName}`;
+            console.log(`Moviendo etiqueta finalizada a: ${newName}`);
+            const patchRes = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/labels/${activeEmailItem.id}`, {
+              method: 'PATCH',
+              headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+              body: JSON.stringify({ name: newName })
+            });
+            if (patchRes.ok) {
+              console.log("Etiqueta movida con éxito a carpeta del mes:", newName);
+              setActiveLabels(prev => prev.filter(l => l.id !== activeEmailItem.id));
+            } else {
+              setActiveLabels(prev => prev.map(l => l.id === activeEmailItem.id ? { ...l, sent: true, completed: true } : l));
+            }
+          }
+        } catch (labelErr) {
+          console.warn("No se pudo mover la etiqueta automáticamente:", labelErr);
+          setActiveLabels(prev => prev.map(l => l.id === activeEmailItem.id ? { ...l, sent: true, completed: true } : l));
+        }
       }
       setIsEmailPreviewOpen(false);
       setIsTranslationModalOpen(false);
@@ -1574,6 +1727,18 @@ function App() {
             >
               <FolderPlus size={18} />
               Tracking
+            </button>
+
+            {/* Mover a Etiqueta (0. Dx September) Action */}
+            <button 
+              className="btn-primary" 
+              style={{ backgroundColor: '#6366f1', padding: '10px 12px', flexShrink: 0 }}
+              onClick={openMoveToLabelModal}
+              disabled={processing}
+              title="Mover a una etiqueta dentro de 0. Dx September"
+            >
+              <Tag size={18} />
+              Label
             </button>
           </div>
         ) : (
@@ -1859,6 +2024,80 @@ function App() {
         token={token}
         onImagesLoaded={handleManualUploadLoaded}
       />
+
+      {/* Modal for Moving Inbox Emails to 0. Dx Sub-Labels */}
+      <div className={`modal-overlay ${isMoveToLabelModalOpen ? 'open' : ''}`} onClick={() => !loadingLabels && !processing && setIsMoveToLabelModalOpen(false)}>
+        <div className="modal-content" onClick={e => e.stopPropagation()} style={{ height: '75vh', maxWidth: '600px', display: 'flex', flexDirection: 'column' }}>
+          <div className="modal-header" style={{ marginBottom: 12 }}>
+            <div>
+              <h2 className="modal-title" style={{ margin: 0 }}>Mover a Etiqueta (0. Dx)</h2>
+              <p style={{ margin: '4px 0 0', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+                Selecciona la etiqueta del cliente para mover los correos seleccionados y archivarlos del Inbox.
+              </p>
+            </div>
+            <button className="btn-icon" onClick={() => setIsMoveToLabelModalOpen(false)}>
+              <X size={24} />
+            </button>
+          </div>
+
+          {/* Search input */}
+          <div style={{ position: 'relative', marginBottom: '12px' }}>
+            <input 
+              type="text" 
+              className="text-input" 
+              placeholder="Buscar por DL (ej. B5267), nombre o país..." 
+              value={labelSearchQuery}
+              onChange={(e) => setLabelSearchQuery(e.target.value)}
+              style={{ paddingLeft: '36px' }}
+            />
+            <Search size={18} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-secondary)' }} />
+          </div>
+          
+          <div style={{ flex: 1, overflowY: 'auto' }}>
+            {loadingLabels ? (
+              <div style={{ textAlign: 'center', padding: '30px', color: 'var(--text-secondary)' }}>
+                <RefreshCw size={24} className="spinning" style={{ margin: '0 auto 8px' }} />
+                <p>Cargando etiquetas...</p>
+              </div>
+            ) : dxSubLabels.length === 0 ? (
+              <p style={{ color: 'var(--text-secondary)', textAlign: 'center', padding: '30px' }}>
+                No se encontraron etiquetas secundarias bajo 0. Dx.
+              </p>
+            ) : (
+              dxSubLabels
+                .filter(l => !labelSearchQuery.trim() || l.displayName.toLowerCase().includes(labelSearchQuery.toLowerCase()) || l.parentName.toLowerCase().includes(labelSearchQuery.toLowerCase()))
+                .map(labelItem => (
+                  <div 
+                    key={labelItem.id} 
+                    className="email-item" 
+                    style={{ marginBottom: 6, padding: '10px 14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', borderRadius: '8px' }}
+                    onClick={() => handleMoveEmailsToSelectedLabel(labelItem)}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                      <Tag size={18} style={{ color: '#6366f1', flexShrink: 0 }} />
+                      <div>
+                        <div style={{ fontWeight: '600', color: 'var(--text-primary)', fontSize: '0.95rem' }}>
+                          {labelItem.displayName}
+                        </div>
+                        <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                          {labelItem.parentName}
+                        </div>
+                      </div>
+                    </div>
+                    <button 
+                      className="btn-primary" 
+                      style={{ backgroundColor: '#6366f1', padding: '4px 10px', fontSize: '0.8rem', borderRadius: '4px' }}
+                      onClick={(e) => { e.stopPropagation(); handleMoveEmailsToSelectedLabel(labelItem); }}
+                      disabled={processing}
+                    >
+                      Mover aquí
+                    </button>
+                  </div>
+                ))
+            )}
+          </div>
+        </div>
+      </div>
 
       {processing && (
         <div className="processing-overlay">
