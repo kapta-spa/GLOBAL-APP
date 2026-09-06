@@ -948,7 +948,7 @@ function App() {
       const currentImages = queue[0];
       let country = "";
       const folderLower = editorFolder.toLowerCase();
-      const availableCountries = ['alemania', 'germany', 'deutschland', 'belgica', 'brazil', 'canada', 'china', 'denmark', 'dinamarca', 'danmark', 'hungria', 'indonesia', 'vietnam', 'francia', 'japon', 'taiwan', 'taiwán', 'suiza', 'swiss', 'switzerland', 'netherlands', 'holanda', 'paises bajos', 'países bajos', 'dutch'];
+      const availableCountries = ['alemania', 'germany', 'deutschland', 'belgica', 'brazil', 'brasil', 'cnh', 'canada', 'china', 'denmark', 'dinamarca', 'danmark', 'hungria', 'indonesia', 'vietnam', 'francia', 'japon', 'taiwan', 'taiwán', 'suiza', 'swiss', 'switzerland', 'netherlands', 'holanda', 'paises bajos', 'países bajos', 'dutch'];
       for (const c of availableCountries) {
         if (folderLower.includes(c)) {
           country = c;
@@ -964,6 +964,7 @@ function App() {
         else if (candidate.includes('aleman') || candidate.includes('german') || candidate.includes('deutsch')) country = 'alemania';
         else if (candidate.includes('suiz') || candidate.includes('swiss') || candidate.includes('switzer')) country = 'suiza';
         else if (candidate.includes('holand') || candidate.includes('netherland') || candidate.includes('paises') || candidate.includes('dutch')) country = 'netherlands';
+        else if (candidate.includes('brazil') || candidate.includes('brasil') || candidate.includes('cnh')) country = 'brazil';
         else if (availableCountries.includes(candidate)) country = candidate;
       }
       
@@ -975,9 +976,11 @@ function App() {
         country = 'suiza';
       } else if (country === 'holanda' || country === 'paises bajos' || country === 'países bajos' || country === 'dutch') {
         country = 'netherlands';
+      } else if (country === 'brasil' || country === 'cnh') {
+        country = 'brazil';
       }
       
-      if (!availableCountries.includes(country) && country !== 'denmark' && country !== 'suiza' && country !== 'netherlands') {
+      if (!availableCountries.includes(country) && country !== 'denmark' && country !== 'suiza' && country !== 'netherlands' && country !== 'brazil') {
         country = "";
       }
       

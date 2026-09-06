@@ -13,70 +13,157 @@ Los campos definidos en la interfaz `ExtractedData` y procesados por el motor so
 
 1. `surname`: Apellidos de familia (Family name).
 2. `firstName`: Primer nombre únicamente (Very first given name).
-3. `middleName`: Nombres secundarios / restantes (Remaining given names).
+3. `middleName`: Nombres secundarios / restantes (Remaining given names). Si no tiene, `"-"`.
 4. `firstNames`: Combinación de `firstName` + `middleName`.
 5. `fullName`: Nombre completo (`surname` + `firstName` + `middleName`).
 6. `licenseNumber`: Número de Registro central (Nº Registro - campo central).
 7. `cardNumber`: Número de Espelho / Serial vertical (borde lateral izquierdo).
 8. `idDocument`: Documento de Identidad (Sección 4c / Doc. Identidade, ej. `392634570 SSP SP`).
 9. `cpf`: Número de CPF (Sección 4d / CPF, ej. `437.361.038-08`).
-10. `parents`: Nombres de los padres (Sección "Filiação").
-11. `dateOfBirth`: Fecha de nacimiento (Sección 3).
+10. `parents`: Nombres de los padres (Sección "Filiação" - Madre y Padre).
+11. `dateOfBirth`: Fecha de nacimiento (Sección 3 / Data de Nascimento).
 12. `placeOfBirth`: Lugar y Estado de nacimiento traducido al inglés (Sección 3 / Localidade).
 13. `issueDate`: Fecha de expedición (Sección 4a / Data de Emissão).
 14. `expiryDate`: Fecha de vencimiento (Sección 4b / Data de Validade).
 15. `firstObtained`: Fecha de primera habilitación (Sección 4b inferior / 1ª Habilitação).
-16. `authority`: Autoridad emisora del Estado (ej. `DETRAN SP`, `DETRAN RJ`).
+16. `authority`: Autoridad emisora del Estado traducida a "State Traffic Department, <State>, Brazil".
 17. `class`: Categorías de vehículos autorizadas (Sección 9 / Categoria, ej. `A`, `B`, `AB`, `C`, `D`, `E`).
-18. `categoriesDates`: Fechas específicas de validez/expedición asociadas a las categorías.
-19. `codes`: Códigos numéricos/alfanuméricos adicionales de la categoría.
-20. `conditions`: Observaciones / Restricciones médicas o laborales (Sección 12 - Observações).
-21. `assignedNumber`: Identificador personalizado asignado manualmente para nombrar el archivo de salida (ej. `B1234`).
-22. `address`: Dirección de residencia (si aparece visible en la versión CNH o "Not provided").
-23. `nationality`: Nacionalidad (por defecto `"Brazilian"`).
-24. `gender`: Género (`"Male"` / `"Female"`).
+18. `classDescriptions`: Descripciones estándar de las categorías.
+19. `categoriesDates`: Fechas específicas de validez/expedición asociadas a las categorías.
+20. `codes`: Códigos numéricos/alfanuméricos adicionales de restricción traducidos al inglés.
+21. `explicacionCodigos`: Explicación en inglés de los códigos de restricción (Sección 12).
+22. `conditions`: Observaciones / Restricciones médicas o laborales (Sección 12 - Observações).
+23. `assignedNumber`: Identificador personalizado asignado manualmente para nombrar el archivo de salida (ej. `B1234`).
+24. `address`: Dirección de residencia (si aparece visible en la versión CNH o `"-"`).
+25. `nationality`: Nacionalidad (por defecto `"Brazilian"`).
+26. `gender` / `sex`: Género (`"Male"` / `"Female"`).
 
 ---
 
 ## 3. Reglas de Traducción y Formato
-- **Idioma Mandatorio de Salida:** Todos los valores textuales descriptivos (como observaciones, lugares, meses, autoridades y parentesco) deben traducirse al **inglés**.
+- **Idioma Mandatorio de Salida:** Todos los valores textuales descriptivos (observaciones, lugares, meses, autoridades y parentesco) deben traducirse al **inglés (UK)**.
 - **Formato Estándar de Fechas:** 
   - Toda fecha extraída debe convertirse obligatoriamente al formato **`DD Month YYYY`** (ejemplos: `15 July 1985`, `04 March 2028`, `01 December 2010`).
+- **Regla Mandatoria para {{authority}}:**
+  - Debe traducirse obligatoriamente al inglés y terminar SIEMPRE con `", Brazil"`.
+  - Si la autoridad emisora contiene `DETRAN` (Departamento Estadual de Trânsito), debe traducirse como:
+    `"State Traffic Department, <Nombre del Estado en Inglés>, Brazil"`.
+  - Mapeo de estados:
+    - SP -> São Paulo
+    - RJ -> Rio de Janeiro
+    - MG -> Minas Gerais
+    - BA -> Bahia
+    - PR -> Paraná
+    - RS -> Rio Grande do Sul
+    - DF -> Federal District
+    - SC -> Santa Catarina
+    - GO -> Goiás
+    - PE -> Pernambuco
+    - CE -> Ceará
+    - PA -> Pará
+    - MA -> Maranhão
+    - ES -> Espírito Santo
+    - PB -> Paraíba
+    - RN -> Rio Grande do Norte
+    - MT -> Mato Grosso
+    - AL -> Alagoas
+    - PI -> Piauí
+    - MS -> Mato Grosso do Sul
+    - SE -> Sergipe
+    - RO -> Rondônia
+    - TO -> Tocantins
+    - AC -> Acre
+    - AP -> Amapá
+    - RR -> Roraima
+    - AM -> Amazonas
 - **Desglose de Nombres:**
   - `surname` debe contener estrictamente los apellidos familiares.
   - `firstName` debe aislar el **primer nombre**.
-  - `middleName` agrupa el segundo nombre y nombres subsiguientes.
+  - `middleName` agrupa el segundo nombre y nombres subsiguientes (o `"-"` si no tiene).
   - `firstNames` guarda la combinación de nombres sin apellido.
+  - `fullName` guarda el nombre completo.
 - **Traducción e Interpretación de Restricciones (Sección 12 - Observações):**
   - Los códigos nativos de Brasil deben traducirse explicativamente al inglés:
     - **`A`**: Prescribed spectacles / Corrective lenses (Uso obligatorio de lentes de contacto o gafas).
     - **`EAR`**: Exercises remunerated activity (Ejerce actividad remunerada / Conductores profesionales).
     - **`B`**: Hearing aid mandatory (Uso obligatorio de prótesis auditiva).
     - **`C`**: Helmet / Protection mandatory.
+    - **`D`**: Vehicle with automatic transmission.
+    - **`E`**: Vehicle with adapted steering.
+    - **`F`**: Vehicle with left foot acceleration / automatic clutch.
+    - **`G`**: Adapted hand controls.
+    - **`H`**: Adapted foot controls.
+    - Explicar cualquier otro código presente de forma clara en inglés.
 - **Identificadores Numéricos:**
   - Mantener los separadores de formato original en el `cpf` (`XXX.XXX.XXX-XX`).
   - Preservar la sigla del órgano emisor estatal en `idDocument` (ej. `SSP SP`, `DETRAN RJ`).
+  - `licenseNumber`: Nº Registro (central).
+  - `cardNumber`: Nº Espelho (serial vertical).
 
 ---
 
-## 4. Casos Especiales y Excepciones
-- **Campos No Detectados o Ausentes:** Retornar cadena vacía `""` o `"Not provided"` en lugar de `null` o `undefined` para evitar rupturas al renderizar plantillas Word.
-- **Dualidad de Identificadores en CNH Brasil:**
-  - La CNH contiene dos números clave: el **Nº Registro** (central) y el **Nº Espelho** (código de seguridad serial impreso verticalmente en el margen izquierdo). Ambos se extraen por separado (`licenseNumber` y `cardNumber`).
-- **Integración de Imágenes:**
-  - Las fotos del frente y del reverso de la CNH se codifican en Base64 y se envían a la plantilla `.docx` asociándolas a los tokens `{{foto_frente}}`, `{{foto_reverso}}`, `{{license_front}}` y `{{license_back}}`.
+## 4. Integración de Plantillas Word (.docx) y Tokens Disponibles
+- **Tokens de Texto:**
+  - `{{surname}}`, `{{firstName}}`, `{{middleName}}`, `{{firstNames}}`, `{{fullName}}`
+  - `{{licenseNumber}}`, `{{assignedNumber}}`, `{{cardNumber}}`, `{{idDocument}}`, `{{cpf}}`
+  - `{{parents}}`, `{{dateOfBirth}}`, `{{placeOfBirth}}`, `{{issueDate}}`, `{{expiryDate}}`, `{{firstObtained}}`
+  - `{{authority}}`, `{{class}}`, `{{classDescriptions}}`, `{{categoriesDates}}`, `{{conditions}}`, `{{codes}}`, `{{explicacionCodigos}}`
+  - `{{address}}`, `{{nationality}}`, `{{gender}}`, `{{sex}}`
+  - `{{today}}`, `{{fechaHoy}}` (Fecha actual en formato "DD Month YYYY")
+- **Tokens de Imágenes:**
+  - `{{license_front}}`, `{{foto_frente}}` (Imagen del frente con aspecto proporcional)
+  - `{{license_back}}`, `{{foto_reverso}}` (Imagen del reverso con aspecto proporcional)
+  - **Manejo de Proporciones:** Las imágenes se adaptan proporcionalmente dentro de un cuadro máximo (360x240) leyendo los encabezados binarios (PNG/JPEG), evitando cualquier estiramiento o deformación.
 
 ---
 
-## 5. System Prompt Sugerido para la API de Gemini
+## 5. System Prompt para la API de Gemini
 
 ```text
 You are an expert OCR and translation engine specializing in official identification and driving documents.
 Analyze these two images corresponding to the Front and Back of a Brazilian Driver's License (Carteira Nacional de Habilitação - CNH).
 
 CRITICAL REQUIREMENTS:
-1. ALL TEXT OUTPUT VALUES MUST BE TRANSLATED INTO ENGLISH.
-2. ALL DATES MUST BE FORMATTED AS "DD Month YYYY" (e.g., "15 July 1985").
+1. ALL TEXT OUTPUT VALUES MUST BE TRANSLATED INTO ENGLISH (UK).
+2. ALL DATES MUST BE FORMATTED AS "DD Month YYYY" (e.g., "15 July 1985", "04 March 2028", "01 December 2010").
+3. AUTHORITY (Point 4c / Emissor):
+   - Translate DETRAN into "State Traffic Department, <State in English>, Brazil".
+   - Examples: "DETRAN SP" -> "State Traffic Department, São Paulo, Brazil", "DETRAN RJ" -> "State Traffic Department, Rio de Janeiro, Brazil", "DETRAN MG" -> "State Traffic Department, Minas Gerais, Brazil".
+   - Authority must ALWAYS end with ", Brazil".
+4. NAMES BREAKDOWN:
+   - "surname": Family name(s) / Apellidos.
+   - "firstName": ONLY the very first given name.
+   - "middleName": Remaining given name(s) after the first name. If none, "-".
+   - "firstNames": Combination of firstName + middleName.
+   - "fullName": Full name (surname + firstName + middleName).
+5. IDENTIFICATION & TAX NUMBERS:
+   - "licenseNumber": Main central registration number (Nº Registro).
+   - "cardNumber": Vertical serial/security number on the left border (Nº Espelho / Serial).
+   - "idDocument": Identity document number and issuing body (Section 4c - Doc. Identidade, e.g. "392634570 SSP SP").
+   - "cpf": Taxpayer number (Section 4d - CPF, format XXX.XXX.XXX-XX).
+   - "parents": Parents' names listed in 'Filiação' (Mother and Father).
+   - "firstObtained": First license date (1ª Habilitação) formatted as DD Month YYYY.
+6. CONDITIONS / RESTRICTIONS (Section 12 - Observações):
+   - Translate Brazilian codes to clear English:
+     - 'A' -> "Prescribed spectacles / Corrective lenses"
+     - 'EAR' -> "Exercises remunerated activity"
+     - 'B' -> "Hearing aid mandatory"
+     - 'C' -> "Helmet / Protection mandatory"
+     - 'D' -> "Vehicle with automatic transmission"
+     - 'E' -> "Vehicle with adapted steering"
+     - 'F' -> "Vehicle with left foot acceleration / automatic clutch"
+     - 'G' -> "Adapted hand controls"
+     - 'H' -> "Adapted foot controls"
+     Translate all other codes/observations to clear English.
+   - Put this in "conditions", "codes", and "explicacionCodigos".
+7. OTHER FIELDS:
+   - "class": Vehicle categories (Section 9 / Categoria, e.g., A, B, AB, C, D, E).
+   - "categoriesDates": First obtained or validity dates per category if present.
+   - "classDescriptions": Standard vehicle class descriptions.
+   - "nationality": "Brazilian".
+   - "gender": "Male" or "Female".
+   - "placeOfBirth": Place/City and State of birth translated to English.
+   - "address": Residential address if visible, or "Not provided".
 
 EXTRACT DATA INTO THE FOLLOWING JSON SCHEMA:
 {
@@ -95,12 +182,15 @@ EXTRACT DATA INTO THE FOLLOWING JSON SCHEMA:
   "issueDate": "Issue date formatted as DD Month YYYY",
   "expiryDate": "Expiration date formatted as DD Month YYYY",
   "firstObtained": "First license date formatted as DD Month YYYY",
-  "authority": "Issuing authority (e.g., DETRAN SP)",
+  "authority": "State Traffic Department, <State>, Brazil",
   "class": "Vehicle categories (e.g., A, B, AB, C, D, E)",
-  "conditions": "Section 12 (Observações). Translate Brazilian codes to clear English (e.g., 'A' -> 'Prescribed spectacles', 'EAR' -> 'Exercises remunerated activity')",
-  "address": "Residential address if visible, or 'Not provided'",
-  "nationality": "Nationality ('Brazilian')",
-  "gender": "Gender ('Male' or 'Female')"
+  "classDescriptions": "Standard class descriptions",
+  "categoriesDates": "Categories and obtaining dates",
+  "codes": "Translated restriction codes",
+  "explicacionCodigos": "Translated restriction codes",
+  "conditions": "Translated restriction codes / Section 12",
+  "address": "Residential address or 'Not provided'",
+  "nationality": "Brazilian",
+  "gender": "Male or Female"
 }
-
-Output strictly valid JSON matching this schema without markdown codeblocks or surrounding conversational text.
+```

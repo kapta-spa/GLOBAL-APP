@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { X, Save, Download, ArrowRight, RefreshCw } from 'lucide-react';
-import { generateClassDescriptions, formatCategoriesDates } from './utils/classDescriptions';
+import { generateClassDescriptions, generateBrazilClassDescriptions, formatCategoriesDates } from './utils/classDescriptions';
 import { getAssignedNumber } from './utils/documentGenerator';
 
 export default function TranslationPreviewModal({ 
@@ -38,6 +38,12 @@ export default function TranslationPreviewModal({
         }
       }
 
+      const isBrazil = (normalized.nationality && normalized.nationality.toLowerCase().includes('brazil')) ||
+                       (normalized.authority && normalized.authority.toLowerCase().includes('brazil')) ||
+                       Boolean(normalized.cpf && normalized.cpf !== '-') ||
+                       Boolean(normalized.idDocument && normalized.idDocument !== '-') ||
+                       Boolean(folderName && /brazil|brasil/i.test(folderName));
+
       // Sync citizen
       const defaultCitizen = (normalized.citizen && normalized.citizen.trim() !== '') 
         ? normalized.citizen 
@@ -48,23 +54,43 @@ export default function TranslationPreviewModal({
 
       // Auto-populate classDescriptions if missing, empty, or '-'
       if ((!normalized.classDescriptions || normalized.classDescriptions.trim() === '' || normalized.classDescriptions.trim() === '-') && normalized.class) {
-        normalized.classDescriptions = generateClassDescriptions(normalized.class);
+        if (isBrazil) {
+          normalized.classDescriptions = generateBrazilClassDescriptions(normalized.class);
+        } else {
+          normalized.classDescriptions = generateClassDescriptions(normalized.class);
+        }
       }
 
       // Format categoriesDates grouping if present
-      if (normalized.categoriesDates) {
+      if (normalized.categoriesDates && !isBrazil) {
         normalized.categoriesDates = formatCategoriesDates(normalized.categoriesDates);
       }
 
-      // Middle name fallback to '-' if missing or empty
-      if (!normalized.middleName || normalized.middleName.trim() === '' || normalized.middleName.trim() === '""') {
-        normalized.middleName = '-';
+      // Sync firstObtained and categoriesDates
+      if (normalized.firstObtained && (!normalized.categoriesDates || normalized.categoriesDates === '-')) {
+        normalized.categoriesDates = normalized.firstObtained;
+      } else if (normalized.categoriesDates && (!normalized.firstObtained || normalized.firstObtained === '-')) {
+        normalized.firstObtained = normalized.categoriesDates;
+      }
+
+      // Sync reference and assignedNumber
+      if (normalized.assignedNumber && (!normalized.reference || normalized.reference === '-')) {
+        normalized.reference = normalized.assignedNumber;
+      } else if (normalized.reference && (!normalized.assignedNumber || normalized.assignedNumber === '-')) {
+        normalized.assignedNumber = normalized.reference;
+      }
+
+      // Middle name fallback: for Brazil leave empty string "", for other countries '-'
+      if (!normalized.middleName || normalized.middleName.trim() === '""' || (isBrazil && normalized.middleName.trim() === '-')) {
+        normalized.middleName = isBrazil ? '' : '-';
       }
       
-      // Sync codes and explicacionCodigos for Conditions
-      let condCodes = (normalized.explicacionCodigos && normalized.explicacionCodigos.trim() !== '' && normalized.explicacionCodigos !== '-') 
-        ? normalized.explicacionCodigos.trim() 
-        : ((normalized.codes && normalized.codes.trim() !== '' && normalized.codes !== '-') ? normalized.codes.trim() : '-');
+      // Sync codes, explicacionCodigos and conditions
+      let condCodes = (normalized.conditions && normalized.conditions.trim() !== '' && normalized.conditions !== '-')
+        ? normalized.conditions.trim()
+        : ((normalized.explicacionCodigos && normalized.explicacionCodigos.trim() !== '' && normalized.explicacionCodigos !== '-') 
+          ? normalized.explicacionCodigos.trim() 
+          : ((normalized.codes && normalized.codes.trim() !== '' && normalized.codes !== '-') ? normalized.codes.trim() : '-'));
 
       if (condCodes !== '-' && normalized.citizen && normalized.citizen !== '-') {
         const cleanCond = condCodes.replace(/[\s\/,-]+/g, '');
@@ -76,6 +102,7 @@ export default function TranslationPreviewModal({
 
       normalized.codes = condCodes;
       normalized.explicacionCodigos = condCodes;
+      normalized.conditions = condCodes;
 
       // Sync firstName and firstNames
       if (normalized.firstName !== undefined && normalized.firstNames === undefined) {
@@ -98,7 +125,7 @@ export default function TranslationPreviewModal({
 
       const sec4d = (normalized.personal && normalized.personal.trim() !== '') 
         ? normalized.personal 
-        : ((normalized.point4d && normalized.point4d.trim() !== '') ? normalized.point4d : '-');
+        : ((normalized.point4d && normalized.point4d.trim() !== '') ? normalized.point4d : (normalized.cpf || '-'));
       normalized.personal = sec4d;
       normalized.point4d = sec4d;
 
@@ -120,6 +147,11 @@ export default function TranslationPreviewModal({
         normalized.gender = finalSex;
       }
 
+      // Brazilian fields defaults
+      if (!normalized.nationality || normalized.nationality.trim() === '') {
+        normalized.nationality = 'Brazilian';
+      }
+
       setFormData(normalized);
     }
   }, [initialData, folderName]);
@@ -132,15 +164,28 @@ export default function TranslationPreviewModal({
       const updated = { ...prev, [name]: value };
       if (name === 'firstName') updated.firstNames = value;
       if (name === 'firstNames') updated.firstName = value;
-      if (name === 'explicacionCodigos') updated.codes = value;
-      if (name === 'codes') updated.explicacionCodigos = value;
+      if (name === 'explicacionCodigos') {
+        updated.codes = value;
+        updated.conditions = value;
+      }
+      if (name === 'codes') {
+        updated.explicacionCodigos = value;
+        updated.conditions = value;
+      }
+      if (name === 'conditions') {
+        updated.codes = value;
+        updated.explicacionCodigos = value;
+      }
       if (name === 'reverse') updated.code = value;
       if (name === 'code') updated.reverse = value;
       if (name === 'blood') updated.Blood = value;
       if (name === 'Blood') updated.blood = value;
       if (name === 'personal') updated.point4d = value;
       if (name === 'point4d') updated.personal = value;
-      if (name === 'categoriesDates') updated.categoriesDates = value;
+      if (name === 'assignedNumber') updated.reference = value;
+      if (name === 'reference') updated.assignedNumber = value;
+      if (name === 'firstObtained') updated.categoriesDates = value;
+      if (name === 'categoriesDates') updated.firstObtained = value;
       if (name === 'eye') updated.eyeColor = value;
       if (name === 'eyeColor') updated.eye = value;
       if (name === 'sex') updated.gender = value;
@@ -261,10 +306,40 @@ export default function TranslationPreviewModal({
             </div>
           </div>
 
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '16px', marginBottom: '24px' }}>
+            <div>
+              <label style={{ display: 'block', fontSize: '14px', fontWeight: 'bold', marginBottom: '4px', color: '#374151' }}>Card / Espelho No. ({"{{cardNumber}}"})</label>
+              <input type="text" name="cardNumber" value={formData.cardNumber || ''} onChange={handleChange} style={inputStyle} placeholder="Nº Espelho (Vertical)" />
+            </div>
+            <div>
+              <label style={{ display: 'block', fontSize: '14px', fontWeight: 'bold', marginBottom: '4px', color: '#374151' }}>Doc. Identidade / Sec 4c ({"{{idDocument}}"})</label>
+              <input type="text" name="idDocument" value={formData.idDocument || ''} onChange={handleChange} style={inputStyle} placeholder="ej. 392634570 SSP SP" />
+            </div>
+            <div>
+              <label style={{ display: 'block', fontSize: '14px', fontWeight: 'bold', marginBottom: '4px', color: '#374151' }}>CPF / Sec 4d ({"{{cpf}}"})</label>
+              <input type="text" name="cpf" value={formData.cpf || ''} onChange={handleChange} style={inputStyle} placeholder="000.000.000-00" />
+            </div>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '16px', marginBottom: '24px' }}>
+            <div>
+              <label style={{ display: 'block', fontSize: '14px', fontWeight: 'bold', marginBottom: '4px', color: '#374151' }}>Parents / Filiação ({"{{parents}}"})</label>
+              <input type="text" name="parents" value={formData.parents || ''} onChange={handleChange} style={inputStyle} placeholder="Nombres de los padres" />
+            </div>
+            <div>
+              <label style={{ display: 'block', fontSize: '14px', fontWeight: 'bold', marginBottom: '4px', color: '#374151' }}>1ª Habilitação ({"{{firstObtained}}"})</label>
+              <input type="text" name="firstObtained" value={formData.firstObtained || ''} onChange={handleChange} style={inputStyle} placeholder="DD Month YYYY" />
+            </div>
+            <div>
+              <label style={{ display: 'block', fontSize: '14px', fontWeight: 'bold', marginBottom: '4px', color: '#374151' }}>Nationality ({"{{nationality}}"})</label>
+              <input type="text" name="nationality" value={formData.nationality || ''} onChange={handleChange} style={inputStyle} placeholder="Brazilian" />
+            </div>
+          </div>
+
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '24px' }}>
             <div>
               <label style={{ display: 'block', fontSize: '14px', fontWeight: 'bold', marginBottom: '4px', color: '#374151' }}>Personal No. / Sec 4d ({"{{personal}}"})</label>
-              <input type="text" name="personal" value={formData.personal || formData.point4d || ''} onChange={handleChange} style={inputStyle} />
+              <input type="text" name="personal" value={formData.personal || formData.point4d || formData.cpf || ''} onChange={handleChange} style={inputStyle} />
             </div>
             <div>
               <label style={{ display: 'block', fontSize: '14px', fontWeight: 'bold', marginBottom: '4px', color: '#374151' }}>Citizen No. / Netherlands Back Top-Left ({"{{citizen}}"})</label>
@@ -307,11 +382,17 @@ export default function TranslationPreviewModal({
               <button
                 type="button"
                 onClick={() => {
-                  const generated = generateClassDescriptions(formData.class || '');
+                  const isBrazil = (formData.nationality && formData.nationality.toLowerCase().includes('brazil')) ||
+                                   (formData.authority && formData.authority.toLowerCase().includes('brazil')) ||
+                                   Boolean(formData.cpf && formData.cpf !== '-') ||
+                                   Boolean(folderName && /brazil|brasil/i.test(folderName));
+                  const generated = isBrazil 
+                    ? generateBrazilClassDescriptions(formData.class || '') 
+                    : generateClassDescriptions(formData.class || '');
                   if (generated) {
                     setFormData(prev => ({ ...prev, classDescriptions: generated }));
                   } else {
-                    alert("No se pudieron detectar categorías válidas en 'Licence Class/es Held'. Ingrese categorías como AM, A1, A, B, BE, C, L, T.");
+                    alert("No se pudieron detectar categorías válidas en 'Licence Class/es Held'. Ingrese categorías como AM, A1, A, B, BE, C, D, E, ACC.");
                   }
                 }}
                 style={{

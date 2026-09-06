@@ -22,6 +22,45 @@ export const OFFICIAL_CLASS_DESCRIPTIONS = {
   "S": "S - Trikes, quadricycles and microcars."
 };
 
+export const BRAZIL_CLASS_DESCRIPTIONS = {
+  "A": "A- Driver of a two or three-wheeled motor vehicle, with or without sidecar.",
+  "B": "B- Driver of a motor vehicle, not covered by category A, with a total gross weight not exceeding 3,500 kg and having not more than 8 seats, excluding the driver's seat.",
+  "C": "C- Driver of a motor vehicle used for transporting cargo, not covered by category B, with a total gross weight exceeding 3,500 kg.",
+  "D": "D- Driver of a motor vehicle used for passenger transport, whose capacity exceeds 8 seats, excluding the driver's seat.",
+  "E": "E- Driver of a combination of vehicles in which the towing unit falls into categories B, C or D and the towed unit has a total gross weight of 6,000 kg or more, or whose capacity exceeds 8 seats.",
+  "ACC": "ACC- Driver of mopeds up to 50 cc."
+};
+
+export const generateBrazilClassDescriptions = (classString) => {
+  const rawUpper = (classString || '').toUpperCase();
+  const heldClasses = [];
+
+  if (rawUpper.includes('AB')) {
+    heldClasses.push('A', 'B');
+  } else {
+    if (rawUpper.includes('ACC')) heldClasses.push('ACC');
+    if (/\bA\b|A[,\s\/]/.test(rawUpper)) heldClasses.push('A');
+    if (/\bB\b|B[,\s\/]/.test(rawUpper)) {
+      // In Brazilian standard translation, Category B includes Category A definition as reference
+      if (!heldClasses.includes('A')) heldClasses.push('A');
+      heldClasses.push('B');
+    }
+    if (/\bC\b|C[,\s\/]/.test(rawUpper)) heldClasses.push('C');
+    if (/\bD\b|D[,\s\/]/.test(rawUpper)) heldClasses.push('D');
+    if (/\bE\b|E[,\s\/]/.test(rawUpper)) heldClasses.push('E');
+  }
+
+  if (heldClasses.length === 0) {
+    heldClasses.push('A', 'B');
+  }
+
+  const lines = heldClasses.map(cls => BRAZIL_CLASS_DESCRIPTIONS[cls]).filter(Boolean);
+  lines.push('Source:');
+  lines.push('https://www.detran.sp.gov.br/wps/portal/portaldetran/cidadao/habilitacao/fichaservico/');
+
+  return lines.join('\n');
+};
+
 export const generateClassDescriptions = (classString) => {
   if (!classString || typeof classString !== 'string') return '';
   

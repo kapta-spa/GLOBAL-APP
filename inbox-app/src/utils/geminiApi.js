@@ -1,6 +1,6 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { BASE_PROMPT, COUNTRY_RULES } from "../config/countryPrompts";
-import { generateClassDescriptions, formatCategoriesDates } from "./classDescriptions";
+import { generateClassDescriptions, generateBrazilClassDescriptions, formatCategoriesDates } from "./classDescriptions";
 
 const cleanAndParseJSON = (text) => {
   let cleaned = text.trim();
@@ -204,6 +204,8 @@ export const extractLicenseData = async (apiKey, base64Images, country, onChunk 
     countryKey = 'canada';
   } else if (countryKey.includes('netherlands') || countryKey.includes('holanda') || countryKey.includes('países bajos') || countryKey.includes('paises bajos') || countryKey.includes('dutch')) {
     countryKey = 'netherlands';
+  } else if (countryKey.includes('brasil') || countryKey.includes('brazil') || countryKey.includes('cnh')) {
+    countryKey = 'brazil';
   } else if (countryKey.includes('chile') || countryKey.includes('mexico') || countryKey.includes('méxico') || countryKey.includes('argentina') || countryKey.includes('uruguay') || countryKey.includes('colombia') || countryKey.includes('peru') || countryKey.includes('perú') || countryKey.includes('latino')) {
     countryKey = 'latino';
   }
@@ -530,12 +532,168 @@ export const extractLicenseData = async (apiKey, base64Images, country, onChunk 
       const finalCodes = (rawCodes && rawCodes.trim() !== '') ? rawCodes : '-';
       extractedData.codes = finalCodes;
       extractedData.explicacionCodigos = finalCodes;
+    } else if (matchedKey === 'brazil' || matchedKey === 'brasil') {
+      const stateMap = {
+        'ac': 'Acre', 'al': 'Alagoas', 'ap': 'Amapá', 'am': 'Amazonas',
+        'ba': 'Bahia', 'ce': 'Ceará', 'df': 'Federal District', 'es': 'Espírito Santo',
+        'go': 'Goiás', 'ma': 'Maranhão', 'mt': 'Mato Grosso', 'ms': 'Mato Grosso do Sul',
+        'mg': 'Minas Gerais', 'pa': 'Pará', 'pb': 'Paraíba', 'pr': 'Paraná',
+        'pe': 'Pernambuco', 'pi': 'Piauí', 'rj': 'Rio de Janeiro', 'rn': 'Rio Grande do Norte',
+        'rs': 'Rio Grande do Sul', 'ro': 'Rondônia', 'rr': 'Roraima', 'sc': 'Santa Catarina',
+        'sp': 'São Paulo', 'se': 'Sergipe', 'to': 'Tocantins',
+        'distrito federal': 'Federal District', 'sao paulo': 'São Paulo', 'rio de janeiro': 'Rio de Janeiro',
+        'minas gerais': 'Minas Gerais', 'santa catarina': 'Santa Catarina', 'rio grande do sul': 'Rio Grande do Sul',
+        'rio grande do norte': 'Rio Grande do Norte', 'mato grosso do sul': 'Mato Grosso do Sul', 'mato grosso': 'Mato Grosso',
+        'espirito santo': 'Espírito Santo'
+      };
+
+      // 1. Format Authority (Scan authority, idDocument, placeOfBirth for state)
+      let auth = (extractedData.authority || '').trim();
+      let stateName = '';
+
+      // Check direct DETRAN match
+      const detranMatch = auth.match(/detran[\s\/-]*([a-zA-Z\s]+)/i) || auth.match(/([a-zA-Z\s]+)[\s\/-]*detran/i);
+      if (detranMatch) {
+        const rawState = detranMatch[1].trim().toLowerCase();
+        stateName = stateMap[rawState] || '';
+      }
+
+      // If not found in DETRAN, check state codes across authority, idDocument, placeOfBirth
+      if (!stateName) {
+        const combinedText = `${auth} ${extractedData.idDocument || ''} ${extractedData.placeOfBirth || ''}`;
+        for (const [code, name] of Object.entries(stateMap)) {
+          const regex = new RegExp(`\\b${code}\\b`, 'i');
+          if (regex.test(combinedText)) {
+            stateName = name;
+            break;
+          }
+        }
+      }
+
+      if (stateName) {
+        extractedData.authority = `State Traffic Department, ${stateName}, Brazil`;
+      } else if (/detran/i.test(auth)) {
+        let cleanAuth = auth.replace(/detran/gi, 'State Traffic Department');
+        if (!cleanAuth.toLowerCase().includes('brazil')) {
+          cleanAuth = `${cleanAuth}, Brazil`;
+        }
+        extractedData.authority = cleanAuth;
+      } else if (!auth || auth.toLowerCase().includes('senatran')) {
+        extractedData.authority = 'State Traffic Department, Brazil';
+      } else if (!auth.toLowerCase().endsWith('brazil')) {
+        extractedData.authority = `${auth}, Brazil`;
+      }
+
+      // 2. Format Place of Birth (Expand state codes)
+      if (extractedData.placeOfBirth && typeof extractedData.placeOfBirth === 'string' && extractedData.placeOfBirth !== '-') {
+        let pob = extractedData.placeOfBirth.trim();
+        for (const [code, name] of Object.entries(stateMap)) {
+          if (code.length <= 2) {
+            const regex = new RegExp(`(?:,\\s*|\\s+|-|/|\\b)${code}(?:,\\s*|\\s+|-|/|\\b|$)`, 'i');
+            if (regex.test(pob) && !pob.toLowerCase().includes(name.toLowerCase())) {
+              pob = pob.replace(regex, `, ${name}, `).replace(/,\s*,/g, ',').replace(/\s+/g, ' ').trim();
+              break;
+            }
+          }
+        }
+        pob = pob.replace(/,\s*$/, '').trim();
+        if (!pob.toLowerCase().includes('brazil')) {
+          pob = `${pob}, Brazil`;
+        }
+        extractedData.placeOfBirth = pob;
+      }
+
+      // 3. Format / Translate Brazilian condition codes
+      const brazilCodeMap = {
+        'a': 'Prescribed spectacles / Corrective lenses',
+        'ear': 'Exercises remunerated activity',
+        'b': 'Hearing aid mandatory',
+        'c': 'Helmet / Protection mandatory',
+        'd': 'Vehicle with automatic transmission',
+        'e': 'Vehicle with adapted steering',
+        'f': 'Vehicle with left foot acceleration / automatic clutch',
+        'g': 'Adapted hand controls',
+        'h': 'Adapted foot controls'
+      };
+
+      let cond = (extractedData.conditions || extractedData.explicacionCodigos || extractedData.codes || '').trim();
+      if (cond && cond !== '-' && cond.toLowerCase() !== 'none') {
+        const tokens = cond.split(/[\s,;\/\-]+/);
+        const translatedList = [];
+        for (const t of tokens) {
+          const lowT = t.toLowerCase().trim();
+          if (brazilCodeMap[lowT] && !translatedList.includes(brazilCodeMap[lowT])) {
+            translatedList.push(brazilCodeMap[lowT]);
+          }
+        }
+        if (translatedList.length > 0 && !cond.toLowerCase().includes('spectacles') && !cond.toLowerCase().includes('activity') && !cond.toLowerCase().includes('hearing')) {
+          cond = translatedList.join('\n');
+        }
+      } else {
+        cond = 'None';
+      }
+      extractedData.conditions = cond;
+      extractedData.codes = cond;
+      extractedData.explicacionCodigos = cond;
+
+      // 4. Class Descriptions
+      extractedData.classDescriptions = generateBrazilClassDescriptions(extractedData.class || 'B');
+
+      // 5. First Obtained & Categories Dates sync
+      const firstDate = (extractedData.firstObtained && extractedData.firstObtained !== '-' && extractedData.firstObtained.trim() !== '')
+        ? extractedData.firstObtained.trim()
+        : ((extractedData.categoriesDates && extractedData.categoriesDates !== '-' && extractedData.categoriesDates.trim() !== '') ? extractedData.categoriesDates.trim() : '');
+      if (firstDate) {
+        extractedData.firstObtained = firstDate;
+        extractedData.categoriesDates = firstDate;
+      }
+
+      // 6. Normalize Names (Uppercase for Brazilian CNH)
+      if (extractedData.surname) extractedData.surname = extractedData.surname.toUpperCase().trim();
+      if (extractedData.firstName) extractedData.firstName = extractedData.firstName.toUpperCase().trim();
+      if (extractedData.parents) extractedData.parents = extractedData.parents.toUpperCase().trim();
+
+      if (!extractedData.middleName || extractedData.middleName.trim() === '' || extractedData.middleName === '""' || extractedData.middleName === '-') {
+        extractedData.middleName = '';
+      } else {
+        extractedData.middleName = extractedData.middleName.toUpperCase().trim();
+      }
+
+      if (!extractedData.firstNames || extractedData.firstNames.trim() === '') {
+        const parts = [extractedData.firstName, extractedData.middleName].filter(Boolean);
+        extractedData.firstNames = parts.join(' ');
+      }
+      if (!extractedData.fullName || extractedData.fullName.trim() === '') {
+        const parts = [extractedData.surname, extractedData.firstName, extractedData.middleName].filter(Boolean);
+        extractedData.fullName = parts.join(' ');
+      }
+
+      // 7. Default Nationality & Gender
+      if (!extractedData.nationality || extractedData.nationality.trim() === '' || extractedData.nationality === '-') {
+        extractedData.nationality = 'Brazilian';
+      }
+      if (!extractedData.gender || extractedData.gender === '-' || extractedData.gender.toLowerCase() === 'not stated') {
+        extractedData.gender = 'Not stated';
+      }
+      extractedData.sex = extractedData.gender;
+
+      // 8. Ensure all other Brazil fields default to '-' if empty
+      const idFields = ['cardNumber', 'idDocument', 'cpf', 'parents', 'firstObtained', 'address', 'placeOfBirth'];
+      idFields.forEach(f => {
+        if (!extractedData[f] || typeof extractedData[f] !== 'string' || extractedData[f].trim() === '' || extractedData[f] === '""') {
+          extractedData[f] = '-';
+        }
+      });
     }
 
     const cd = extractedData.classDescriptions;
     if (!cd || typeof cd !== 'string' || cd.trim() === '' || cd.trim() === '-') {
       if (extractedData.class) {
-        extractedData.classDescriptions = generateClassDescriptions(extractedData.class);
+        if (matchedKey === 'brazil' || matchedKey === 'brasil') {
+          extractedData.classDescriptions = generateBrazilClassDescriptions(extractedData.class);
+        } else {
+          extractedData.classDescriptions = generateClassDescriptions(extractedData.class);
+        }
       }
     }
   }
