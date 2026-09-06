@@ -675,6 +675,27 @@ function App() {
           name: l.name,
           displayName: l.name.replace(prefix, '')
         }));
+
+        // Sort ascending by order number (menor al mayor)
+        const getOrderNumber = (str) => {
+          if (!str) return Infinity;
+          const match = str.match(/\b[A-Za-z]?(\d{1,8})\b/) || str.match(/\d+/);
+          if (match) {
+            const num = parseInt(match[1] || match[0], 10);
+            if (!isNaN(num)) return num;
+          }
+          return Infinity;
+        };
+
+        progress.sort((a, b) => {
+          const numA = getOrderNumber(a.displayName);
+          const numB = getOrderNumber(b.displayName);
+          if (numA !== numB) {
+            return numA - numB;
+          }
+          return a.displayName.localeCompare(b.displayName, undefined, { numeric: true, sensitivity: 'base' });
+        });
+
         setActiveLabels(progress);
       }
     } catch (err) {
