@@ -67,18 +67,15 @@ const isRowFilled = (row, tab) => {
   
   const ignoredValues = ['jc', 'alex', 'trans', 'traductor', 'none', '-', '--', 'n/a', 'nombre', 'client', 'cliente', 'name', 'customer', 'total', 'suma', 'resumen', 'notas', 'observaciones'];
   
-  // Both 1HRGT and RVA: Column G (index 2) is Client Name, Column F (index 1) is TRANS
-  const colG = String(row[2] || '').trim();
-  if (colG !== '' && !ignoredValues.includes(colG.toLowerCase())) {
-    return true;
+  if (tab === '1HRGT') {
+    // 1HRGT: Column G (index 2) is Client Name
+    const colG = String(row[2] || '').trim();
+    return colG !== '' && !ignoredValues.includes(colG.toLowerCase());
+  } else {
+    // RVA: Column F (index 1) is Client Name
+    const colF = String(row[1] || '').trim();
+    return colF !== '' && !ignoredValues.includes(colF.toLowerCase());
   }
-
-  const colF = String(row[1] || '').trim();
-  if (colF !== '' && !ignoredValues.includes(colF.toLowerCase())) {
-    return true;
-  }
-  
-  return false;
 };
 
 // Helper: Finds maximum DL number in a sheet range
@@ -613,10 +610,23 @@ export default function AutoOrganizeTab({ token, sheetName, onRefreshTrigger, ha
             const currentPrice = k === 0 ? order.price : '$0';
             const currentDL = order.allocatedDLs[k] || '';
 
-            sheetUpdates.push({
-              range: `${order.tab}!E${currentRow}:K${currentRow}`,
-              values: [[currentDL, "JC", order.fullName, order.country, order.language, order.paymentMethod, currentPrice]]
-            });
+            if (order.tab === '1HRGT') {
+              // 1HRGT: E=DL, F=TRANS ("JC"), G=Client, H=Country, I=Language, J=Payment, K=Price
+              sheetUpdates.push({
+                range: `${order.tab}!E${currentRow}:K${currentRow}`,
+                values: [[currentDL, "JC", order.fullName, order.country, order.language, order.paymentMethod, currentPrice]]
+              });
+            } else {
+              // RVA: E=DL, F=Client, G=Country, H=Language, I=Payment, J=Price, N=TRANS ("JC")
+              sheetUpdates.push({
+                range: `${order.tab}!E${currentRow}:J${currentRow}`,
+                values: [[currentDL, order.fullName, order.country, order.language, order.paymentMethod, currentPrice]]
+              });
+              sheetUpdates.push({
+                range: `${order.tab}!N${currentRow}`,
+                values: [["JC"]]
+              });
+            }
           }
 
           const updateRes = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${order.spreadsheetId}/values:batchUpdate`, {

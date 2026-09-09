@@ -71,18 +71,15 @@ export const isRowFilled = (row, tab) => {
   
   const ignoredValues = ['jc', 'alex', 'trans', 'traductor', 'none', '-', '--', 'n/a', 'nombre', 'client', 'cliente', 'name', 'customer', 'total', 'suma', 'resumen', 'notas', 'observaciones'];
   
-  // Both 1HRGT and RVA: Column G (index 2) is Client Name, Column F (index 1) is TRANS
-  const colG = String(row[2] || '').trim();
-  if (colG !== '' && !ignoredValues.includes(colG.toLowerCase())) {
-    return true;
+  if (tab === '1HRGT') {
+    // 1HRGT: Column G (index 2) is Client Name
+    const colG = String(row[2] || '').trim();
+    return colG !== '' && !ignoredValues.includes(colG.toLowerCase());
+  } else {
+    // RVA: Column F (index 1) is Client Name
+    const colF = String(row[1] || '').trim();
+    return colF !== '' && !ignoredValues.includes(colF.toLowerCase());
   }
-
-  const colF = String(row[1] || '').trim();
-  if (colF !== '' && !ignoredValues.includes(colF.toLowerCase())) {
-    return true;
-  }
-  
-  return false;
 };
 
 // Helper: Finds maximum DL number in a sheet range
@@ -665,10 +662,23 @@ function App() {
         let currentPrice = i === 0 ? price : '$0';
         let currentDL = (availableTrackings && availableTrackings[i]) || (i === 0 ? trackingId : '');
         
-        sheetValues.push({
-          range: `${tab}!E${rowIdx + i}:K${rowIdx + i}`,
-          values: [[currentDL, "JC", client, country, language, "Stripe", currentPrice]]
-        });
+        if (tab === '1HRGT') {
+          // 1HRGT: E=DL, F=TRANS ("JC"), G=Client, H=Country, I=Language, J=Payment, K=Price
+          sheetValues.push({
+            range: `${tab}!E${rowIdx + i}:K${rowIdx + i}`,
+            values: [[currentDL, "JC", client, country, language, "Stripe", currentPrice]]
+          });
+        } else {
+          // RVA: E=DL, F=Client, G=Country, H=Language, I=Payment, J=Price, N=TRANS ("JC")
+          sheetValues.push({
+            range: `${tab}!E${rowIdx + i}:J${rowIdx + i}`,
+            values: [[currentDL, client, country, language, "Stripe", currentPrice]]
+          });
+          sheetValues.push({
+            range: `${tab}!N${rowIdx + i}`,
+            values: [["JC"]]
+          });
+        }
       }
 
       const updateRes = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values:batchUpdate`, {
