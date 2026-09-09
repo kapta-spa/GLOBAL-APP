@@ -37,6 +37,64 @@ const translateToEnglish = (text) => {
 
 const buildRegex = (keywords) => new RegExp(`(?:^|[\\s>])(?:${keywords})[\\s]*(?:[:：][\\s]*|[\\s]+)([^\\n<]+)`, 'i');
 
+// Helper: Checks if a row is a header/metadata row
+const isHeaderRow = (row, tab) => {
+  if (!row || !Array.isArray(row) || row.length === 0) return false;
+  const headerKeywords = ['nombre', 'client', 'cliente', 'name', 'customer', 'dl', 'dl#', 'dl number', 'tracking', 'order', 'orden', 'pais', 'país', 'country', 'idioma', 'language', 'precio', 'price', 'total', 'traductor', 'translator', 'traduccion', 'traducción', 'suma', 'resumen', 'notas', 'observaciones'];
+  
+  const clientCell = (tab === '1HRGT' ? row[2] : row[1]) || '';
+  const cleanClient = String(clientCell).trim().toLowerCase();
+  if (headerKeywords.includes(cleanClient)) return true;
+
+  const dlCell = String(row[0] || '').trim().toLowerCase();
+  if (['dl', 'dl#', 'dl number', 'tracking', 'order', 'n°', 'no.', 'numero', 'número'].includes(dlCell)) return true;
+
+  return false;
+};
+
+// Helper: Checks if a row is occupied by an existing client
+const isRowFilled = (row, tab) => {
+  if (!row || !Array.isArray(row) || row.length === 0) return false;
+  if (isHeaderRow(row, tab)) return false;
+  
+  const clientCell = tab === '1HRGT' ? row[2] : row[1];
+  if (!clientCell) return false;
+  
+  const text = String(clientCell).trim();
+  if (text === '' || text === '-' || text === '--' || text === 'N/A' || text === 'n/a') return false;
+  
+  const lower = text.toLowerCase();
+  if (['nombre', 'client', 'cliente', 'name', 'customer', 'total', 'suma', 'resumen', 'notas', 'observaciones'].includes(lower)) {
+    return false;
+  }
+  
+  return true;
+};
+
+// Helper: Finds maximum DL number in a sheet range
+const getMaxDLNumber = (values) => {
+  let maxDL = 0;
+  let hasB = true;
+  if (Array.isArray(values)) {
+    for (const row of values) {
+      if (!row || !row[0]) continue;
+      const str = String(row[0]).trim();
+      const match = str.match(/([A-Za-z]*)[\s-]*(\d+)/);
+      if (match) {
+        const num = parseInt(match[2], 10);
+        if (!isNaN(num) && num > maxDL && num < 1000000) {
+          maxDL = num;
+          if (match[1]) {
+            hasB = match[1].toUpperCase().includes('B');
+          }
+        }
+      }
+    }
+  }
+  if (maxDL === 0) maxDL = 5000;
+  return { maxDL, prefix: hasB ? 'B' : '' };
+};
+
 export default function AutoOrganizeTab({ token, sheetName, onRefreshTrigger, handleAuthError, onNavigateTab }) {
   const [candidates, setCandidates] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -150,21 +208,56 @@ export default function AutoOrganizeTab({ token, sheetName, onRefreshTrigger, ha
 
       // 3. Connect to Google Sheet to check duplicates and find available DL numbers
       const cleanSheetName = (sheetName || 'July 2026').trim();
-      const escapedName = cleanSheetName.replace(/'/g, "\\'");
-      const driveQuery = `(name = '${escapedName}' or name contains '${escapedName}') and mimeType = 'application/vnd.google-apps.spreadsheet' and trashed = false`;
-      const driveUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(driveQuery)}&supportsAllDrives=true&includeItemsFromAllDrives=true&fields=files(id,name)`;
-      
-      const driveRes = await fetch(driveUrl, { headers: { Authorization: `Bearer ${token}` } });
-      if (driveRes.status === 401) handleAuthError(driveRes.status);
-      const driveData = await driveRes.json();
-
       let spreadsheetId = null;
       let sheet1HRValues = [];
       let sheetRVAValues = [];
 
-      if (driveData.files && driveData.files.length > 0) {
-        const exactMatch = driveData.files.find(f => f.name.trim().toLowerCase() === cleanSheetName.toLowerCase());
-        spreadsheetId = exactMatch ? exactMatch.id : driveData.files[0].id;
+      if (cleanSheetName) {
+        const escapedName = cleanSheetName.replace(/'/g, "\\'");
+        const driveQuery = `(name = '${escapedName}' or name contains '${escapedName}') and mimeType = 'application/vnd.google-apps.spreadsheet' and trashed = false`;
+        const driveUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(driveQuery)}&supportsAllDrives=true&includeItemsFromAllDrives=true&fields=files(id,name)`;
+        
+        const driveRes = await fetch(driveUrl, { headers: { Authorization: `Bearer ${token}` } });
+        if (driveRes.status === 401) handleAuthError(driveRes.status);
+        if (driveRes.ok) {
+          const driveData = await driveRes.json();
+          if (driveData.files && driveData.files.length > 0) {
+            const exactMatch = driveData.files.find(f => f.name.trim().toLowerCase() === cleanSheetName.toLowerCase());
+            spreadsheetId = exactMatch ? exactMatch.id : driveData.files[0].id;
+          }
+        }
+      }
+
+      // Fallback: discover recent spreadsheet with 1HRGT/RVA tabs
+      if (!spreadsheetId) {
+        const recentRes = await fetch(
+          `https://www.googleapis.com/drive/v3/files?q=mimeType%3D'application%2Fvnd.google-apps.spreadsheet'%20and%20trashed%3Dfalse&orderBy=modifiedTime%20desc&pageSize=10&supportsAllDrives=true&includeItemsFromAllDrives=true&fields=files(id,name)`,
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+        if (recentRes.status === 401) handleAuthError(recentRes.status);
+        if (recentRes.ok) {
+          const recentData = await recentRes.json();
+          for (const file of (recentData.files || [])) {
+            try {
+              const metaRes = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${file.id}?fields=sheets.properties.title`, {
+                headers: { Authorization: `Bearer ${token}` }
+              });
+              if (metaRes.ok) {
+                const metaData = await metaRes.json();
+                const titles = (metaData.sheets || []).map(s => s.properties?.title);
+                if (titles.includes('1HRGT') || titles.includes('RVA')) {
+                  spreadsheetId = file.id;
+                  break;
+                }
+              }
+            } catch (e) {
+              // ignore
+            }
+          }
+        }
+      }
+
+      if (spreadsheetId) {
         setSheetInfo({ id: spreadsheetId, name: cleanSheetName });
 
         // Fetch both tabs
@@ -176,6 +269,10 @@ export default function AutoOrganizeTab({ token, sheetName, onRefreshTrigger, ha
             headers: { Authorization: `Bearer ${token}` }
           })
         ]);
+
+        if (res1HR.status === 401 || resRVA.status === 401) {
+          handleAuthError(401);
+        }
 
         if (res1HR.ok) {
           const d1 = await res1HR.json();
@@ -190,96 +287,77 @@ export default function AutoOrganizeTab({ token, sheetName, onRefreshTrigger, ha
       // Collect existing client names in Sheet for duplicate detection
       const existing1HRClients = [];
       sheet1HRValues.forEach((row, idx) => {
-        // E: DL (row[0]), G: CLIENT (row[2])
-        if (row[2] && row[2].trim() && row[2].trim().toLowerCase() !== 'nombre' && row[2].trim().toLowerCase() !== 'client') {
-          existing1HRClients.push({ name: row[2].trim().toLowerCase(), rowIdx: idx + 1, tab: '1HRGT', original: row[2].trim() });
+        if (isRowFilled(row, '1HRGT')) {
+          existing1HRClients.push({ name: String(row[2]).trim().toLowerCase(), rowIdx: idx + 1, tab: '1HRGT', original: String(row[2]).trim() });
         }
       });
 
       const existingRVAClients = [];
       sheetRVAValues.forEach((row, idx) => {
-        // E: DL (row[0]), F: CLIENT (row[1])
-        if (row[1] && row[1].trim() && row[1].trim().toLowerCase() !== 'nombre' && row[1].trim().toLowerCase() !== 'client') {
-          existingRVAClients.push({ name: row[1].trim().toLowerCase(), rowIdx: idx + 1, tab: 'RVA', original: row[1].trim() });
+        if (isRowFilled(row, 'RVA')) {
+          existingRVAClients.push({ name: String(row[1]).trim().toLowerCase(), rowIdx: idx + 1, tab: 'RVA', original: String(row[1]).trim() });
         }
       });
 
-      // Find initial free consecutive rows
+      // Find last filled client row in 1HRGT and RVA
       let lastFilled1HRIdx = -1;
       for (let i = 0; i < sheet1HRValues.length; i++) {
-        const row = sheet1HRValues[i];
-        if (row[2] && row[2].trim() !== '' && !['nombre', 'client', 'cliente'].includes(row[2].trim().toLowerCase())) {
+        if (isRowFilled(sheet1HRValues[i], '1HRGT')) {
           lastFilled1HRIdx = i;
         }
       }
+      const start1HRIdx = lastFilled1HRIdx >= 0 ? lastFilled1HRIdx + 1 : 1;
 
       let lastFilledRVAIdx = -1;
       for (let i = 0; i < sheetRVAValues.length; i++) {
-        const row = sheetRVAValues[i];
-        if (row[1] && row[1].trim() !== '' && !['nombre', 'client', 'cliente'].includes(row[1].trim().toLowerCase())) {
+        if (isRowFilled(sheetRVAValues[i], 'RVA')) {
           lastFilledRVAIdx = i;
         }
       }
+      const startRVAIdx = lastFilledRVAIdx >= 0 ? lastFilledRVAIdx + 1 : 1;
 
-      // Collect available consecutive rows pool
+      // Find highest DL in both sheets
+      const { maxDL: maxDL1HR, prefix: prefix1HR } = getMaxDLNumber(sheet1HRValues);
+      const { maxDL: maxDLRVA, prefix: prefixRVA } = getMaxDLNumber(sheetRVAValues);
+
+      // Collect strictly consecutive rows pool for 1HRGT
       let pool1HR = [];
-      for (let i = lastFilled1HRIdx + 1; i < sheet1HRValues.length; i++) {
+      let currentDLNum1HR = maxDL1HR;
+      for (let i = start1HRIdx; pool1HR.length < 60; i++) {
         const row = sheet1HRValues[i];
-        if (row[0] && row[0].trim() !== '') {
-          pool1HR.push({ rowIdx: i + 1, dl: row[0].trim() });
+        let dl = '';
+        if (row && row[0] && String(row[0]).trim() !== '') {
+          dl = String(row[0]).trim();
+          const m = dl.match(/(\d+)/);
+          if (m) {
+            const num = parseInt(m[1], 10);
+            if (num > currentDLNum1HR) currentDLNum1HR = num;
+          }
+        } else {
+          currentDLNum1HR++;
+          dl = `${prefix1HR}${currentDLNum1HR}`;
         }
+        pool1HR.push({ rowIdx: i + 1, dl });
       }
 
-      // Find highest DL in 1HRGT to extend pool if needed
-      let maxDL1HR = 0;
-      sheet1HRValues.forEach(row => {
-        const m = String(row[0] || '').match(/B(\d+)/i);
-        if (m) maxDL1HR = Math.max(maxDL1HR, parseInt(m[1], 10));
-      });
-      if (maxDL1HR === 0) maxDL1HR = 5000;
-
-      if (pool1HR.length < 30) {
-        let nextRow = sheet1HRValues.length + 1;
-        let nextDLNum = maxDL1HR + 1;
-        if (pool1HR.length > 0) {
-          const lastInPool = pool1HR[pool1HR.length - 1];
-          nextRow = lastInPool.rowIdx + 1;
-          const m = String(lastInPool.dl).match(/B(\d+)/i);
-          if (m) nextDLNum = parseInt(m[1], 10) + 1;
-        }
-        while (pool1HR.length < 30) {
-          pool1HR.push({ rowIdx: nextRow++, dl: `B${nextDLNum++}` });
-        }
-      }
-
+      // Collect strictly consecutive rows pool for RVA
       let poolRVA = [];
-      for (let i = lastFilledRVAIdx + 1; i < sheetRVAValues.length; i++) {
+      let currentDLNumRVA = maxDLRVA;
+      for (let i = startRVAIdx; poolRVA.length < 60; i++) {
         const row = sheetRVAValues[i];
-        if (row[0] && row[0].trim() !== '') {
-          poolRVA.push({ rowIdx: i + 1, dl: row[0].trim() });
+        let dl = '';
+        if (row && row[0] && String(row[0]).trim() !== '') {
+          dl = String(row[0]).trim();
+          const m = dl.match(/(\d+)/);
+          if (m) {
+            const num = parseInt(m[1], 10);
+            if (num > currentDLNumRVA) currentDLNumRVA = num;
+          }
+        } else {
+          currentDLNumRVA++;
+          dl = `${prefixRVA}${currentDLNumRVA}`;
         }
-      }
-
-      // Find highest DL in RVA to extend pool if needed
-      let maxDLRVA = 0;
-      sheetRVAValues.forEach(row => {
-        const m = String(row[0] || '').match(/B(\d+)/i);
-        if (m) maxDLRVA = Math.max(maxDLRVA, parseInt(m[1], 10));
-      });
-      if (maxDLRVA === 0) maxDLRVA = 5000;
-
-      if (poolRVA.length < 30) {
-        let nextRow = sheetRVAValues.length + 1;
-        let nextDLNum = maxDLRVA + 1;
-        if (poolRVA.length > 0) {
-          const lastInPool = poolRVA[poolRVA.length - 1];
-          nextRow = lastInPool.rowIdx + 1;
-          const m = String(lastInPool.dl).match(/B(\d+)/i);
-          if (m) nextDLNum = parseInt(m[1], 10) + 1;
-        }
-        while (poolRVA.length < 30) {
-          poolRVA.push({ rowIdx: nextRow++, dl: `B${nextDLNum++}` });
-        }
+        poolRVA.push({ rowIdx: i + 1, dl });
       }
 
       // 4. Parse Orders and match with sequential DLs and Payments
@@ -476,16 +554,17 @@ export default function AutoOrganizeTab({ token, sheetName, onRefreshTrigger, ha
           for (let k = 0; k < order.licensesCount; k++) {
             const currentRow = order.startRowIdx + k;
             const currentPrice = k === 0 ? order.price : '$0';
+            const currentDL = order.allocatedDLs[k] || '';
 
             if (order.tab === '1HRGT') {
               sheetUpdates.push({
-                range: `${order.tab}!F${currentRow}:K${currentRow}`,
-                values: [["JC", order.fullName, order.country, order.language, order.paymentMethod, currentPrice]]
+                range: `${order.tab}!E${currentRow}:K${currentRow}`,
+                values: [[currentDL, "JC", order.fullName, order.country, order.language, order.paymentMethod, currentPrice]]
               });
             } else {
               sheetUpdates.push({
-                range: `${order.tab}!F${currentRow}:J${currentRow}`,
-                values: [[order.fullName, order.country, order.language, order.paymentMethod, currentPrice]]
+                range: `${order.tab}!E${currentRow}:J${currentRow}`,
+                values: [[currentDL, order.fullName, order.country, order.language, order.paymentMethod, currentPrice]]
               });
             }
           }

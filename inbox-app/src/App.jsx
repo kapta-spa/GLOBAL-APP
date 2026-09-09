@@ -41,10 +41,89 @@ class ErrorBoundary extends React.Component {
   }
 }
 
+// Helper: Checks if a row is a header/metadata row
+export const isHeaderRow = (row, tab) => {
+  if (!row || !Array.isArray(row) || row.length === 0) return false;
+  const headerKeywords = ['nombre', 'client', 'cliente', 'name', 'customer', 'dl', 'dl#', 'dl number', 'tracking', 'order', 'orden', 'pais', 'país', 'country', 'idioma', 'language', 'precio', 'price', 'total', 'traductor', 'translator', 'traduccion', 'traducción', 'suma', 'resumen', 'notas', 'observaciones'];
+  
+  // Check client column
+  const clientCell = (tab === '1HRGT' ? row[2] : row[1]) || '';
+  const cleanClient = String(clientCell).trim().toLowerCase();
+  if (headerKeywords.includes(cleanClient)) return true;
+
+  // Check DL column
+  const dlCell = String(row[0] || '').trim().toLowerCase();
+  if (['dl', 'dl#', 'dl number', 'tracking', 'order', 'n°', 'no.', 'numero', 'número'].includes(dlCell)) return true;
+
+  return false;
+};
+
+// Helper: Checks if a row is occupied by an existing client
+export const isRowFilled = (row, tab) => {
+  if (!row || !Array.isArray(row) || row.length === 0) return false;
+  if (isHeaderRow(row, tab)) return false;
+  
+  // 1HRGT: Column G (index 2) is Client Name
+  // RVA: Column F (index 1) is Client Name
+  const clientCell = tab === '1HRGT' ? row[2] : row[1];
+  if (!clientCell) return false;
+  
+  const text = String(clientCell).trim();
+  if (text === '' || text === '-' || text === '--' || text === 'N/A' || text === 'n/a') return false;
+  
+  const lower = text.toLowerCase();
+  if (['nombre', 'client', 'cliente', 'name', 'customer', 'total', 'suma', 'resumen', 'notas', 'observaciones'].includes(lower)) {
+    return false;
+  }
+  
+  return true;
+};
+
+// Helper: Finds maximum DL number in a sheet range
+export const getMaxDLNumber = (values) => {
+  let maxDL = 0;
+  let hasB = true;
+  if (Array.isArray(values)) {
+    for (const row of values) {
+      if (!row || !row[0]) continue;
+      const str = String(row[0]).trim();
+      const match = str.match(/([A-Za-z]*)[\s-]*(\d+)/);
+      if (match) {
+        const num = parseInt(match[2], 10);
+        if (!isNaN(num) && num > maxDL && num < 1000000) {
+          maxDL = num;
+          if (match[1]) {
+            hasB = match[1].toUpperCase().includes('B');
+          }
+        }
+      }
+    }
+  }
+  if (maxDL === 0) maxDL = 5000;
+  return { maxDL, prefix: hasB ? 'B' : '' };
+};
+
 function App() {
-  // Persisted Auth States
-  const [token, setToken] = useState(() => localStorage.getItem('google_token') || null);
+  // Persisted Auth States with expiration check (Google OAuth token valid for ~1 hour)
+  const [token, setToken] = useState(() => {
+    const savedToken = localStorage.getItem('google_token');
+    const savedTime = localStorage.getItem('google_token_time');
+    // If token is older than 50 minutes (3000000 ms), treat as expired
+    if (savedToken && savedTime && Date.now() - parseInt(savedTime, 10) > 3000000) {
+      localStorage.removeItem('google_token');
+      localStorage.removeItem('google_user');
+      localStorage.removeItem('google_token_time');
+      return null;
+    }
+    return savedToken || null;
+  });
+  
   const [user, setUser] = useState(() => {
+    const savedToken = localStorage.getItem('google_token');
+    const savedTime = localStorage.getItem('google_token_time');
+    if (!savedToken || (savedTime && Date.now() - parseInt(savedTime, 10) > 3000000)) {
+      return null;
+    }
     const saved = localStorage.getItem('google_user');
     return saved ? JSON.parse(saved) : null;
   });
@@ -138,6 +217,7 @@ function App() {
     onSuccess: (codeResponse) => {
       setToken(codeResponse.access_token);
       localStorage.setItem('google_token', codeResponse.access_token);
+      localStorage.setItem('google_token_time', Date.now().toString());
       fetchUserProfile(codeResponse.access_token);
     },
     onError: (error) => console.log('Login Failed:', error),
@@ -153,6 +233,7 @@ function App() {
     setSelectedIds(new Set());
     localStorage.removeItem('google_token');
     localStorage.removeItem('google_user');
+    localStorage.removeItem('google_token_time');
   };
 
   const fetchUserProfile = async (accessToken) => {
@@ -318,9 +399,13 @@ function App() {
     }
   };
 
-  // NEW: Registration Flow
+  // Registration Flow
   const handleRegisterClick = async () => {
     if (selectedIds.size === 0) return;
+    if (!token) {
+      alert("No estás autenticado. Por favor inicia sesión con Google.");
+      return;
+    }
     setProcessing(true);
     try {
       // 1. Fetch full email to parse data
@@ -341,80 +426,84 @@ function App() {
         const msgData = await msgRes.json();
 
         let bodyData = '';
-        if (msgData.payload.parts) {
+        if (msgData.payload?.parts) {
           for (let part of msgData.payload.parts) {
-            if (part.mimeType === 'text/plain' && part.body.data) {
+            if (part.mimeType === 'text/plain' && part.body?.data) {
               bodyData = part.body.data;
               break;
-            } else if (part.mimeType === 'text/html' && part.body.data) {
+            } else if (part.mimeType === 'text/html' && part.body?.data) {
               bodyData = part.body.data; // fallback
             } else if (part.parts) {
               for (let subPart of part.parts) {
-                 if (subPart.mimeType === 'text/plain' && subPart.body.data) {
+                 if (subPart.mimeType === 'text/plain' && subPart.body?.data) {
                     bodyData = subPart.body.data; break;
                  }
               }
             }
           }
-        } else if (msgData.payload.body && msgData.payload.body.data) {
+        } else if (msgData.payload?.body?.data) {
           bodyData = msgData.payload.body.data;
         }
 
         let emailText = '';
         if (bodyData) {
-          emailText = decodeURIComponent(escape(atob(bodyData.replace(/-/g, '+').replace(/_/g, '/'))));
+          try {
+            emailText = decodeURIComponent(escape(atob(bodyData.replace(/-/g, '+').replace(/_/g, '/'))));
+          } catch (e) {
+            emailText = msgData.snippet || '';
+          }
         } else {
           emailText = msgData.snippet || '';
         }
 
         let cleanText = emailText.replace(/<[^>]+>/g, '\n').replace(/&nbsp;/g, ' ').replace(/\r\n/g, '\n').replace(/\n+/g, '\n');
 
-          const cleanExtracted = (text) => {
-            if (!text) return '';
-            let cleaned = text.split(/https?:\/\//i)[0]; // remove URLs and everything after
-            cleaned = cleaned.replace(/<[^>]+>/g, ''); // remove HTML
-            cleaned = cleaned.replace(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/gi, ''); // remove emails
-            return cleaned.trim();
+        const cleanExtracted = (text) => {
+          if (!text) return '';
+          let cleaned = text.split(/https?:\/\//i)[0]; // remove URLs and everything after
+          cleaned = cleaned.replace(/<[^>]+>/g, ''); // remove HTML
+          cleaned = cleaned.replace(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/gi, ''); // remove emails
+          return cleaned.trim();
+        };
+
+        const translateToEnglish = (text) => {
+          if (!text) return '';
+          const map = {
+            'español': 'Spanish', 'espanol': 'Spanish', 'inglés': 'English', 'ingles': 'English',
+            'francés': 'French', 'frances': 'French', 'alemán': 'German', 'aleman': 'German',
+            'italiano': 'Italian', 'portugués': 'Portuguese', 'portugues': 'Portuguese',
+            'japonés': 'Japanese', 'japones': 'Japanese', 'chino': 'Chinese', 'coreano': 'Korean',
+            'ruso': 'Russian', 'árabe': 'Arabic', 'arabe': 'Arabic', 'holandés': 'Dutch', 'holandes': 'Dutch',
+            'méxico': 'Mexico', 'mexico': 'Mexico', 'españa': 'Spain', 'espana': 'Spain',
+            'francia': 'France', 'alemania': 'Germany', 'italia': 'Italy',
+            'japón': 'Japan', 'japon': 'Japan', 'china': 'China', 'corea': 'Korea',
+            'brasil': 'Brazil', 'rusia': 'Russia', 'suiza': 'Switzerland', 'suecia': 'Sweden',
+            'holanda': 'Netherlands', 'países bajos': 'Netherlands', 'paises bajos': 'Netherlands',
+            'bélgica': 'Belgium', 'belgica': 'Belgium', 'dinamarca': 'Denmark',
+            'noruega': 'Norway', 'finlandia': 'Finland', 'polonia': 'Poland',
+            'taiwán': 'Taiwan', 'taiwan': 'Taiwan'
           };
-  
-          const translateToEnglish = (text) => {
-            if (!text) return '';
-            const map = {
-              'español': 'Spanish', 'espanol': 'Spanish', 'inglés': 'English', 'ingles': 'English',
-              'francés': 'French', 'frances': 'French', 'alemán': 'German', 'aleman': 'German',
-              'italiano': 'Italian', 'portugués': 'Portuguese', 'portugues': 'Portuguese',
-              'japonés': 'Japanese', 'japones': 'Japanese', 'chino': 'Chinese', 'coreano': 'Korean',
-              'ruso': 'Russian', 'árabe': 'Arabic', 'arabe': 'Arabic', 'holandés': 'Dutch', 'holandes': 'Dutch',
-              'méxico': 'Mexico', 'mexico': 'Mexico', 'españa': 'Spain', 'espana': 'Spain',
-              'francia': 'France', 'alemania': 'Germany', 'italia': 'Italy',
-              'japón': 'Japan', 'japon': 'Japan', 'china': 'China', 'corea': 'Korea',
-              'brasil': 'Brazil', 'rusia': 'Russia', 'suiza': 'Switzerland', 'suecia': 'Sweden',
-              'holanda': 'Netherlands', 'países bajos': 'Netherlands', 'paises bajos': 'Netherlands',
-              'bélgica': 'Belgium', 'belgica': 'Belgium', 'dinamarca': 'Denmark',
-              'noruega': 'Norway', 'finlandia': 'Finland', 'polonia': 'Poland',
-              'taiwán': 'Taiwan', 'taiwan': 'Taiwan'
-            };
-            const lower = text.toLowerCase();
-            return map[lower] || text;
-          };
-  
-          const buildRegex = (keywords) => new RegExp(`(?:^|[\\s>])(?:${keywords})[\\s]*(?:[:：][\\s]*|[\\s]+)([^\\n<]+)`, 'i');
-          
-          const nombreMatch = cleanText.match(buildRegex('Nombre|First Name|Name|Vorname|名前|氏名'));
-          const apellidoMatch = cleanText.match(buildRegex('Apellido|Last Name|Surname|Nachname|苗字'));
-          const countryMatch = cleanText.match(buildRegex('Land des[^:]*|Country[^:]*|País|Pais|国|発行国'));
-          const languageMatch = cleanText.match(buildRegex('Sprache des[^:]*|Language[^:]*|Idioma|言語'));
-          const priceMatch = cleanText.match(/-\s*\$(\d+)/) || cleanText.match(/Price.*\$(\d+)/i) || cleanText.match(/\$(\d+)/);
+          const lower = text.toLowerCase().trim();
+          return map[lower] || text.trim();
+        };
+
+        const buildRegex = (keywords) => new RegExp(`(?:^|[\\s>])(?:${keywords})[\\s]*(?:[:：][\\s]*|[\\s]+)([^\\n<]+)`, 'i');
+        
+        const nombreMatch = cleanText.match(buildRegex('Nombre|First Name|Name|Vorname|名前|氏名'));
+        const apellidoMatch = cleanText.match(buildRegex('Apellido|Last Name|Surname|Nachname|苗字'));
+        const countryMatch = cleanText.match(buildRegex('Land des[^:]*|Country[^:]*|País|Pais|国|発行国'));
+        const languageMatch = cleanText.match(buildRegex('Sprache des[^:]*|Language[^:]*|Idioma|言語'));
+        const priceMatch = cleanText.match(/-\s*\$(\d+)/) || cleanText.match(/Price.*\$(\d+)/i) || cleanText.match(/\$(\d+)/);
 
         if (nombreMatch || apellidoMatch || priceMatch) {
           nombre = cleanExtracted(nombreMatch ? nombreMatch[1] : '');
           apellido = cleanExtracted(apellidoMatch ? apellidoMatch[1] : '');
-          clientName = `${nombre} ${apellido}`.trim();
+          clientName = `${nombre} ${apellido}`.trim() || cleanExtracted(nombreMatch ? nombreMatch[1] : '');
           country = translateToEnglish(cleanExtracted(countryMatch ? countryMatch[1] : ''));
           language = translateToEnglish(cleanExtracted(languageMatch ? languageMatch[1] : ''));
-          price = priceMatch ? `$${priceMatch[1]}` : '';
+          price = priceMatch ? `$${priceMatch[1]}` : '$65';
           
-          if (emailText.includes('RVA') || (msgData.snippet && msgData.snippet.includes('RVA'))) {
+          if (cleanText.includes('RVA') || (msgData.snippet && msgData.snippet.includes('RVA')) || /RVA/i.test(msgData.payload?.headers?.find(h => h.name === 'Subject')?.value || '')) {
             tab = 'RVA';
           }
           foundData = true;
@@ -422,78 +511,102 @@ function App() {
         }
       }
 
-
-
       // 3. Find Spreadsheet ID
       const cleanSheetName = (sheetName || '').trim();
-      const escapedName = cleanSheetName.replace(/'/g, "\\'");
-      
-      // Search for exact match or substring match, including shared drives
-      const driveQuery = `(name = '${escapedName}' or name contains '${escapedName}') and mimeType = 'application/vnd.google-apps.spreadsheet' and trashed = false`;
-      const driveUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(driveQuery)}&supportsAllDrives=true&includeItemsFromAllDrives=true&fields=files(id,name)`;
+      let spreadsheetId = null;
 
-      const driveRes = await fetch(driveUrl, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-
-      if (driveRes.status === 401 || driveRes.status === 403) {
-        const errData = await driveRes.json().catch(() => ({}));
-        throw new Error(`Error de permisos en Google Drive (${driveRes.status}): ${errData.error?.message || 'Acceso denegado. Vuelve a iniciar sesión.'}`);
+      if (cleanSheetName) {
+        const escapedName = cleanSheetName.replace(/'/g, "\\'");
+        const driveQuery = `(name = '${escapedName}' or name contains '${escapedName}') and mimeType = 'application/vnd.google-apps.spreadsheet' and trashed = false`;
+        const driveUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(driveQuery)}&supportsAllDrives=true&includeItemsFromAllDrives=true&fields=files(id,name)`;
+        const driveRes = await fetch(driveUrl, { headers: { Authorization: `Bearer ${token}` } });
+        if (driveRes.status === 401) handleAuthError(driveRes.status);
+        if (driveRes.ok) {
+          const driveData = await driveRes.json();
+          if (driveData.files && driveData.files.length > 0) {
+            const exactMatch = driveData.files.find(f => f.name.trim().toLowerCase() === cleanSheetName.toLowerCase());
+            spreadsheetId = exactMatch ? exactMatch.id : driveData.files[0].id;
+          }
+        }
       }
 
-      const driveData = await driveRes.json();
-      if (!driveData.files || driveData.files.length === 0) {
-        throw new Error(`No se encontró el archivo de Sheets con el nombre "${cleanSheetName}". Verifica que el archivo exista en tu Google Drive (o Unidades Compartidas) y coincida con este nombre.`);
+      // Fallback: discover recent spreadsheet with 1HRGT/RVA tabs
+      if (!spreadsheetId) {
+        const recentRes = await fetch(
+          `https://www.googleapis.com/drive/v3/files?q=mimeType%3D'application%2Fvnd.google-apps.spreadsheet'%20and%20trashed%3Dfalse&orderBy=modifiedTime%20desc&pageSize=10&supportsAllDrives=true&includeItemsFromAllDrives=true&fields=files(id,name)`,
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+        if (recentRes.status === 401) handleAuthError(recentRes.status);
+        if (recentRes.ok) {
+          const recentData = await recentRes.json();
+          for (const file of (recentData.files || [])) {
+            try {
+              const metaRes = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${file.id}?fields=sheets.properties.title`, {
+                headers: { Authorization: `Bearer ${token}` }
+              });
+              if (metaRes.ok) {
+                const metaData = await metaRes.json();
+                const titles = (metaData.sheets || []).map(s => s.properties?.title);
+                if (titles.includes('1HRGT') || titles.includes('RVA')) {
+                  spreadsheetId = file.id;
+                  break;
+                }
+              }
+            } catch (e) {
+              // ignore
+            }
+          }
+        }
       }
 
-      const exactMatch = driveData.files.find(f => f.name.trim().toLowerCase() === cleanSheetName.toLowerCase());
-      const spreadsheetId = exactMatch ? exactMatch.id : driveData.files[0].id;
+      if (!spreadsheetId) {
+        throw new Error(`No se encontró el archivo de Google Sheets "${cleanSheetName}". Verifica que exista en tu Google Drive y que el nombre en Configuración coincida.`);
+      }
 
       // 4. Fetch Sheet Data to find empty row
       const sheetRes = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${tab}!E:K`, {
         headers: { Authorization: `Bearer ${token}` }
       });
+      if (sheetRes.status === 401) handleAuthError(sheetRes.status);
       const sheetData = await sheetRes.json();
       const values = sheetData.values || [];
 
-      let trackingId = '';
-      let targetRowIdx = -1;
-      let lastFilledClientIdx = -1;
+      // Find highest DL number in sheet
+      const { maxDL, prefix } = getMaxDLNumber(values);
 
-      // Find the LAST row that actually has a Client name
+      // Find last filled client row
+      let lastFilledClientIdx = -1;
       for (let i = 0; i < values.length; i++) {
-        const row = values[i];
-        if (tab === '1HRGT') {
-          // E is row[0] (DL#), G is row[2] (Client)
-          if (row[2] && row[2].trim() !== '' && row[2].trim().toLowerCase() !== 'nombre') {
-            lastFilledClientIdx = i;
-          }
-        } else {
-          // RVA: E is row[0], F is row[1] (Client)
-          if (row[1] && row[1].trim() !== '' && row[1].trim().toLowerCase() !== 'nombre') {
-            lastFilledClientIdx = i;
-          }
+        if (isRowFilled(values[i], tab)) {
+          lastFilledClientIdx = i;
         }
       }
 
-      // The target row is the first row AFTER the last filled client that has a DL#
+      // The target row is immediately after the last filled client
+      const startIdx = lastFilledClientIdx >= 0 ? lastFilledClientIdx + 1 : 1;
+      const targetRowIdx = startIdx + 1; // 1-indexed for Sheets
+
+      // Collect available consecutive DLs (at least 6)
       let availableTrackings = [];
-      for (let i = lastFilledClientIdx + 1; i < values.length; i++) {
-         const row = values[i];
-         if (row[0] && row[0].trim() !== '') {
-            if (targetRowIdx === -1) {
-              trackingId = row[0].trim();
-              targetRowIdx = i + 1; // 1-indexed for Sheets
-            }
-            availableTrackings.push(row[0].trim());
-            // We only really need a few trackings (e.g. 4) for the multiple licenses logic
-            if (availableTrackings.length >= 4) break;
-         }
+      let currentDLNum = maxDL;
+      for (let i = startIdx; availableTrackings.length < 6; i++) {
+        const row = values[i];
+        let dl = '';
+        if (row && row[0] && String(row[0]).trim() !== '') {
+          dl = String(row[0]).trim();
+          const m = dl.match(/(\d+)/);
+          if (m) {
+            const num = parseInt(m[1], 10);
+            if (num > currentDLNum) currentDLNum = num;
+          }
+        } else {
+          currentDLNum++;
+          dl = `${prefix}${currentDLNum}`;
+        }
+        availableTrackings.push(dl);
       }
 
-      if (targetRowIdx === -1) {
-        throw new Error(`No se encontró un número libre después del último cliente en la pestaña ${tab}.`);
-      }
+      const trackingId = availableTrackings[0] || `${prefix}${maxDL + 1}`;
 
       let licensesCount = 1;
       let finalTrackingLabel = `${trackingId} ${nombre}`.trim();
@@ -538,22 +651,23 @@ function App() {
   const confirmRegistration = async () => {
     setProcessing(true);
     try {
-      const { tab, rowIdx, country, language, price, spreadsheetId, trackingId, trackingLabel, licenses, nombre, apellido } = previewData;
+      const { tab, rowIdx, country, language, price, spreadsheetId, trackingId, trackingLabel, licenses, nombre, apellido, availableTrackings } = previewData;
       const client = `${nombre || ''} ${apellido || ''}`.trim();
-      let values = [];
+      let sheetValues = [];
 
       for (let i = 0; i < licenses; i++) {
         let currentPrice = i === 0 ? price : '$0';
+        let currentDL = (availableTrackings && availableTrackings[i]) || (i === 0 ? trackingId : '');
         
         if (tab === '1HRGT') {
-          values.push({
-            range: `${tab}!F${rowIdx + i}:K${rowIdx + i}`,
-            values: [["JC", client, country, language, "Stripe", currentPrice]]
+          sheetValues.push({
+            range: `${tab}!E${rowIdx + i}:K${rowIdx + i}`,
+            values: [[currentDL, "JC", client, country, language, "Stripe", currentPrice]]
           });
         } else {
-          values.push({
-            range: `${tab}!F${rowIdx + i}:J${rowIdx + i}`,
-            values: [[client, country, language, "Stripe", currentPrice]]
+          sheetValues.push({
+            range: `${tab}!E${rowIdx + i}:J${rowIdx + i}`,
+            values: [[currentDL, client, country, language, "Stripe", currentPrice]]
           });
         }
       }
@@ -563,7 +677,7 @@ function App() {
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
           valueInputOption: 'USER_ENTERED',
-          data: values
+          data: sheetValues
         })
       });
 
