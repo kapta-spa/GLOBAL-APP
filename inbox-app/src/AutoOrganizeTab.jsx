@@ -360,10 +360,8 @@ export default function AutoOrganizeTab({ token, sheetName, onRefreshTrigger, ha
         poolRVA.push({ rowIdx: i + 1, dl });
       }
 
-      // 4. Parse Orders and match with sequential DLs and Payments
-      const parsedOrders = [];
-      let pointer1HR = 0;
-      let pointerRVA = 0;
+      // 4. Parse raw messages and group by customer / order to prevent duplicate row consumption
+      const groupedOrdersMap = new Map();
 
       for (const msg of orderMessages) {
         const headers = msg.payload?.headers || [];
@@ -392,82 +390,38 @@ export default function AutoOrganizeTab({ token, sheetName, onRefreshTrigger, ha
         const isRVA = /RVA/i.test(subject) || /RVA/i.test(text);
         const tab = isRVA ? 'RVA' : '1HRGT';
 
-        // Check if price implies multiple licenses
-        let licensesCount = 1;
-        if (['110', '130', '150'].includes(rawPriceNum)) {
-          licensesCount = 2;
+        // Ignore completely unrelated messages with no customer details or order indicators
+        if (!fullName && !nombreMatch && !priceMatch && !customerEmail && !isRVA && !subject.includes('order')) {
+          continue;
         }
 
-        // Match with payment message
-        let matchedPayment = null;
+        // Deduplication key: prefer customerEmail, else threadId, else normalized full name + tab
+        let groupKey = msg.id;
         if (customerEmail) {
-          matchedPayment = parsedPayments.find(p => p.email === customerEmail);
-        }
-        if (!matchedPayment && fullName) {
-          const firstName = fullName.split(' ')[0].toLowerCase();
-          matchedPayment = parsedPayments.find(p => p.snippet.toLowerCase().includes(firstName) || p.subject.toLowerCase().includes(firstName));
+          groupKey = `email:${customerEmail}_${tab}`;
+        } else if (msg.threadId) {
+          groupKey = `thread:${msg.threadId}_${tab}`;
+        } else if (fullName && fullName.toLowerCase() !== 'cliente desconocido') {
+          groupKey = `name:${fullName.toLowerCase().replace(/\s+/g, '')}_${tab}`;
         }
 
-        const paymentMethod = matchedPayment ? matchedPayment.method : 'Stripe';
-        const paymentStatus = matchedPayment ? `Pagado (${matchedPayment.method})` : 'Pendiente de pago';
-
-        // Check duplicate in Sheet
-        let isDuplicate = false;
-        let duplicateInfo = null;
-        if (fullName) {
-          const searchName = fullName.toLowerCase();
-          const dup1 = existing1HRClients.find(c => c.name === searchName || (c.name.length > 5 && (c.name.includes(searchName) || searchName.includes(c.name))));
-          const dup2 = existingRVAClients.find(c => c.name === searchName || (c.name.length > 5 && (c.name.includes(searchName) || searchName.includes(c.name))));
-          if (dup1) {
-            isDuplicate = true;
-            duplicateInfo = `Ya registrado en ${dup1.tab} (Fila ${dup1.rowIdx}: ${dup1.original})`;
-          } else if (dup2) {
-            isDuplicate = true;
-            duplicateInfo = `Ya registrado en ${dup2.tab} (Fila ${dup2.rowIdx}: ${dup2.original})`;
+        if (groupedOrdersMap.has(groupKey)) {
+          const existing = groupedOrdersMap.get(groupKey);
+          existing.messageIds.push(msg.id);
+          // Enhance existing with richer info if missing
+          if ((!existing.fullName || existing.fullName === 'Cliente Desconocido') && fullName) {
+            existing.fullName = fullName;
+            existing.nombre = nombre;
+            existing.apellido = apellido;
           }
-        }
-
-        // Allocate DLs from pool
-        let allocatedDLs = [];
-        let startRowIdx = -1;
-        if (tab === '1HRGT') {
-          if (pointer1HR + licensesCount <= pool1HR.length) {
-            startRowIdx = pool1HR[pointer1HR].rowIdx;
-            for (let k = 0; k < licensesCount; k++) {
-              allocatedDLs.push(pool1HR[pointer1HR + k].dl);
-            }
-            pointer1HR += licensesCount;
-          }
+          if ((!existing.country || existing.country === 'Unknown') && country) existing.country = country;
+          if ((!existing.language || existing.language === 'Unknown') && language) existing.language = language;
+          if ((!existing.customerEmail) && customerEmail) existing.customerEmail = customerEmail;
+          if (isRVA) existing.tab = 'RVA';
         } else {
-          if (pointerRVA + licensesCount <= poolRVA.length) {
-            startRowIdx = poolRVA[pointerRVA].rowIdx;
-            for (let k = 0; k < licensesCount; k++) {
-              allocatedDLs.push(poolRVA[pointerRVA + k].dl);
-            }
-            pointerRVA += licensesCount;
-          }
-        }
-
-        // Format proposed label
-        let proposedLabel = '';
-        if (allocatedDLs.length > 0) {
-          const mainDL = allocatedDLs[0];
-          if (allocatedDLs.length === 1) {
-            proposedLabel = `${mainDL} ${fullName}`.trim();
-          } else {
-            let t1 = mainDL.startsWith('B') ? mainDL : `B${mainDL}`;
-            let t2 = allocatedDLs[1];
-            if (t2.startsWith('B')) t2 = t2.substring(1);
-            proposedLabel = `${t1}, ${t2} ${fullName}`.trim();
-          }
-        } else {
-          proposedLabel = `[Sin DL libre] ${fullName}`.trim();
-        }
-
-        // Only include if it has at least a customer name or looks like an order
-        if (fullName || nombreMatch || priceMatch) {
-          parsedOrders.push({
+          groupedOrdersMap.set(groupKey, {
             id: msg.id,
+            messageIds: [msg.id],
             threadId: msg.threadId,
             fullName: fullName || 'Cliente Desconocido',
             nombre,
@@ -476,23 +430,116 @@ export default function AutoOrganizeTab({ token, sheetName, onRefreshTrigger, ha
             country: country || 'Unknown',
             language: language || 'Unknown',
             price,
-            licensesCount,
             tab,
             receivedAt: receivedAt.toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }),
             subject,
             snippet: msg.snippet,
-            paymentMethod,
-            paymentStatus,
-            paymentMessageId: matchedPayment?.id || null,
-            paymentSubject: matchedPayment?.subject || null,
-            isDuplicate,
-            duplicateInfo,
-            startRowIdx,
-            allocatedDLs,
-            proposedLabel,
             spreadsheetId
           });
         }
+      }
+
+      const groupedOrders = Array.from(groupedOrdersMap.values());
+
+      // 5. Match with Payments & Google Sheet duplicates
+      let pointer1HR = 0;
+      let pointerRVA = 0;
+      const parsedOrders = [];
+
+      for (const order of groupedOrders) {
+        // Match with payment message
+        let matchedPayment = null;
+        if (order.customerEmail) {
+          matchedPayment = parsedPayments.find(p => p.email === order.customerEmail);
+        }
+        if (!matchedPayment && order.fullName && order.fullName !== 'Cliente Desconocido') {
+          const firstName = order.fullName.split(' ')[0].toLowerCase();
+          matchedPayment = parsedPayments.find(p => p.snippet.toLowerCase().includes(firstName) || p.subject.toLowerCase().includes(firstName));
+        }
+
+        order.paymentMethod = matchedPayment ? matchedPayment.method : 'Stripe';
+        order.paymentStatus = matchedPayment ? `Pagado (${matchedPayment.method})` : 'Pendiente de pago';
+        order.paymentMessageId = matchedPayment?.id || null;
+        order.paymentSubject = matchedPayment?.subject || null;
+
+        // Check price for multiple licenses
+        const rawPriceNum = order.price.replace('$', '');
+        let licensesCount = 1;
+        if (['110', '130', '150'].includes(rawPriceNum)) {
+          licensesCount = 2;
+        }
+        order.licensesCount = licensesCount;
+
+        // Check duplicate in Sheet
+        let isDuplicate = false;
+        let duplicateInfo = null;
+        let duplicateRow = -1;
+        if (order.fullName && order.fullName !== 'Cliente Desconocido') {
+          const searchName = order.fullName.toLowerCase();
+          const dup1 = existing1HRClients.find(c => c.name === searchName || (c.name.length > 5 && (c.name.includes(searchName) || searchName.includes(c.name))));
+          const dup2 = existingRVAClients.find(c => c.name === searchName || (c.name.length > 5 && (c.name.includes(searchName) || searchName.includes(c.name))));
+          if (dup1) {
+            isDuplicate = true;
+            duplicateRow = dup1.rowIdx;
+            duplicateInfo = `Ya registrado en ${dup1.tab} (Fila ${dup1.rowIdx}: ${dup1.original})`;
+          } else if (dup2) {
+            isDuplicate = true;
+            duplicateRow = dup2.rowIdx;
+            duplicateInfo = `Ya registrado en ${dup2.tab} (Fila ${dup2.rowIdx}: ${dup2.original})`;
+          }
+        }
+
+        order.isDuplicate = isDuplicate;
+        order.duplicateInfo = duplicateInfo;
+
+        // Allocate DLs from pool ONLY for new, non-duplicate orders
+        let allocatedDLs = [];
+        let startRowIdx = -1;
+
+        if (isDuplicate) {
+          startRowIdx = duplicateRow;
+          order.proposedLabel = `[Ya registrado] ${order.fullName}`.trim();
+        } else {
+          if (order.tab === '1HRGT') {
+            if (pointer1HR + licensesCount <= pool1HR.length) {
+              startRowIdx = pool1HR[pointer1HR].rowIdx;
+              for (let k = 0; k < licensesCount; k++) {
+                allocatedDLs.push(pool1HR[pointer1HR + k].dl);
+              }
+              pointer1HR += licensesCount;
+            }
+          } else {
+            if (pointerRVA + licensesCount <= poolRVA.length) {
+              startRowIdx = poolRVA[pointerRVA].rowIdx;
+              for (let k = 0; k < licensesCount; k++) {
+                allocatedDLs.push(poolRVA[pointerRVA + k].dl);
+              }
+              pointerRVA += licensesCount;
+            }
+          }
+
+          // Format proposed label
+          let proposedLabel = '';
+          if (allocatedDLs.length > 0) {
+            const mainDL = allocatedDLs[0];
+            if (allocatedDLs.length === 1) {
+              proposedLabel = `${mainDL} ${order.fullName}`.trim();
+            } else {
+              let t1 = mainDL.startsWith('B') ? mainDL : `B${mainDL}`;
+              let t2 = allocatedDLs[1];
+              if (t2.startsWith('B')) t2 = t2.substring(1);
+              proposedLabel = `${t1}, ${t2} ${order.fullName}`.trim();
+            }
+          } else {
+            proposedLabel = `[Sin DL libre] ${order.fullName}`.trim();
+          }
+          order.proposedLabel = proposedLabel;
+        }
+
+        order.startRowIdx = startRowIdx;
+        order.allocatedDLs = allocatedDLs;
+
+        parsedOrders.push(order);
       }
 
       setCandidates(parsedOrders);
@@ -614,11 +661,11 @@ export default function AutoOrganizeTab({ token, sheetName, onRefreshTrigger, ha
           throw new Error("No se pudo crear ni encontrar la etiqueta en Gmail.");
         }
 
-        // Step 3: Apply Label & Remove from INBOX for Order email (and payment email if paired)
-        const messagesToModify = [order.id];
-        if (order.paymentMessageId) {
-          messagesToModify.push(order.paymentMessageId);
-        }
+        // Step 3: Apply Label & Remove from INBOX for all Order emails + paired payment email
+        const messagesToModify = Array.from(new Set([
+          ...(order.messageIds || [order.id]),
+          ...(order.paymentMessageId ? [order.paymentMessageId] : [])
+        ]));
 
         await fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages/batchModify', {
           method: 'POST',
