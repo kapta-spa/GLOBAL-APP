@@ -44,16 +44,22 @@ class ErrorBoundary extends React.Component {
 // Helper: Checks if a row is a header/metadata row
 export const isHeaderRow = (row, tab) => {
   if (!row || !Array.isArray(row) || row.length === 0) return false;
-  const headerKeywords = ['nombre', 'client', 'cliente', 'name', 'customer', 'dl', 'dl#', 'dl number', 'tracking', 'order', 'orden', 'pais', 'país', 'country', 'idioma', 'language', 'precio', 'price', 'total', 'traductor', 'translator', 'traduccion', 'traducción', 'suma', 'resumen', 'notas', 'observaciones'];
+  const headerKeywords = [
+    'nombre', 'client', 'cliente', 'name', 'customer', 'dl', 'dl#', 'dl number', 
+    'tracking', 'order', 'orden', 'pais', 'país', 'country', 'idioma', 'language', 
+    'precio', 'price', 'total', 'trans', 'traductor', 'translator', 'traduccion', 
+    'traducción', 'suma', 'resumen', 'notas', 'observaciones'
+  ];
   
-  // Check client column
-  const clientCell = (tab === '1HRGT' ? row[2] : row[1]) || '';
-  const cleanClient = String(clientCell).trim().toLowerCase();
-  if (headerKeywords.includes(cleanClient)) return true;
+  for (let cell of row) {
+    if (cell) {
+      const clean = String(cell).trim().toLowerCase();
+      if (['dl', 'dl#', 'trans', 'cliente', 'client', 'nombre'].includes(clean)) return true;
+    }
+  }
 
-  // Check DL column
-  const dlCell = String(row[0] || '').trim().toLowerCase();
-  if (['dl', 'dl#', 'dl number', 'tracking', 'order', 'n°', 'no.', 'numero', 'número'].includes(dlCell)) return true;
+  const clientCell = String(row[2] || row[1] || '').trim().toLowerCase();
+  if (headerKeywords.includes(clientCell)) return true;
 
   return false;
 };
@@ -63,20 +69,20 @@ export const isRowFilled = (row, tab) => {
   if (!row || !Array.isArray(row) || row.length === 0) return false;
   if (isHeaderRow(row, tab)) return false;
   
-  // 1HRGT: Column G (index 2) is Client Name
-  // RVA: Column F (index 1) is Client Name
-  const clientCell = tab === '1HRGT' ? row[2] : row[1];
-  if (!clientCell) return false;
+  const ignoredValues = ['jc', 'alex', 'trans', 'traductor', 'none', '-', '--', 'n/a', 'nombre', 'client', 'cliente', 'name', 'customer', 'total', 'suma', 'resumen', 'notas', 'observaciones'];
   
-  const text = String(clientCell).trim();
-  if (text === '' || text === '-' || text === '--' || text === 'N/A' || text === 'n/a') return false;
-  
-  const lower = text.toLowerCase();
-  if (['nombre', 'client', 'cliente', 'name', 'customer', 'total', 'suma', 'resumen', 'notas', 'observaciones'].includes(lower)) {
-    return false;
+  // Both 1HRGT and RVA: Column G (index 2) is Client Name, Column F (index 1) is TRANS
+  const colG = String(row[2] || '').trim();
+  if (colG !== '' && !ignoredValues.includes(colG.toLowerCase())) {
+    return true;
+  }
+
+  const colF = String(row[1] || '').trim();
+  if (colF !== '' && !ignoredValues.includes(colF.toLowerCase())) {
+    return true;
   }
   
-  return true;
+  return false;
 };
 
 // Helper: Finds maximum DL number in a sheet range
@@ -659,17 +665,10 @@ function App() {
         let currentPrice = i === 0 ? price : '$0';
         let currentDL = (availableTrackings && availableTrackings[i]) || (i === 0 ? trackingId : '');
         
-        if (tab === '1HRGT') {
-          sheetValues.push({
-            range: `${tab}!E${rowIdx + i}:K${rowIdx + i}`,
-            values: [[currentDL, "JC", client, country, language, "Stripe", currentPrice]]
-          });
-        } else {
-          sheetValues.push({
-            range: `${tab}!E${rowIdx + i}:J${rowIdx + i}`,
-            values: [[currentDL, client, country, language, "Stripe", currentPrice]]
-          });
-        }
+        sheetValues.push({
+          range: `${tab}!E${rowIdx + i}:K${rowIdx + i}`,
+          values: [[currentDL, "JC", client, country, language, "Stripe", currentPrice]]
+        });
       }
 
       const updateRes = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values:batchUpdate`, {
