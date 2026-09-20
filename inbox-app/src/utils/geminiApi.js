@@ -1,6 +1,6 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { BASE_PROMPT, COUNTRY_RULES } from "../config/countryPrompts";
-import { generateClassDescriptions, generateBrazilClassDescriptions, formatCategoriesDates } from "./classDescriptions";
+import { generateClassDescriptions, generateBrazilClassDescriptions, generateChinaClassDescriptions, formatCategoriesDates, formatLicenseClasses } from "./classDescriptions";
 
 const cleanAndParseJSON = (text) => {
   let cleaned = text.trim();
@@ -846,6 +846,40 @@ Carefully inspect the driver's license images and identify the issuing jurisdict
       extractedData.sex = extractedData.gender;
     }
 
+    const isChinaDoc = matchedKey === 'china' ||
+      Boolean(extractedData.barcodeNumber && extractedData.barcodeNumber !== '-') ||
+      Boolean(extractedData.fileNumber && extractedData.fileNumber !== '-') ||
+      (extractedData.nationality && /chin/i.test(extractedData.nationality)) ||
+      (extractedData.authority && /chin/i.test(extractedData.authority));
+
+    if (isChinaDoc) {
+      if (!extractedData.nationality || extractedData.nationality.trim() === '' || extractedData.nationality === '-') {
+        extractedData.nationality = 'Chinese';
+      }
+      if (!extractedData.middleName || extractedData.middleName.trim() === '-' || extractedData.middleName.trim() === '""') {
+        extractedData.middleName = '';
+      }
+      if (extractedData.expiryDate && typeof extractedData.expiryDate === 'string') {
+        const expLow = extractedData.expiryDate.toLowerCase();
+        if (expLow.includes('long') || expLow.includes('term') || expLow.includes('perm') || expLow.includes('indefinite') || extractedData.expiryDate.includes('长期')) {
+          extractedData.expiryDate = 'To Long Term';
+        }
+      }
+      if (extractedData.class) {
+        extractedData.class = formatLicenseClasses(extractedData.class, true);
+        extractedData.classDescriptions = generateChinaClassDescriptions(extractedData.class);
+      }
+      if (extractedData.barcode && !extractedData.barcodeNumber) extractedData.barcodeNumber = extractedData.barcode;
+      if (extractedData.barcodeNumber && !extractedData.barcode) extractedData.barcode = extractedData.barcodeNumber;
+      if (extractedData.file && !extractedData.fileNumber) extractedData.fileNumber = extractedData.file;
+      if (extractedData.fileNo && !extractedData.fileNumber) extractedData.fileNumber = extractedData.fileNo;
+    }
+
+    // Format license classes for all jurisdictions (e.g., "C1, C2")
+    if (extractedData.class) {
+      extractedData.class = formatLicenseClasses(extractedData.class, isChinaDoc);
+    }
+
     // Universal Date Formatting to "DD Month YYYY"
     const dateKeys = ['dateOfBirth', 'issueDate', 'expiryDate', 'firstIssued', 'firstObtained', 'categoriesDates'];
     dateKeys.forEach(dk => {
@@ -857,7 +891,9 @@ Carefully inspect the driver's license images and identify the issuing jurisdict
     const cd = extractedData.classDescriptions;
     if (!cd || typeof cd !== 'string' || cd.trim() === '' || cd.trim() === '-') {
       if (extractedData.class) {
-        if (isBrazilDoc) {
+        if (isChinaDoc) {
+          extractedData.classDescriptions = generateChinaClassDescriptions(extractedData.class);
+        } else if (isBrazilDoc) {
           extractedData.classDescriptions = generateBrazilClassDescriptions(extractedData.class);
         } else {
           extractedData.classDescriptions = generateClassDescriptions(extractedData.class);

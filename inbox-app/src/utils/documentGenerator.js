@@ -2,7 +2,7 @@ import Docxtemplater from "docxtemplater";
 import PizZip from "pizzip";
 import { saveAs } from "file-saver";
 import ImageModule from "docxtemplater-image-module-free";
-import { generateClassDescriptions, generateBrazilClassDescriptions, generateChinaClassDescriptions, formatCategoriesDates } from "./classDescriptions";
+import { generateClassDescriptions, generateBrazilClassDescriptions, generateChinaClassDescriptions, formatCategoriesDates, formatLicenseClasses } from "./classDescriptions";
 
 const TRANSPARENT_1X1_PNG = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=";
 
@@ -296,11 +296,173 @@ export const generateWordDocument = async (templateArrayBuffer, data, imagesBase
 
     const middleNameVal = (data.middleName && data.middleName !== '-' && data.middleName.trim() !== '""') ? data.middleName.trim() : '';
 
-    // Prepared image buffers
+    // Prepared image buffers (with smart fallbacks for 1, 2, 3 or 4 images)
     const frontImg = imagesBase64[0] || "";
     const backImg = imagesBase64[1] || imagesBase64[0] || "";
-    const img3 = imagesBase64[2] || "";
-    const img4 = imagesBase64[3] || "";
+    const img3 = imagesBase64[2] || imagesBase64[0] || "";
+    const img4 = imagesBase64[3] || imagesBase64[1] || imagesBase64[0] || "";
+
+    const formattedClass = formatLicenseClasses(data.class || '', isChina);
+
+    // Complete Image Aliases for Front / Back / Multiple images (UK, US, Spanish, China conventions)
+    const imageAliases = {
+      license_front: frontImg,
+      licence_front: frontImg,
+      licenseFront: frontImg,
+      licenceFront: frontImg,
+      license_image_front: frontImg,
+      licence_image_front: frontImg,
+      foto_frente: frontImg,
+      fotoFrente: frontImg,
+      licencia_frente: frontImg,
+      licenciaFrente: frontImg,
+      image1: frontImg,
+      image_1: frontImg,
+      img1: frontImg,
+      img_1: frontImg,
+      front: frontImg,
+      frontImage: frontImg,
+      front_image: frontImg,
+      photo1: frontImg,
+      photo_1: frontImg,
+      photoFront: frontImg,
+      photo_front: frontImg,
+      image: frontImg,
+      foto: frontImg,
+      photo: frontImg,
+      picture: frontImg,
+      picture1: frontImg,
+      doc_front: frontImg,
+      document_front: frontImg,
+      documentFront: frontImg,
+      main_card: frontImg,
+      mainCard: frontImg,
+      main_card_front: frontImg,
+      mainCardFront: frontImg,
+      main_front: frontImg,
+      mainFront: frontImg,
+      main: frontImg,
+      card_front: frontImg,
+      cardFront: frontImg,
+      card1: frontImg,
+      card_1: frontImg,
+      primary_card: frontImg,
+      primaryCard: frontImg,
+
+      license_back: backImg,
+      licence_back: backImg,
+      licenseBack: backImg,
+      licenceBack: backImg,
+      license_image_back: backImg,
+      licence_image_back: backImg,
+      foto_reverso: backImg,
+      fotoReverso: backImg,
+      foto_atras: backImg,
+      fotoAtras: backImg,
+      licencia_reverso: backImg,
+      licenciaReverso: backImg,
+      image2: backImg,
+      image_2: backImg,
+      img2: backImg,
+      img_2: backImg,
+      back: backImg,
+      backImage: backImg,
+      back_image: backImg,
+      photo2: backImg,
+      photo_2: backImg,
+      photoBack: backImg,
+      photo_back: backImg,
+      picture2: backImg,
+      doc_back: backImg,
+      document_back: backImg,
+      documentBack: backImg,
+      main_card_back: backImg,
+      mainCardBack: backImg,
+      main_back: backImg,
+      mainBack: backImg,
+      card_back: backImg,
+      cardBack: backImg,
+      card2: backImg,
+      card_2: backImg,
+
+      // Sub card / Record card / Secondary card / Image 3
+      sub_card: img3,
+      subCard: img3,
+      subcard: img3,
+      sub_card_front: img3,
+      subCardFront: img3,
+      sub_front: img3,
+      subFront: img3,
+      record_card: img3,
+      recordCard: img3,
+      recordcard: img3,
+      record_card_front: img3,
+      recordCardFront: img3,
+      record_front: img3,
+      recordFront: img3,
+      record: img3,
+      sub: img3,
+      secondary_card: img3,
+      secondaryCard: img3,
+      image3: img3,
+      image_3: img3,
+      img3: img3,
+      img_3: img3,
+      photo3: img3,
+      photo_3: img3,
+      foto3: img3,
+      foto_3: img3,
+      card3: img3,
+      card_3: img3,
+      picture3: img3,
+
+      // Barcode / Remarks / Image 4
+      image4: img4,
+      image_4: img4,
+      img4: img4,
+      img_4: img4,
+      photo4: img4,
+      photo_4: img4,
+      foto4: img4,
+      foto_4: img4,
+      card4: img4,
+      card_4: img4,
+      picture4: img4,
+      barcode_card: img4,
+      barcodeCard: img4,
+      barcode_image: img4,
+      barcodeImage: img4,
+      barcode_photo: img4,
+      barcodePhoto: img4,
+      barcode_pic: img4,
+      barcodePic: img4,
+      record_card_back: img4,
+      recordCardBack: img4,
+      record_back: img4,
+      recordBack: img4,
+      sub_card_back: img4,
+      subCardBack: img4,
+      sub_back: img4,
+      subBack: img4,
+      remarks_image: img4,
+      remarksImage: img4,
+      remarks_card: img4,
+      remarksCard: img4,
+      images: imagesBase64.map((img, i) => ({ image: img, img: img, url: img, index: i + 1 })),
+    };
+
+    const imageKeySet = new Set(Object.keys(imageAliases));
+
+    // Filter out keys in data that conflict with image tags unless they contain valid base64 image data
+    const cleanData = { ...data };
+    for (const key of Object.keys(cleanData)) {
+      if (imageKeySet.has(key)) {
+        const val = cleanData[key];
+        if (!val || typeof val !== 'string' || !val.startsWith('data:image/')) {
+          delete cleanData[key];
+        }
+      }
+    }
 
     const renderData = {
       // Default fallbacks for empty fields
@@ -308,6 +470,8 @@ export const generateWordDocument = async (templateArrayBuffer, data, imagesBase
       personal: defaultPersonal,
       point4d: defaultPersonal,
       citizen: defaultCitizen,
+      class: formattedClass,
+      Class: formattedClass,
       classDescriptions: defaultClassDescriptions,
       class_descriptions: defaultClassDescriptions,
       classDescription: defaultClassDescriptions,
@@ -397,80 +561,12 @@ export const generateWordDocument = async (templateArrayBuffer, data, imagesBase
       documentType: data.documentType || 'Scan or photograph of the original document',
       comments: data.comments || '-',
       translatorName: data.translatorName || 'Nura Majzoub Sapir',
-      
-      // Complete Image Aliases for Front / Back / Multiple images (UK, US, Spanish conventions)
-      license_front: frontImg,
-      licence_front: frontImg,
-      licenseFront: frontImg,
-      licenceFront: frontImg,
-      license_image_front: frontImg,
-      licence_image_front: frontImg,
-      foto_frente: frontImg,
-      fotoFrente: frontImg,
-      licencia_frente: frontImg,
-      licenciaFrente: frontImg,
-      image1: frontImg,
-      image_1: frontImg,
-      img1: frontImg,
-      img_1: frontImg,
-      front: frontImg,
-      frontImage: frontImg,
-      front_image: frontImg,
-      photo1: frontImg,
-      photo_1: frontImg,
-      photoFront: frontImg,
-      photo_front: frontImg,
-      image: frontImg,
-      foto: frontImg,
-      photo: frontImg,
-      doc_front: frontImg,
-      document_front: frontImg,
-      main_card: frontImg,
-      card_front: frontImg,
-      card1: frontImg,
 
-      license_back: backImg,
-      licence_back: backImg,
-      licenseBack: backImg,
-      licenceBack: backImg,
-      license_image_back: backImg,
-      licence_image_back: backImg,
-      foto_reverso: backImg,
-      fotoReverso: backImg,
-      foto_atras: backImg,
-      fotoAtras: backImg,
-      licencia_reverso: backImg,
-      licenciaReverso: backImg,
-      image2: backImg,
-      image_2: backImg,
-      img2: backImg,
-      img_2: backImg,
-      back: backImg,
-      backImage: backImg,
-      back_image: backImg,
-      photo2: backImg,
-      photo_2: backImg,
-      photoBack: backImg,
-      photo_back: backImg,
-      doc_back: backImg,
-      document_back: backImg,
-      sub_card: backImg,
-      record_card: backImg,
-      card_back: backImg,
-      card2: backImg,
+      // User edits from modal take precedence for text fields!
+      ...cleanData,
 
-      image3: img3,
-      image_3: img3,
-      img3: img3,
-      photo3: img3,
-      image4: img4,
-      image_4: img4,
-      img4: img4,
-      photo4: img4,
-      images: imagesBase64.map((img, i) => ({ image: img, img: img, url: img, index: i + 1 })),
-
-      // User edits from modal take highest priority!
-      ...data,
+      // Ensure image aliases ALWAYS contain the valid base64 buffers
+      ...imageAliases,
     };
 
     // Re-apply critical fallbacks if user edits left them blank
@@ -501,20 +597,12 @@ export const generateWordDocument = async (templateArrayBuffer, data, imagesBase
       renderData.otherDetails = detailsVal;
       renderData.anyOtherRelevantLicenceDetails = detailsVal;
     }
+    if (renderData.class) {
+      renderData.class = formatLicenseClasses(renderData.class, isChina);
+      renderData.Class = renderData.class;
+    }
 
     // Convert any remaining empty strings, nulls or undefined values to "-" (excluding images and middleName)
-    const imageKeySet = new Set([
-      'license_front', 'licence_front', 'licenseFront', 'licenceFront', 'license_image_front', 'licence_image_front',
-      'foto_frente', 'fotoFrente', 'licencia_frente', 'licenciaFrente', 'image1', 'image_1', 'img1', 'img_1',
-      'front', 'frontImage', 'front_image', 'photo1', 'photo_1', 'photoFront', 'photo_front', 'image', 'foto', 'photo',
-      'doc_front', 'document_front', 'main_card', 'card_front', 'card1',
-      'license_back', 'licence_back', 'licenseBack', 'licenceBack', 'license_image_back', 'licence_image_back',
-      'foto_reverso', 'fotoReverso', 'foto_atras', 'fotoAtras', 'licencia_reverso', 'licenciaReverso',
-      'image2', 'image_2', 'img2', 'img_2', 'back', 'backImage', 'back_image', 'photo2', 'photo_2', 'photoBack', 'photo_back',
-      'doc_back', 'document_back', 'sub_card', 'record_card', 'card_back', 'card2',
-      'image3', 'image_3', 'img3', 'photo3', 'image4', 'image_4', 'img4', 'photo4', 'images'
-    ]);
-
     for (const key of Object.keys(renderData)) {
       if (!imageKeySet.has(key) && key !== 'middleName') {
         const val = renderData[key];

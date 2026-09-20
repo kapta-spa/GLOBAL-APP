@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { X, Save, Download, ArrowRight, RefreshCw } from 'lucide-react';
-import { generateClassDescriptions, generateBrazilClassDescriptions, generateChinaClassDescriptions, formatCategoriesDates } from './utils/classDescriptions';
+import { generateClassDescriptions, generateBrazilClassDescriptions, generateChinaClassDescriptions, formatCategoriesDates, formatLicenseClasses } from './utils/classDescriptions';
 import { getAssignedNumber } from './utils/documentGenerator';
 
 export default function TranslationPreviewModal({ 
@@ -80,6 +80,19 @@ export default function TranslationPreviewModal({
         : ((normalized.bsn && normalized.bsn.trim() !== '') ? normalized.bsn : '');
       if (defaultCitizen) {
         normalized.citizen = defaultCitizen;
+      }
+
+      // Format license classes (e.g., C1, C2)
+      if (normalized.class) {
+        normalized.class = formatLicenseClasses(normalized.class, isChina);
+      }
+
+      // China expiry permanent / long term check
+      if (isChina && normalized.expiryDate && typeof normalized.expiryDate === 'string') {
+        const expLow = normalized.expiryDate.toLowerCase();
+        if (expLow.includes('long') || expLow.includes('term') || expLow.includes('perm') || expLow.includes('indefinite') || normalized.expiryDate.includes('长期')) {
+          normalized.expiryDate = 'To Long Term';
+        }
       }
 
       // Auto-populate classDescriptions if missing, empty, or '-'

@@ -1276,11 +1276,27 @@ function App() {
   };
 
   const handleEditorComplete = async (croppedImagesDataUrls) => {
-    // setIsImageEditorOpen(false); moved to processNextLicense so it stays open during loading
+    // Determine if folder contains multiple distinct license numbers (e.g. "B101, B102")
+    let dls = [];
+    if (editorFolder) {
+      const match = editorFolder.match(/^([a-zA-Z0-9]+(?:\s*,\s*[a-zA-Z0-9]+)*)/);
+      if (match) {
+        dls = match[1].split(',').map(s => s.trim()).filter(Boolean);
+      }
+    }
     
     const queue = [];
-    for (let i = 0; i < croppedImagesDataUrls.length; i += 2) {
-      queue.push(croppedImagesDataUrls.slice(i, i + 2));
+    if (dls.length > 1) {
+      // Multiple licenses in folder: distribute images among licenses
+      const imagesPerDoc = Math.max(1, Math.floor(croppedImagesDataUrls.length / dls.length));
+      for (let i = 0; i < dls.length; i++) {
+        const start = i * imagesPerDoc;
+        const end = (i === dls.length - 1) ? croppedImagesDataUrls.length : start + imagesPerDoc;
+        queue.push(croppedImagesDataUrls.slice(start, end));
+      }
+    } else {
+      // Single license (standard case, e.g. China with 1, 2, 3 or 4 photos): keep all images together
+      queue.push(croppedImagesDataUrls);
     }
     
     setLicenseQueue(queue);

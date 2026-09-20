@@ -159,3 +159,35 @@ export const formatCategoriesDates = (str) => {
 
   return resultLines.join('\n');
 };
+
+export const formatLicenseClasses = (classStr, isChina = false) => {
+  if (!classStr || typeof classStr !== 'string') return classStr || '';
+  const trimmed = classStr.trim();
+  if (!trimmed || trimmed === '-' || trimmed.toLowerCase() === 'none') return trimmed;
+
+  // Split by common delimiters (comma, semicolon, slash, whitespace)
+  const tokens = trimmed.split(/[,;\/\s+]+/).map(t => t.trim()).filter(Boolean);
+
+  if (tokens.length > 1) {
+    const expanded = [];
+    for (const tok of tokens) {
+      // Check if token itself contains concatenated Chinese classes (e.g. C1E, B2E, A2D)
+      const chinaMatches = tok.match(/(?:A[1-3]|B[1-2]|C[1-6]|[DEFMNP])/gi);
+      if (chinaMatches && chinaMatches.join('').toUpperCase() === tok.toUpperCase() && chinaMatches.length > 1) {
+        expanded.push(...chinaMatches.map(m => m.toUpperCase()));
+      } else {
+        expanded.push(tok.toUpperCase());
+      }
+    }
+    return Array.from(new Set(expanded)).join(', ');
+  }
+
+  // Single token: Check if it's concatenated China classes like "C1E", "C1D", "B2E", "C1C2", "A2E"
+  const single = tokens[0] || trimmed;
+  const chinaMatches = single.match(/(?:A[1-3]|B[1-2]|C[1-6]|[DEFMNP])/gi);
+  if (chinaMatches && chinaMatches.join('').toUpperCase() === single.toUpperCase() && chinaMatches.length > 1) {
+    return Array.from(new Set(chinaMatches.map(m => m.toUpperCase()))).join(', ');
+  }
+
+  return single.toUpperCase();
+};

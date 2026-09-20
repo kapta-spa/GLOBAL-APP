@@ -49,7 +49,8 @@
    - *Excepción de Vencimiento Permanente:* Si el campo indica término indefinido, permanente o permanente sin fecha (长期 / Permanent / Long term), el valor debe establecerse exactamente en `"To Long Term"`.
 
 4. **Clases de Vehículos (`class`):**
-   - Preservar la codificación estándar china (ej. `C1` para vehículos pequeños, `C2` para automáticos, `A1`, `A2`, `B1`, `B2`).
+   - Preservar la codificación estándar china (ej. `C1` para vehículos pequeños, `C2` para automáticos, `A1`, `A2`, `B1`, `B2`, `D`, `E`).
+   - Si son varias clases autorizadas, separarlas estrictamente con una coma y un espacio, por ejemplo: `C1, C2` o `A2, E` o `C1, D`.
 
 5. **Género (`gender`):**
    - 男 -> `"Male"`
@@ -82,7 +83,9 @@ CRITICAL TRANSLATION & FORMATTING RULES:
 4. "issueDate": Extract the FIRST date in the "Valid Period" (有效起始日期).
 5. "expiryDate": Extract the SECOND date in "Valid Period" (有效期限). If it indicates permanent/long-term (长期), return strictly "To Long Term".
 6. "gender": Translate to "Male" or "Female".
-7. "explicacionCodigos": Translate any text in the "Record" (记录) or remarks section.
-8. "barcodeNumber": Extract the numbers printed directly beneath the barcode.
-9. "fileNumber": Extract the File Number after "档案编号".
-10. Return strictly valid JSON adhering to the specified schema.
+7. "class": Extract the authorized vehicle classes (准驾车型). If multiple classes are held, separate them strictly with a comma and space (e.g., "C1, C2" or "A2, E" or "C1, D").
+8. "explicacionCodigos": Translate any text in the "Record" (记录) or remarks section.
+9. "barcodeNumber": Extract the numbers printed directly beneath the barcode.
+10. "fileNumber": Extract the File Number after "档案编号".
+11. Return strictly valid JSON adhering to the specified schema.
+```
