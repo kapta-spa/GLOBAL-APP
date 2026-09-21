@@ -8,7 +8,7 @@ import EmailPreviewModal from './EmailPreviewModal';
 import EmailDetailModal from './EmailDetailModal';
 import ManualUploadModal from './ManualUploadModal';
 import AutoOrganizeTab from './AutoOrganizeTab';
-import { extractLicenseData } from './utils/geminiApi';
+import { extractLicenseData, getNormalizedCountryKey } from './utils/geminiApi';
 import { generateWordDocument, getAssignedNumber } from './utils/documentGenerator';
 import { sendEmailWithPdf } from './utils/gmailService';
 
@@ -1223,46 +1223,10 @@ function App() {
     setProcessing(true);
     try {
       const currentImages = queue[0];
-      let country = "";
-      const folderLower = editorFolder.toLowerCase();
-      const availableCountries = ['alemania', 'germany', 'deutschland', 'belgica', 'brazil', 'brasil', 'cnh', 'canada', 'china', 'denmark', 'dinamarca', 'danmark', 'hungria', 'indonesia', 'vietnam', 'francia', 'japon', 'taiwan', 'taiwán', 'suiza', 'swiss', 'switzerland', 'netherlands', 'holanda', 'paises bajos', 'países bajos', 'dutch'];
-      for (const c of availableCountries) {
-        if (folderLower.includes(c)) {
-          country = c;
-          break;
-        }
-      }
-      if (!country) {
-        const parts = editorFolder.split(' ');
-        const candidate = parts.length > 1 ? parts[1].toLowerCase() : '';
-        if (candidate.includes('franc')) country = 'francia';
-        else if (candidate.includes('japon') || candidate.includes('japan')) country = 'japon';
-        else if (candidate.includes('denmark') || candidate.includes('dinamarca') || candidate.includes('danmark')) country = 'denmark';
-        else if (candidate.includes('aleman') || candidate.includes('german') || candidate.includes('deutsch')) country = 'alemania';
-        else if (candidate.includes('suiz') || candidate.includes('swiss') || candidate.includes('switzer')) country = 'suiza';
-        else if (candidate.includes('holand') || candidate.includes('netherland') || candidate.includes('paises') || candidate.includes('dutch')) country = 'netherlands';
-        else if (candidate.includes('brazil') || candidate.includes('brasil') || candidate.includes('cnh')) country = 'brazil';
-        else if (availableCountries.includes(candidate)) country = candidate;
-      }
-      
-      if (country === 'dinamarca' || country === 'danmark') {
-        country = 'denmark';
-      } else if (country === 'germany' || country === 'deutschland') {
-        country = 'alemania';
-      } else if (country === 'swiss' || country === 'switzerland') {
-        country = 'suiza';
-      } else if (country === 'holanda' || country === 'paises bajos' || country === 'países bajos' || country === 'dutch') {
-        country = 'netherlands';
-      } else if (country === 'brasil' || country === 'cnh') {
-        country = 'brazil';
-      }
-      
-      if (!availableCountries.includes(country) && country !== 'denmark' && country !== 'suiza' && country !== 'netherlands' && country !== 'brazil') {
-        country = "";
-      }
+      const matchedKey = getNormalizedCountryKey(editorFolder);
       
       setCroppedImages(currentImages);
-      const data = await extractLicenseData(geminiApiKey, currentImages, country);
+      const data = await extractLicenseData(geminiApiKey, currentImages, matchedKey || editorFolder);
       setExtractedData(data);
       setIsImageEditorOpen(false);
       setIsTranslationModalOpen(true);

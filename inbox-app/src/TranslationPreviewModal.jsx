@@ -1,7 +1,37 @@
 import React, { useState, useEffect } from 'react';
-import { X, Save, Download, ArrowRight, RefreshCw } from 'lucide-react';
+import { X, Save, Download, ArrowRight, RefreshCw, FileText, CheckCircle2 } from 'lucide-react';
 import { generateClassDescriptions, generateBrazilClassDescriptions, generateChinaClassDescriptions, formatCategoriesDates, formatLicenseClasses } from './utils/classDescriptions';
-import { getAssignedNumber } from './utils/documentGenerator';
+import { getAssignedNumber, loadCountryTemplate } from './utils/documentGenerator';
+import { getNormalizedCountryKey } from './utils/geminiApi';
+import { COUNTRY_TEMPLATES } from './config/countryPrompts';
+
+export const AVAILABLE_TEMPLATES = [
+  { id: 'alemania.docx', label: '🇩🇪 Alemania (Germany - alemania.docx)' },
+  { id: 'brazil.docx', label: '🇧🇷 Brasil (Brazil CNH - brazil.docx)' },
+  { id: 'china.docx', label: '🇨🇳 China (china.docx)' },
+  { id: 'francia.docx', label: '🇫🇷 Francia (France - francia.docx)' },
+  { id: 'francia_pink.docx', label: '🇫🇷 Francia Rosa (France Pink - francia_pink.docx)' },
+  { id: 'spain.docx', label: '🇪🇸 España (Spain - spain.docx)' },
+  { id: 'italia.docx', label: '🇮🇹 Italia (Italy - italia.docx)' },
+  { id: 'portugal.docx', label: '🇵🇹 Portugal (portugal.docx)' },
+  { id: 'latino.docx', label: '🌎 Reino Unido / Latino / Internacional (latino.docx)' },
+  { id: 'netherlands.docx', label: '🇳🇱 Países Bajos (Netherlands - netherlands.docx)' },
+  { id: 'belgica.docx', label: '🇧🇪 Bélgica (Belgium - belgica.docx)' },
+  { id: 'canada.docx', label: '🇨🇦 Canadá (Canada - canada.docx)' },
+  { id: 'czech.docx', label: '🇨🇿 Rep. Checa (Czech Republic - czech.docx)' },
+  { id: 'denmark.docx', label: '🇩🇰 Dinamarca (Denmark - denmark.docx)' },
+  { id: 'finland.docx', label: '🇫🇮 Finlandia (Finland - finland.docx)' },
+  { id: 'hungria.docx', label: '🇭🇺 Hungría (Hungary - hungria.docx)' },
+  { id: 'indonesia.docx', label: '🇮🇩 Indonesia (indonesia.docx)' },
+  { id: 'israel.docx', label: '🇮🇱 Israel (israel.docx)' },
+  { id: 'japon.docx', label: '🇯🇵 Japón (Japan - japon.docx)' },
+  { id: 'korea.docx', label: '🇰🇷 Corea del Sur (Korea - korea.docx)' },
+  { id: 'norway.docx', label: '🇳🇴 Noruega (Norway - norway.docx)' },
+  { id: 'suiza.docx', label: '🇨🇭 Suiza (Switzerland - suiza.docx)' },
+  { id: 'swedish.docx', label: '🇸🇪 Suecia (Sweden - swedish.docx)' },
+  { id: 'taiwan.docx', label: '🇹🇼 Taiwán (taiwan.docx)' },
+  { id: 'vietnam.docx', label: '🇻🇳 Vietnam (vietnam.docx)' },
+];
 
 export default function TranslationPreviewModal({ 
   isOpen, 
@@ -12,7 +42,9 @@ export default function TranslationPreviewModal({
   onDownloadWord
 }) {
   const [formData, setFormData] = useState(initialData || {});
+  const [selectedTemplate, setSelectedTemplate] = useState('alemania.docx');
   const [templateFile, setTemplateFile] = useState(null);
+  const [isGenerating, setIsGenerating] = useState(false);
 
   useEffect(() => {
     if (initialData) {
@@ -57,7 +89,7 @@ export default function TranslationPreviewModal({
       if (!normalized.nationality || normalized.nationality.trim() === '' || normalized.nationality === '-') {
         if (isChina) normalized.nationality = 'Chinese';
         else if (isBrazil) normalized.nationality = 'Brazilian';
-        else if (/german|aleman|deutsch/i.test(folderLower)) normalized.nationality = 'German';
+        else if (/german|aleman|deutsch/i.test(folderLower) || /germany|deutschland|berlin|munich|münchen|köln/i.test(normalized.authority || '') || /germany|deutschland/i.test(normalized.placeOfBirth || '')) normalized.nationality = 'German';
         else if (/franc/i.test(folderLower)) normalized.nationality = 'French';
         else if (/japan|japon/i.test(folderLower)) normalized.nationality = 'Japanese';
         else if (/taiwan/i.test(folderLower)) normalized.nationality = 'Taiwanese';
@@ -68,6 +100,31 @@ export default function TranslationPreviewModal({
         else if (/vietnam/i.test(folderLower)) normalized.nationality = 'Vietnamese';
         else if (/hungar|hungri/i.test(folderLower)) normalized.nationality = 'Hungarian';
       }
+
+      // Auto-detect best initial template
+      const candidates = [
+        folderName,
+        normalized.nationality,
+        normalized.country,
+        normalized.authority,
+        normalized.placeOfBirth,
+        normalized.licenseLanguage
+      ];
+      let autoTemplate = '';
+      for (const cand of candidates) {
+        if (!cand || typeof cand !== 'string') continue;
+        const key = getNormalizedCountryKey(cand);
+        if (key && COUNTRY_TEMPLATES[key]) {
+          autoTemplate = COUNTRY_TEMPLATES[key];
+          break;
+        }
+      }
+      if (!autoTemplate) {
+        if (isChina) autoTemplate = 'china.docx';
+        else if (isBrazil) autoTemplate = 'brazil.docx';
+        else autoTemplate = 'alemania.docx';
+      }
+      setSelectedTemplate(autoTemplate);
 
       if (isBrazil && (!normalized.gender || normalized.gender === '-' || normalized.gender.toLowerCase() === 'not stated')) {
         normalized.gender = 'Not stated';
@@ -262,34 +319,53 @@ export default function TranslationPreviewModal({
     });
   };
 
-  const handleSave = () => {
-    if (!templateFile) {
-      alert("Por favor, selecciona una plantilla de Word (.docx) primero.");
-      return;
+  const getEffectiveTemplateBuffer = async () => {
+    if (templateFile) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = (e) => resolve(e.target.result);
+        reader.onerror = (err) => reject(err);
+        reader.readAsArrayBuffer(templateFile);
+      });
     }
-    
-    const reader = new FileReader();
-    reader.onload = function(e) {
-      const arrayBuffer = e.target.result;
-      onSave(formData, arrayBuffer);
-    };
-    reader.readAsArrayBuffer(templateFile);
+    // Auto-load chosen country template from server
+    return await loadCountryTemplate(
+      selectedTemplate,
+      formData.nationality,
+      formData.authority,
+      formData.licenseLanguage,
+      formData.placeOfBirth,
+      formData.country,
+      folderName
+    );
   };
 
-  const handleDownload = () => {
-    if (!templateFile) {
-      alert("Por favor, selecciona una plantilla de Word (.docx) primero.");
-      return;
+  const handleSave = async () => {
+    try {
+      setIsGenerating(true);
+      const arrayBuffer = await getEffectiveTemplateBuffer();
+      onSave(formData, arrayBuffer);
+    } catch (err) {
+      console.error("Error al cargar la plantilla Word:", err);
+      alert("Error al cargar la plantilla Word: " + err.message);
+    } finally {
+      setIsGenerating(false);
     }
-    
-    const reader = new FileReader();
-    reader.onload = function(e) {
-      const arrayBuffer = e.target.result;
+  };
+
+  const handleDownload = async () => {
+    try {
+      setIsGenerating(true);
+      const arrayBuffer = await getEffectiveTemplateBuffer();
       if (onDownloadWord) {
         onDownloadWord(formData, arrayBuffer);
       }
-    };
-    reader.readAsArrayBuffer(templateFile);
+    } catch (err) {
+      console.error("Error al cargar la plantilla Word:", err);
+      alert("Error al cargar la plantilla Word: " + err.message);
+    } finally {
+      setIsGenerating(false);
+    }
   };
 
   return (
@@ -320,6 +396,64 @@ export default function TranslationPreviewModal({
         
         <div style={{ padding: '20px', overflowY: 'auto', flex: 1, backgroundColor: '#f9fafb' }}>
           
+          {/* Active Template Selector Banner */}
+          <div style={{
+            backgroundColor: '#ffffff',
+            border: '1px solid #bfdbfe',
+            borderRadius: '8px',
+            padding: '12px 16px',
+            marginBottom: '20px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            flexWrap: 'wrap',
+            gap: '12px',
+            boxShadow: '0 1px 3px rgba(0,0,0,0.05)'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <FileText size={20} color="#2563eb" />
+              <div>
+                <div style={{ fontSize: '13px', fontWeight: 'bold', color: '#1e293b' }}>
+                  Plantilla Word Oficial de Traducción:
+                </div>
+                <div style={{ fontSize: '11px', color: '#64748b' }}>
+                  Puedes cambiar la plantilla manualmente en cualquier momento:
+                </div>
+              </div>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <select
+                value={selectedTemplate}
+                onChange={(e) => {
+                  const newTemp = e.target.value;
+                  setSelectedTemplate(newTemp);
+                  if (newTemp === 'china.docx' && formData.class) {
+                    setFormData(prev => ({ ...prev, classDescriptions: generateChinaClassDescriptions(prev.class) }));
+                  } else if (newTemp === 'brazil.docx' && formData.class) {
+                    setFormData(prev => ({ ...prev, classDescriptions: generateBrazilClassDescriptions(prev.class) }));
+                  } else if (formData.class) {
+                    setFormData(prev => ({ ...prev, classDescriptions: generateClassDescriptions(prev.class) }));
+                  }
+                }}
+                style={{
+                  padding: '8px 12px',
+                  borderRadius: '6px',
+                  border: '2px solid #2563eb',
+                  backgroundColor: '#ffffff',
+                  fontSize: '13px',
+                  fontWeight: 'bold',
+                  color: '#1e293b',
+                  cursor: 'pointer',
+                  minWidth: '280px'
+                }}
+              >
+                {AVAILABLE_TEMPLATES.map(t => (
+                  <option key={t.id} value={t.id}>{t.label}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '16px', marginBottom: '24px' }}>
             <div>
               <label style={{ display: 'block', fontSize: '14px', fontWeight: 'bold', marginBottom: '4px', color: '#374151' }}>Surname</label>
@@ -578,24 +712,55 @@ export default function TranslationPreviewModal({
 
         </div>
 
-        <div style={{ padding: '16px', display: 'flex', flexWrap: 'wrap', gap: '16px', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid #e5e7eb' }}>
+        <div style={{ padding: '16px', display: 'flex', flexWrap: 'wrap', gap: '16px', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid #e5e7eb', backgroundColor: '#f8fafc' }}>
           <div>
-            <label style={{ display: 'block', fontSize: '12px', fontWeight: 'bold', marginBottom: '4px', color: '#374151' }}>
-              Plantilla Word (.docx)
-            </label>
-            <input 
-              type="file" 
-              accept=".docx" 
-              onChange={(e) => setTemplateFile(e.target.files[0])} 
-              style={{ fontSize: '13px' }}
-            />
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
+              <CheckCircle2 size={16} color="#16a34a" />
+              <span style={{ fontSize: '13px', fontWeight: 'bold', color: '#1e293b' }}>
+                Plantilla Seleccionada: <span style={{ color: '#2563eb' }}>{selectedTemplate}</span>
+              </span>
+              <span style={{ fontSize: '11px', backgroundColor: '#dcfce7', color: '#15803d', padding: '2px 8px', borderRadius: '4px', fontWeight: '600' }}>
+                ✓ Auto-cargada desde el servidor
+              </span>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <label style={{ fontSize: '12px', color: '#64748b' }}>
+                ¿Subir archivo Word local? (Opcional):
+              </label>
+              <input 
+                type="file" 
+                accept=".docx" 
+                onChange={(e) => setTemplateFile(e.target.files[0])} 
+                style={{ fontSize: '12px' }}
+              />
+              {templateFile && (
+                <button 
+                  type="button" 
+                  onClick={() => setTemplateFile(null)} 
+                  style={{ fontSize: '11px', color: '#ef4444', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline' }}
+                >
+                  (Quitar y usar oficial)
+                </button>
+              )}
+            </div>
           </div>
           <div style={{ display: 'flex', gap: '12px' }}>
-            <button className="btn-secondary" onClick={handleDownload} style={{ display: 'flex', alignItems: 'center' }}>
-              <Download size={18} style={{ marginRight: '8px' }} /> Descargar Word
+            <button 
+              className="btn-secondary" 
+              onClick={handleDownload} 
+              disabled={isGenerating}
+              style={{ display: 'flex', alignItems: 'center', opacity: isGenerating ? 0.7 : 1 }}
+            >
+              <Download size={18} style={{ marginRight: '8px' }} /> 
+              {isGenerating ? 'Generando Word...' : 'Descargar Word'}
             </button>
-            <button className="btn-primary" onClick={handleSave} style={{ display: 'flex', alignItems: 'center' }}>
-              Continuar a Enviar <ArrowRight size={18} style={{ marginLeft: '8px' }} />
+            <button 
+              className="btn-primary" 
+              onClick={handleSave} 
+              disabled={isGenerating}
+              style={{ display: 'flex', alignItems: 'center', opacity: isGenerating ? 0.7 : 1 }}
+            >
+              {isGenerating ? 'Generando...' : 'Continuar a Enviar'} <ArrowRight size={18} style={{ marginLeft: '8px' }} />
             </button>
           </div>
         </div>
