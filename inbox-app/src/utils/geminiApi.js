@@ -324,8 +324,21 @@ export const extractLicenseData = async (apiKey, base64Images, country = '', onC
     onChunk
   );
 
-  // Field synchronization without deleting valid fields
+  // Field normalization & synchronization without deleting valid fields
   if (extractedData && typeof extractedData === 'object') {
+    // Convert all fields to strings safely (in case Gemini returned arrays or objects)
+    for (const [key, val] of Object.entries(extractedData)) {
+      if (val === null || val === undefined) {
+        extractedData[key] = '';
+      } else if (Array.isArray(val)) {
+        extractedData[key] = val.map(item => typeof item === 'object' ? JSON.stringify(item) : String(item)).join('\n');
+      } else if (typeof val === 'object') {
+        extractedData[key] = Object.entries(val).map(([k, v]) => `${k}: ${typeof v === 'object' ? JSON.stringify(v) : String(v)}`).join('\n');
+      } else {
+        extractedData[key] = String(val);
+      }
+    }
+
     // Synchronize first names
     if (extractedData.firstName && !extractedData.firstNames) {
       extractedData.firstNames = extractedData.firstName;
@@ -405,7 +418,8 @@ export const extractLicenseData = async (apiKey, base64Images, country = '', onC
     }
 
     // Generate class descriptions fallback if missing
-    if (!extractedData.classDescriptions || extractedData.classDescriptions.trim() === '' || extractedData.classDescriptions === '-') {
+    const currentClassDesc = typeof extractedData.classDescriptions === 'string' ? extractedData.classDescriptions.trim() : '';
+    if (!currentClassDesc || currentClassDesc === '-') {
       if (extractedData.class) {
         if (isChinaDoc) {
           extractedData.classDescriptions = generateChinaClassDescriptions(extractedData.class);
