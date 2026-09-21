@@ -1,34 +1,34 @@
 export const OFFICIAL_CLASS_DESCRIPTIONS = {
-  "AM": "AM - 2-wheel, 3-wheel vehicles and light quadricycles with a maximum design speed of not more than 45 km/h.",
-  "A1": "A1 - light motorcycles with a cylinder capacity not more than 125 cubic centimetres and a power rating less than 11 kW.",
-  "A2": "A2 - motorcycles with a power rating under 35 kW.",
-  "A": "A - heavy motorcycles without power restrictions.",
-  "B": "B - passenger vehicles weighing up to 3,500 kg and seating not more than eight passengers, in addition to the driver.",
-  "BE": "BE - vehicle of category B towing a heavy trailer of under 3,500 kg.",
-  "B1": "B1- quadricycles.",
-  "C1": "C1 - goods vehicles between 3,500 kg and 7,500 kg and for up to eight passengers-",
-  "C1E": "C1E - vehicle of category C1 or B towing a heavy trailer; with a combined mass of up to 12,000 kg.",
-  "C": "C - goods vehicles weighing more than 3,500 kg and seating not more than eight passengers.",
-  "CE": "CE - vehicle of category C towing a heavy trailer.",
-  "D1": "D1 - passenger vehicles built for fewer than 16 passengers and that is no longer than 8 m.",
-  "D1E": "D1E - vehicle of category D1 towing a heavy trailer.",
-  "D": "D - passenger vehicles for more than eight passengers.",
-  "DE": "DE - vehicle of category D towing a heavy trailer.",
-  "LK": "LK- Small moped with a maximum speed of 30 km/h. (Now included in AM class).",
-  "TM": "TM- Tractor/Motorised equipment.",
-  "L": "L - Agricultural and forestry tractors with a maximum design speed of up to 40 km/h, and work machinery up to 25 km/h.",
-  "T": "T- tractor or limited-speed motor vehicle (MMBS) on public roads.",
-  "M": "M - Mopeds with maximum design speed up to 45 km/h.",
-  "S": "S - Trikes, quadricycles and microcars."
+  "AM": "AM: Mopeds and light quadricycles not exceeding 45 km/h",
+  "A1": "A1: Light motorcycles with a cylinder capacity not more than 125 cc and a power rating less than 11 kW",
+  "A2": "A2: Motorcycles with a power rating under 35 kW",
+  "A": "A: Heavy motorcycles without power restrictions",
+  "B": "B: Passenger cars and motor vehicles up to 3,500 kg permissible maximum mass",
+  "BE": "BE: Vehicle of category B towing a heavy trailer of under 3,500 kg",
+  "B1": "B1: Quadricycles",
+  "C1": "C1: Goods vehicles between 3,500 kg and 7,500 kg and for up to eight passengers",
+  "C1E": "C1E: Vehicle of category C1 or B towing a heavy trailer, with a combined mass of up to 12,000 kg",
+  "C": "C: Goods vehicles weighing more than 3,500 kg and seating not more than eight passengers",
+  "CE": "CE: Vehicle of category C towing a heavy trailer",
+  "D1": "D1: Passenger vehicles built for fewer than 16 passengers and that is no longer than 8 m",
+  "D1E": "D1E: Vehicle of category D1 towing a heavy trailer",
+  "D": "D: Passenger vehicles for more than eight passengers",
+  "DE": "DE: Vehicle of category D towing a heavy trailer",
+  "LK": "LK: Small moped with a maximum speed of 30 km/h (Now included in AM class)",
+  "TM": "TM: Tractor/Motorised equipment",
+  "L": "L: Agricultural and forestry tractors with a maximum design speed up to 40 km/h",
+  "T": "T: Agricultural tractors with a maximum design speed up to 60 km/h",
+  "M": "M: Mopeds with maximum design speed up to 45 km/h",
+  "S": "S: Trikes, quadricycles and microcars"
 };
 
 export const BRAZIL_CLASS_DESCRIPTIONS = {
-  "A": "A- Driver of a two or three-wheeled motor vehicle, with or without sidecar.",
-  "B": "B- Driver of a motor vehicle, not covered by category A, with a total gross weight not exceeding 3,500 kg and having not more than 8 seats, excluding the driver's seat.",
-  "C": "C- Driver of a motor vehicle used for transporting cargo, not covered by category B, with a total gross weight exceeding 3,500 kg.",
-  "D": "D- Driver of a motor vehicle used for passenger transport, whose capacity exceeds 8 seats, excluding the driver's seat.",
-  "E": "E- Driver of a combination of vehicles in which the towing unit falls into categories B, C or D and the towed unit has a total gross weight of 6,000 kg or more, or whose capacity exceeds 8 seats.",
-  "ACC": "ACC- Driver of mopeds up to 50 cc."
+  "A": "A: Driver of a two or three-wheeled motor vehicle, with or without sidecar.",
+  "B": "B: Driver of a motor vehicle, not covered by category A, with a total gross weight not exceeding 3,500 kg and having not more than 8 seats, excluding the driver's seat.",
+  "C": "C: Driver of a motor vehicle used for transporting cargo, not covered by category B, with a total gross weight exceeding 3,500 kg.",
+  "D": "D: Driver of a motor vehicle used for passenger transport, whose capacity exceeds 8 seats, excluding the driver's seat.",
+  "E": "E: Driver of a combination of vehicles in which the towing unit falls into categories B, C or D and the towed unit has a total gross weight of 6,000 kg or more, or whose capacity exceeds 8 seats.",
+  "ACC": "ACC: Driver of mopeds up to 50 cc."
 };
 
 export const CHINA_CLASS_DESCRIPTIONS = {
@@ -101,6 +101,31 @@ export const generateBrazilClassDescriptions = (classString) => {
   lines.push('https://www.detran.sp.gov.br/wps/portal/portaldetran/cidadao/habilitacao/fichaservico/');
 
   return lines.join('\n');
+};
+
+export const formatClassDescriptions = (str) => {
+  if (!str || typeof str !== 'string') return str || '';
+  const lines = str.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+  if (lines.length > 1) {
+    return lines.map(l => l.replace(/^(AM|A1|A2|A|B1|BE|B|C1E|C1|CE|C|D1E|D1|DE|D|LK|TM|L|T|M|S)\s*[-–]\s*/i, '$1: ')).join('\n');
+  }
+
+  const single = lines[0] || str.trim();
+  const splitRegex = /(?:^|\s+)(AM|A1|A2|A|B1|BE|B|C1E|C1|CE|C|D1E|D1|DE|D|LK|TM|L|T|M|S)\s*[:\-–]\s*/gi;
+  const parts = single.split(splitRegex).filter(Boolean);
+  if (parts.length >= 2) {
+    const formatted = [];
+    for (let i = 0; i < parts.length; i += 2) {
+      const code = parts[i]?.trim().toUpperCase();
+      const desc = parts[i + 1]?.trim().replace(/\.$/, '');
+      if (code && desc) {
+        formatted.push(`${code}: ${desc}`);
+      }
+    }
+    if (formatted.length > 0) return formatted.join('\n');
+  }
+
+  return single;
 };
 
 export const generateClassDescriptions = (classString) => {

@@ -2,7 +2,7 @@ import Docxtemplater from "docxtemplater";
 import PizZip from "pizzip";
 import { saveAs } from "file-saver";
 import ImageModule from "docxtemplater-image-module-free";
-import { generateClassDescriptions, generateBrazilClassDescriptions, generateChinaClassDescriptions, formatCategoriesDates, formatLicenseClasses } from "./classDescriptions";
+import { generateClassDescriptions, generateBrazilClassDescriptions, generateChinaClassDescriptions, formatCategoriesDates, formatLicenseClasses, formatClassDescriptions } from "./classDescriptions";
 import { COUNTRY_TEMPLATES } from "../config/countryPrompts";
 import { getNormalizedCountryKey } from "./geminiApi";
 
@@ -166,6 +166,8 @@ export const generateWordDocument = async (templateArrayBuffer, data, imagesBase
     } else if (data.class || data.categoriesDates) {
       classDesc = generateClassDescriptions(`${data.class || ''} ${data.categoriesDates || ''}`);
     }
+  } else {
+    classDesc = formatClassDescriptions(classDesc);
   }
 
   // Prepare full render object

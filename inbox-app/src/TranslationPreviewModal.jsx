@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { X, Save, Download, ArrowRight, RefreshCw, FileText, CheckCircle2 } from 'lucide-react';
-import { generateClassDescriptions, generateBrazilClassDescriptions, generateChinaClassDescriptions, formatCategoriesDates, formatLicenseClasses } from './utils/classDescriptions';
+import { generateClassDescriptions, generateBrazilClassDescriptions, generateChinaClassDescriptions, formatCategoriesDates, formatLicenseClasses, formatClassDescriptions } from './utils/classDescriptions';
 import { getAssignedNumber, loadCountryTemplate } from './utils/documentGenerator';
 import { getNormalizedCountryKey } from './utils/geminiApi';
 import { COUNTRY_TEMPLATES } from './config/countryPrompts';
@@ -161,6 +161,8 @@ export default function TranslationPreviewModal({
         } else {
           normalized.classDescriptions = generateClassDescriptions(normalized.class);
         }
+      } else if (normalized.classDescriptions) {
+        normalized.classDescriptions = formatClassDescriptions(normalized.classDescriptions);
       }
 
       // Format categoriesDates grouping if present

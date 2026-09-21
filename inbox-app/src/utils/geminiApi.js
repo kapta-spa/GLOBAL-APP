@@ -1,6 +1,6 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { BASE_PROMPT, COUNTRY_RULES } from "../config/countryPrompts";
-import { generateClassDescriptions, generateBrazilClassDescriptions, generateChinaClassDescriptions, formatCategoriesDates, formatLicenseClasses } from "./classDescriptions";
+import { generateClassDescriptions, generateBrazilClassDescriptions, generateChinaClassDescriptions, formatCategoriesDates, formatLicenseClasses, formatClassDescriptions } from "./classDescriptions";
 
 const cleanAndParseJSON = (text) => {
   let cleaned = text.trim();
@@ -429,6 +429,8 @@ export const extractLicenseData = async (apiKey, base64Images, country = '', onC
           extractedData.classDescriptions = generateClassDescriptions(extractedData.class);
         }
       }
+    } else {
+      extractedData.classDescriptions = formatClassDescriptions(extractedData.classDescriptions);
     }
   }
 
