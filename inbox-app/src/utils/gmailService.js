@@ -1,3 +1,67 @@
+export const IGNORED_SYSTEM_EMAILS = [
+  'info@globaltranslations.co.nz',
+  'globaltranslations.co.nz',
+  'nuramajzoub1@gmail.com',
+  'wix.com',
+  'wixforms.com',
+  'no-reply',
+  'noreply',
+  'support@wix.com',
+  'stripe.com',
+  'paypal.com',
+  'google.com',
+  'mailer-daemon',
+  'notifications@',
+  'notification@'
+];
+
+export function isValidCustomerEmail(email) {
+  if (!email || typeof email !== 'string') return false;
+  const lower = email.trim().toLowerCase();
+  if (!lower.includes('@') || !lower.includes('.')) return false;
+  return !IGNORED_SYSTEM_EMAILS.some(ignored => lower.includes(ignored));
+}
+
+export function extractClientEmailFromMessage(msgData, emailText = '') {
+  const headers = msgData?.payload?.headers || [];
+
+  // 1. Reply-To header is the most reliable for Wix order forms
+  const replyTo = headers.find(h => h.name?.toLowerCase() === 'reply-to')?.value || '';
+  if (replyTo) {
+    const match = replyTo.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i);
+    if (match && isValidCustomerEmail(match[0])) {
+      return match[0].toLowerCase();
+    }
+  }
+
+  // 2. Specific field label in email body text
+  if (emailText) {
+    const labeledMatch = emailText.match(/(?:Email|E-mail|Correo|Email address|E-mail address|Email cliente|Customer Email)\s*[:：\-]?\s*([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/i);
+    if (labeledMatch && isValidCustomerEmail(labeledMatch[1])) {
+      return labeledMatch[1].toLowerCase();
+    }
+
+    // 3. Scan all email addresses in body, taking the first valid non-system email
+    const allMatches = emailText.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/gi) || [];
+    for (const em of allMatches) {
+      if (isValidCustomerEmail(em)) {
+        return em.toLowerCase();
+      }
+    }
+  }
+
+  // 4. From header (if sent directly by customer)
+  const from = headers.find(h => h.name?.toLowerCase() === 'from')?.value || '';
+  if (from) {
+    const match = from.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i);
+    if (match && isValidCustomerEmail(match[0])) {
+      return match[0].toLowerCase();
+    }
+  }
+
+  return '';
+}
+
 export async function sendEmailWithPdf(token, toEmail, subject, htmlBody, pdfBlobsArray) {
   const boundary = 'foo_bar_baz_boundary';
   
@@ -56,3 +120,4 @@ export async function sendEmailWithPdf(token, toEmail, subject, htmlBody, pdfBlo
   
   return response.json();
 }
+

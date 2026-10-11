@@ -2,9 +2,9 @@ import Docxtemplater from "docxtemplater";
 import PizZip from "pizzip";
 import { saveAs } from "file-saver";
 import ImageModule from "docxtemplater-image-module-free";
-import { generateClassDescriptions, generateBrazilClassDescriptions, generateChinaClassDescriptions, formatCategoriesDates, formatLicenseClasses, formatClassDescriptions } from "./classDescriptions";
+import { generateClassDescriptions, generateBrazilClassDescriptions, generateChinaClassDescriptions, generateItalyClassDescriptions, normalizeItalianAuthority, filterClassDescriptionsByHeldClasses, formatCategoriesDates, formatLicenseClasses, formatJapanLicenseClasses, getCleanJapanCondition, formatClassDescriptions, getCleanGermanCodes } from "./classDescriptions";
 import { COUNTRY_TEMPLATES } from "../config/countryPrompts";
-import { getNormalizedCountryKey } from "./geminiApi";
+import { getNormalizedCountryKey, formatBrazilAuthority } from "./geminiApi";
 
 const TRANSPARENT_1X1_PNG = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=";
 
@@ -155,20 +155,124 @@ export const generateWordDocument = async (templateArrayBuffer, data, imagesBase
   const surname = val(data.surname);
   const fullName = val(data.fullName || data.fullname || [surname, firstNames].filter(p => p && p !== '-').join(' '));
 
+  const isChinaDoc = Boolean(data.barcodeNumber && data.barcodeNumber !== '-') || 
+                     Boolean(data.fileNumber && data.fileNumber !== '-') ||
+                     Boolean(data.templateName && data.templateName.includes('china')) ||
+                     /chin/i.test(data.nationality || '') ||
+                     /chin/i.test(data.country || '') ||
+                     /chin/i.test(data.authority || '') ||
+                     /china|chinese|chino/i.test(folderName);
+  const isBrazilDoc = Boolean(data.cpf && data.cpf !== '-') ||
+                      Boolean(data.cardNumber && data.cardNumber !== '-') ||
+                      Boolean(data.idDocument && data.idDocument !== '-') ||
+                      Boolean(data.parents && data.parents !== '-') ||
+                      Boolean(data.templateName && (data.templateName.includes('brazil') || data.templateName.includes('brasil'))) ||
+                      /brazil|brasil|cnh/i.test(data.nationality || '') ||
+                      /brazil|brasil/i.test(data.country || '') ||
+                      /brazil|brasil|detran|denatran|senatran/i.test(data.authority || '') ||
+                      /brazil|brasil|cnh/i.test(folderName);
+  const isItalyDoc = Boolean(data.templateName && data.templateName.includes('italia')) || /ital/i.test(folderName) || /ital/i.test(data.country || '') || /MC[-/\s]?[A-Z]{2}|MIT-UCO|UCO|MIT-DTT|DTT/i.test(data.authority || '');
+  const isJapanDoc = Boolean(data.templateName && (data.templateName.includes('japon') || data.templateName.includes('japan'))) ||
+                     /japan|japon/i.test(folderName) ||
+                     /japan|japon/i.test(data.country || '') ||
+                     /japan|japon/i.test(data.nationality || '') ||
+                     /public safety commission/i.test(data.authority || '');
+  const isGermanDoc = Boolean(data.templateName && (data.templateName.includes('alemania') || data.templateName.includes('german'))) ||
+                      /alemania|german|germany|deutsch/i.test(folderName) ||
+                      /alemania|german|germany|deutsch/i.test(data.country || '') ||
+                      /german|alemania|deutsch/i.test(data.nationality || '') ||
+                      /germany|alemania|deutschland/i.test(data.authority || '');
+
+  let authorityVal = val(data.authority);
+  if (isItalyDoc && authorityVal && authorityVal !== '-') {
+    authorityVal = normalizeItalianAuthority(authorityVal);
+  } else if (isChinaDoc && authorityVal && authorityVal !== '-') {
+    authorityVal = authorityVal.replace(/,\s*China$/i, '').trim();
+  } else if (isJapanDoc && authorityVal && authorityVal !== '-') {
+    if (!authorityVal.toLowerCase().includes('japan')) {
+      authorityVal = `${authorityVal}, Japan`;
+    }
+  } else if (isBrazilDoc && authorityVal && authorityVal !== '-') {
+    authorityVal = formatBrazilAuthority(authorityVal);
+  }
+
+  let classVal = val(data.class);
+  if (isJapanDoc && classVal && classVal !== '-') {
+    classVal = formatJapanLicenseClasses(classVal);
+  }
+
   let classDesc = data.classDescriptions;
   if (!classDesc || classDesc === '-' || classDesc.trim() === '') {
-    const isChinaDoc = Boolean(data.barcodeNumber && data.barcodeNumber !== '-') || /china|chinese|chino/i.test(folderName);
-    const isBrazilDoc = Boolean(data.cpf && data.cpf !== '-') || /brazil|brasil|cnh/i.test(folderName);
     if (isChinaDoc) {
       classDesc = generateChinaClassDescriptions(data.class || '');
     } else if (isBrazilDoc) {
       classDesc = generateBrazilClassDescriptions(data.class || '');
+    } else if (isItalyDoc) {
+      classDesc = generateItalyClassDescriptions(data.class || '');
     } else if (data.class || data.categoriesDates) {
       classDesc = generateClassDescriptions(`${data.class || ''} ${data.categoriesDates || ''}`);
     }
   } else {
-    classDesc = formatClassDescriptions(classDesc);
+    if (isItalyDoc) {
+      classDesc = filterClassDescriptionsByHeldClasses(classDesc, data.class || '', 'italia');
+    } else {
+      classDesc = formatClassDescriptions(classDesc);
+    }
   }
+
+  const barcodeNumberVal = val(
+    data.barcodeNumber ||
+    data.barcode ||
+    data.barcode_number ||
+    data.barCode ||
+    data.barCodeNumber ||
+    data.barcodeNo ||
+    data.bar_code ||
+    data.codebar
+  );
+
+  const fileNumberVal = val(
+    data.fileNumber ||
+    data.file ||
+    data.fileNo ||
+    data.file_no ||
+    data.filenumber ||
+    data.file_number ||
+    data.recordNumber ||
+    data.recordFileNumber ||
+    data.archiveNumber ||
+    data.archiveNo ||
+    data.dangan ||
+    data.danganNumber ||
+    data.danganBianhao
+  );
+
+  const japanCleanCondition = isJapanDoc ? getCleanJapanCondition(data) : '-';
+  const germanCleanCodes = isGermanDoc ? getCleanGermanCodes(data) : '-';
+
+  const explicacionCodigosVal = isJapanDoc 
+    ? val(japanCleanCondition)
+    : isGermanDoc
+    ? val(germanCleanCodes)
+    : val(
+        data.explicacionCodigos ||
+        data.conditions ||
+        data.condition ||
+        data.explicacion ||
+        data.record ||
+        data.records ||
+        data.recordCard ||
+        data.recordDetails ||
+        data.remarks ||
+        data.remark ||
+        data.observations ||
+        data.observaciones ||
+        data.notes ||
+        data.note ||
+        data.violations
+      );
+
+  const codesVal = isJapanDoc ? val(japanCleanCondition) : (isGermanDoc ? val(germanCleanCodes) : val(data.codes));
 
   // Prepare full render object
   const renderData = {
@@ -176,24 +280,27 @@ export const generateWordDocument = async (templateArrayBuffer, data, imagesBase
     // Identification
     assignedNumber: val(data.assignedNumber !== '-' && data.assignedNumber ? data.assignedNumber : (assignedNumber || '-')),
     licenseNumber: val(data.licenseNumber),
-    barcodeNumber: val(data.barcodeNumber || data.barcode),
-    fileNumber: val(data.fileNumber || data.file || data.fileNo),
-    cardNumber: val(data.cardNumber),
-    idDocument: val(data.idDocument),
-    cpf: val(data.cpf),
-    personal: val(data.personal || data.point4d),
-    point4d: val(data.point4d || data.personal),
+    barcodeNumber: barcodeNumberVal,
+    barcode: barcodeNumberVal,
+    fileNumber: fileNumberVal,
+    file: fileNumberVal,
+    fileNo: fileNumberVal,
+    cardNumber: val(data.cardNumber || data.card_number || data.cardNumberVertical || data.numeroEspelho || data.numero_espelho || data.espelho || data.nEspelho || data.serialNumber || data.serial),
+    idDocument: val(data.idDocument || data.id_document || data.docIdentidade || data.doc_identidade || data.identityDocument || data.rg || data.identidade),
+    cpf: val(data.cpf || data.CPF || data.individualTaxpayerNumber || data.taxpayerNumber || data.taxId),
+    personal: val(data.personal || data.point4d || data.cpf),
+    point4d: val(data.point4d || data.personal || data.cpf),
     citizen: val(data.citizen || data.bsn),
     reference: val(data.reference),
 
     // Names
     surname: surname,
     firstName: firstName,
-    middleName: middleName || '-',
+    middleName: isBrazilDoc ? ((data.middleName && data.middleName !== '-') ? data.middleName.trim() : '') : (middleName || '-'),
     firstNames: firstNames,
     fullName: fullName,
     fullname: fullName,
-    parents: val(data.parents),
+    parents: val(data.parents || data.filiação || data.filiacao || data.nameOfParents || data.parentNames),
 
     // Dates
     dateOfBirth: val(data.dateOfBirth),
@@ -201,26 +308,26 @@ export const generateWordDocument = async (templateArrayBuffer, data, imagesBase
     firstObtained: val(data.firstObtained || data.categoriesDates || data.firstIssued),
     issueDate: val(data.issueDate || data.firstIssued),
     expiryDate: val(data.expiryDate) || 'Indefinite',
-    categoriesDates: val(data.categoriesDates || data.firstObtained),
+    categoriesDates: val(data.categoriesDates || data.firstObtained || data.firstIssued),
     today: today,
     fechaHoy: today,
 
     // Categories & Conditions
-    class: val(data.class),
-    Class: val(data.class),
+    class: classVal,
+    Class: classVal,
     classDescriptions: val(classDesc),
-    codes: val(data.codes || data.explicacionCodigos || data.conditions),
-    explicacionCodigos: val(data.explicacionCodigos || data.codes || data.conditions),
-    explicacion: val(data.explicacion || data.explicacionCodigos || data.codes),
-    conditions: val(data.conditions || data.codes || data.explicacionCodigos),
+    codes: codesVal,
+    explicacionCodigos: explicacionCodigosVal,
+    explicacion: explicacionCodigosVal,
+    conditions: explicacionCodigosVal,
 
     // Attributes & Location
-    authority: val(data.authority),
+    authority: authorityVal,
     placeOfBirth: val(data.placeOfBirth),
     address: val(data.address),
     nationality: val(data.nationality),
-    gender: val(data.gender || data.sex),
-    sex: val(data.sex || data.gender),
+    gender: isBrazilDoc ? 'Not stated' : val(data.gender || data.sex),
+    sex: isBrazilDoc ? 'Not stated' : val(data.sex || data.gender),
     height: val(data.height),
     eye: val(data.eye || data.eyeColor),
     eyeColor: val(data.eyeColor || data.eye),

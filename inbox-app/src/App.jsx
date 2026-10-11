@@ -10,7 +10,9 @@ import ManualUploadModal from './ManualUploadModal';
 import AutoOrganizeTab from './AutoOrganizeTab';
 import { extractLicenseData, getNormalizedCountryKey } from './utils/geminiApi';
 import { generateWordDocument, getAssignedNumber } from './utils/documentGenerator';
-import { sendEmailWithPdf } from './utils/gmailService';
+import { sendEmailWithPdf, isValidCustomerEmail, extractClientEmailFromMessage } from './utils/gmailService';
+
+
 
 const GOOGLE_API_SCOPES = 'https://www.googleapis.com/auth/gmail.modify https://www.googleapis.com/auth/gmail.labels https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/drive.readonly https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/drive';
 
@@ -138,7 +140,7 @@ function App() {
   
   // UI states
   const [loading, setLoading] = useState(false);
-  const [activeTab, setActiveTab] = useState('autoOrganize'); 
+  const [activeTab, setActiveTab] = useState('inbox'); 
   const [selectedIds, setSelectedIds] = useState(new Set()); 
   
   // Modal states
@@ -247,7 +249,7 @@ function App() {
       const data = await res.json();
       setUser(data);
       localStorage.setItem('google_user', JSON.stringify(data));
-      refreshData(accessToken, 'autoOrganize');
+      refreshData(accessToken, 'inbox');
     } catch (err) {
       console.error('Failed to fetch user profile', err);
     }
@@ -828,13 +830,64 @@ function App() {
     }
   };
 
-  const getMonthFolderLabel = async (accessToken) => {
-    if (targetMonthFolder && targetMonthFolder.name) {
-      return targetMonthFolder;
+const KNOWN_COUNTRIES = [
+  'vietnam', 'germany', 'alemania', 'france', 'francia', 'china', 'japan', 'japon',
+  'korea', 'corea', 'brazil', 'brasil', 'spain', 'espana', 'españa', 'italy', 'italia',
+  'portugal', 'russia', 'rusia', 'russian fed', 'switzerland', 'suiza', 'sweden', 'suecia',
+  'netherlands', 'holanda', 'belgium', 'belgica', 'denmark', 'dinamarca',
+  'norway', 'noruega', 'finland', 'finlandia', 'poland', 'polonia', 'taiwan',
+  'indonesia', 'israel', 'czech', 'hungary', 'hungria', 'canada', 'mexico',
+  'chile', 'argentina', 'colombia', 'peru', 'uruguay', 'ecuador', 'french poly', 'french polynesia', 'unknown',
+  'haiti', 'cuba', 'venezuela', 'usa', 'eeuu', 'uk', 'england', 'inglaterra', 'australia', 'new zealand', 'nz', 'india', 'pakistan', 'philippines', 'filipinas'
+];
+
+const getCleanClientLabelName = (rawName) => {
+  if (!rawName) return '';
+  let leaf = String(rawName).split('/').pop().trim();
+
+  // Remove bracket tags like [Ya registrado] or [Sin DL libre]
+  leaf = leaf.replace(/^\[[^\]]+\]\s*/, '').trim();
+
+  // Match order consecutive(s) at start: e.g. "B5244", "B5296, 5297", "B5296, B5297", "RVA3755, RVA3756"
+  const match = leaf.match(/^([A-Za-z0-9]+(?:\s*,\s*[A-Za-z0-9]+)*)\s*(.*)$/);
+  if (match) {
+    const dlPart = match[1].trim();
+    let remaining = match[2].trim();
+
+    if (!remaining) return dlPart;
+
+    // Remove known country words if present
+    const words = remaining.split(/\s+/);
+    if (words.length > 1) {
+      const firstTwo = `${words[0]} ${words[1]}`.toLowerCase();
+      const firstOne = words[0].toLowerCase();
+      const lastTwo = `${words[words.length - 2]} ${words[words.length - 1]}`.toLowerCase();
+      const lastOne = words[words.length - 1].toLowerCase();
+
+      if (KNOWN_COUNTRIES.includes(firstTwo)) {
+        remaining = words.slice(2).join(' ').trim();
+      } else if (KNOWN_COUNTRIES.includes(firstOne)) {
+        remaining = words.slice(1).join(' ').trim();
+      } else if (KNOWN_COUNTRIES.includes(lastTwo)) {
+        remaining = words.slice(0, -2).join(' ').trim();
+      } else if (KNOWN_COUNTRIES.includes(lastOne)) {
+        remaining = words.slice(0, -1).join(' ').trim();
+      }
+    } else if (KNOWN_COUNTRIES.includes(words[0].toLowerCase())) {
+      remaining = '';
     }
 
+    return remaining ? `${dlPart} ${remaining}`.trim() : dlPart;
+  }
+
+  return leaf;
+};
+
+  const getMonthFolderLabel = async (accessToken) => {
     const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
-    const currentMonth = monthNames[new Date().getMonth()];
+    const now = new Date();
+    const currentMonth = monthNames[now.getMonth()];
+    const currentYear2Digits = String(now.getFullYear()).slice(-2); // e.g. "26"
     
     const res = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/labels', {
       headers: { Authorization: `Bearer ${accessToken}` }
@@ -843,16 +896,54 @@ function App() {
     const data = await res.json();
     const allLabels = data.labels || [];
 
-    const currentMonthRegex = new RegExp(`0\\.\\s*Dx\\s+${currentMonth}`, 'i');
-    let found = allLabels.find(l => currentMonthRegex.test(l.name));
-
-    if (!found) {
-      found = allLabels.find(l => /0\.\s*Dx\s+[A-Za-z]+/i.test(l.name));
+    // 1. Detect base parent prefix (e.g. "0. Work/0. 1 HOUR")
+    let basePrefix = '';
+    const dlInProgressLabel = allLabels.find(l => l.name.includes('0. DL IN PROGRESS'));
+    if (dlInProgressLabel) {
+      const parts = dlInProgressLabel.name.split('/0. DL IN PROGRESS')[0];
+      if (parts) basePrefix = parts;
+    }
+    if (!basePrefix) {
+      const workLabel = allLabels.find(l => l.name.startsWith('0. Work/0. 1 HOUR'));
+      if (workLabel) basePrefix = '0. Work/0. 1 HOUR';
     }
 
+    // 2. If targetMonthFolder is already configured and exists in Gmail labels, use it
+    if (targetMonthFolder && targetMonthFolder.name) {
+      const matchExisting = allLabels.find(l => 
+        l.name.toLowerCase() === targetMonthFolder.name.toLowerCase() || l.id === targetMonthFolder.id
+      );
+      if (matchExisting) {
+        const folderObj = { id: matchExisting.id, name: matchExisting.name, displayName: matchExisting.name.split('/').pop() };
+        setTargetMonthFolder(folderObj);
+        localStorage.setItem('targetMonthFolder', JSON.stringify(folderObj));
+        return folderObj;
+      }
+    }
+
+    // 3. Search for existing month label under basePrefix or anywhere matching month folder pattern
+    const spanishMonthNames = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Setiembre", "Octubre", "Noviembre", "Diciembre"];
+    const currentSpanishMonth = spanishMonthNames[now.getMonth()];
+    const isCurrentMonthLeaf = (leaf) => {
+      if (!leaf || !leaf.startsWith('0.')) return false;
+      return new RegExp(`\\b(?:${currentMonth}|${currentSpanishMonth})\\b`, 'i').test(leaf);
+    };
+
+    let found = allLabels.find(l => {
+      if (l.name.includes('DL IN PROGRESS')) return false;
+      if (basePrefix && l.name.startsWith(basePrefix)) {
+        const leaf = l.name.split('/').pop();
+        return isCurrentMonthLeaf(leaf);
+      }
+      return false;
+    });
+
     if (!found) {
-      const monthPrefix = `0. Work/0. 1 HOUR/`;
-      found = allLabels.find(l => l.name.startsWith(monthPrefix) && l.name.toLowerCase().includes(currentMonth.toLowerCase()) && !l.name.includes('DL IN PROGRESS'));
+      found = allLabels.find(l => {
+        if (l.name.includes('DL IN PROGRESS')) return false;
+        const leaf = l.name.split('/').pop();
+        return isCurrentMonthLeaf(leaf);
+      });
     }
 
     if (found) {
@@ -863,8 +954,9 @@ function App() {
       return folderObj;
     }
 
-    const hasWorkPrefix = allLabels.some(l => l.name.startsWith('0. Work/0. 1 HOUR'));
-    const newFolderName = hasWorkPrefix ? `0. Work/0. 1 HOUR/0. Dx ${currentMonth}` : `0. Dx ${currentMonth}`;
+    // 4. Create month folder under basePrefix (e.g. "0. Work/0. 1 HOUR/0. Dx September 26")
+    const folderBaseName = `0. Dx ${currentMonth} ${currentYear2Digits}`;
+    const newFolderName = basePrefix ? `${basePrefix}/${folderBaseName}` : folderBaseName;
     
     const createRes = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/labels', {
       method: 'POST',
@@ -873,7 +965,7 @@ function App() {
     });
     handleAuthError(createRes.status);
     const createData = await createRes.json();
-    const folderObj = { id: createData.id, name: newFolderName, displayName: `0. Dx ${currentMonth}` };
+    const folderObj = { id: createData.id, name: newFolderName, displayName: folderBaseName };
     setTargetMonthFolder(folderObj);
     localStorage.setItem('targetMonthFolder', JSON.stringify(folderObj));
     return folderObj;
@@ -889,11 +981,19 @@ function App() {
       handleAuthError(res.status);
       const data = await res.json();
       if (data.labels) {
-        const availableFolders = data.labels.filter(l => 
-          (l.name.startsWith('0. Work/0. 1 HOUR/') || /0\.\s*Dx\s+/i.test(l.name)) && 
-          !l.name.includes('DL IN PROGRESS') &&
-          l.name !== '0. Work/0. 1 HOUR'
-        ).map(l => ({
+        const monthNamesPattern = /(?:January|February|March|April|May|June|July|August|September|October|November|December|Enero|Febrero|Marzo|Abril|Mayo|Junio|Julio|Agosto|Septiembre|Setiembre|Octubre|Noviembre|Diciembre)/i;
+        const availableFolders = data.labels.filter(l => {
+          const leaf = l.name.split('/').pop();
+          const isDxOrMonth = leaf.startsWith('0.') && (
+            monthNamesPattern.test(leaf) || 
+            /0\.\s*(?:Dx|Do|D[a-zA-Z0-9]?|E|F|F\s*O|[A-Za-z0-9]+)\s+/i.test(leaf)
+          );
+          const isNotProgress = !l.name.includes('DL IN PROGRESS');
+          const isNotParentOnly = l.name !== '0. Work/0. 1 HOUR' && l.name !== '0. 1 HOUR';
+          const parts = l.name.split('/');
+          const isTopMonthFolder = parts.length <= (l.name.startsWith('0. Work/') ? 3 : 2);
+          return isDxOrMonth && isNotProgress && isNotParentOnly && isTopMonthFolder;
+        }).map(l => ({
           id: l.id,
           name: l.name,
           displayName: l.name.split('/').pop()
@@ -936,7 +1036,8 @@ function App() {
       const labelsToMove = activeLabels.filter(l => selectedIds.has(l.id));
 
       for (const label of labelsToMove) {
-        const newName = `${monthFolder.name}/${label.displayName}`;
+        const cleanChildName = getCleanClientLabelName(label.displayName || label.name);
+        const newName = `${monthFolder.name}/${cleanChildName}`;
         
         const res = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/labels/${label.id}`, {
           method: 'PATCH',
@@ -975,7 +1076,10 @@ function App() {
 
       // Find sub-labels under 0. Dx <Month> or month folders
       const subLabels = allLabels.filter(l => {
-        const isDxChild = /0\.\s*Dx\s+[^/]+\/.+/i.test(l.name) || (l.name.includes('0. Dx') && l.name.split('/').length > 1);
+        const isDxChild = /0\.\s*(?:Dx|Do|D[a-zA-Z0-9]?|E|F|F\s*O|[A-Za-z0-9]+)\s+[^/]+\/.+/i.test(l.name) ||
+          /(?:January|February|March|April|May|June|July|August|September|October|November|December|Octubre|Noviembre|Diciembre)\s*\d*\/.+/i.test(l.name) ||
+          (l.name.includes('0. Dx') && l.name.split('/').length > 1) ||
+          (l.name.includes('0. Do') && l.name.split('/').length > 1);
         const isProgressChild = l.name.startsWith('0. Work/0. 1 HOUR/0. DL IN PROGRESS/') && l.name !== '0. Work/0. 1 HOUR/0. DL IN PROGRESS/';
         const isOneHourChild = l.name.startsWith('0. Work/0. 1 HOUR/') && l.name.split('/').length >= 4;
         return isDxChild || isProgressChild || isOneHourChild;
@@ -1077,6 +1181,67 @@ function App() {
     return attachmentUrls;
   };
 
+  const fetchCustomerEmailFromSheet = async (token, folderName, currentSheetName) => {
+    try {
+      const targetDLs = extractDLNumbers(folderName, []);
+      if (targetDLs.length === 0) return '';
+      let spreadsheetId = localStorage.getItem('lastSpreadsheetId') || null;
+      if (!spreadsheetId) return '';
+
+      for (const tab of ['1HRGT', 'RVA', 'FORMULARIO']) {
+        const sheetRes = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${tab}!A1:Z1000`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        if (!sheetRes.ok) continue;
+        const sheetData = await sheetRes.json();
+        const rows = sheetData.values || [];
+        if (rows.length === 0) continue;
+
+        let emailColIdx = -1;
+        let dlColIdx = -1;
+        for (let r = 0; r < Math.min(3, rows.length); r++) {
+          const headerRow = rows[r] || [];
+          for (let c = 0; c < headerRow.length; c++) {
+            const val = String(headerRow[c] || '').trim().toLowerCase();
+            if (val.includes('email') || val.includes('correo')) emailColIdx = c;
+            if (['dl', 'dl #', 'dl#', 'consecutivo', 'ref', 'dl number'].includes(val)) dlColIdx = c;
+          }
+        }
+        if (dlColIdx === -1) dlColIdx = 4;
+
+        for (let r = 0; r < rows.length; r++) {
+          const row = rows[r] || [];
+          const dlVal = String(row[dlColIdx] || '').trim().toUpperCase();
+          const cleanDlVal = dlVal.replace(/[^A-Z0-9]/g, '');
+          const dlDigits = dlVal.replace(/\D/g, '');
+
+          const dlMatch = targetDLs.some(tdl => {
+            if (!tdl) return false;
+            const cleanTdl = tdl.toUpperCase().replace(/[^A-Z0-9]/g, '');
+            const tdlDigits = tdl.replace(/\D/g, '');
+            return (cleanDlVal && cleanDlVal === cleanTdl) ||
+                   (dlDigits && tdlDigits && dlDigits === tdlDigits && dlDigits.length >= 3);
+          });
+
+          if (dlMatch) {
+            if (emailColIdx !== -1 && row[emailColIdx] && isValidCustomerEmail(row[emailColIdx])) {
+              return String(row[emailColIdx]).trim().toLowerCase();
+            }
+            for (const cell of row) {
+              const cellStr = String(cell || '').trim();
+              if (isValidCustomerEmail(cellStr)) {
+                return cellStr.toLowerCase();
+              }
+            }
+          }
+        }
+      }
+    } catch (e) {
+      console.warn("No se pudo obtener correo desde Google Sheet:", e);
+    }
+    return '';
+  };
+
   const handleProcessFolder = async (label) => {
     setProcessing(true);
     setActiveEmailItem(label);
@@ -1137,35 +1302,24 @@ function App() {
           }
         }
 
+        // Robust client email extraction
         if (!customerEmailStr) {
-          let foundEmail = '';
-          if (emailText) {
-             // Buscar TODOS los correos en el texto
-             const allEmailsRegex = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/gi;
-             const emailsInBody = emailText.match(allEmailsRegex) || [];
-             
-             // Filtrar los correos que sabemos que NO son del cliente
-             const ignoreList = ['info@wix.com', 'no-reply@wix.com', 'nuramajzoub1@gmail.com', 'wix.com', 'support@wix.com'];
-             const possibleClientEmails = emailsInBody.filter(e => {
-                const lower = e.toLowerCase();
-                return !ignoreList.some(ignore => lower.includes(ignore));
-             });
-
-             if (possibleClientEmails.length > 0) {
-               foundEmail = possibleClientEmails[0];
-             }
-          }
-          if (!foundEmail) {
-             const fromHeader = msgData.payload.headers.find(h => h.name.toLowerCase() === 'from')?.value || '';
-             const match = fromHeader.match(/<([^>]+)>/);
-             foundEmail = match ? match[1] : fromHeader;
-          }
-          if (foundEmail) {
-            customerEmailStr = foundEmail;
-            setActiveCustomerEmail(foundEmail);
+          const extractedEmail = extractClientEmailFromMessage(msgData, emailText);
+          if (extractedEmail) {
+            customerEmailStr = extractedEmail;
           }
         }
       }
+
+      // Fallback: If not found in Gmail message body, lookup in Google Sheets for this DL
+      if (!customerEmailStr) {
+        const sheetEmail = await fetchCustomerEmailFromSheet(token, label.displayName, sheetName);
+        if (sheetEmail) {
+          customerEmailStr = sheetEmail;
+        }
+      }
+
+      setActiveCustomerEmail(customerEmailStr || '');
       
       if (allUrls.length === 0) {
          // Fetch image attachments in parallel with Promise.all
@@ -1443,23 +1597,29 @@ function App() {
           const rows = sheetData.values || [];
           if (rows.length === 0) continue;
 
-          // Search for "Status" or "Estado" column in the first 3 rows
+          // Search for "Status" or "Estado" and "DL" column in the first 3 rows
           let statusColIdx = -1;
+          let dlColIdx = -1;
           for (let r = 0; r < Math.min(3, rows.length); r++) {
             const headerRow = rows[r] || [];
             for (let c = 0; c < headerRow.length; c++) {
               const val = String(headerRow[c] || '').trim().toLowerCase();
               if (val === 'status' || val === 'estado') {
                 statusColIdx = c;
-                break;
+              }
+              if (['dl', 'dl #', 'dl#', 'consecutivo', 'ref', 'dl number'].includes(val)) {
+                dlColIdx = c;
               }
             }
-            if (statusColIdx !== -1) break;
           }
 
-          // Fallback: Columna L (index 11) for 1HRGT or Columna K (index 10) for RVA
+          if (dlColIdx === -1) {
+            dlColIdx = 4; // Column E (index 4) by default
+          }
+
+          // Fallback: Columna T (index 19) or Columna L (index 11) for 1HRGT or Columna K (index 10) for RVA
           if (statusColIdx === -1) {
-            statusColIdx = tab === '1HRGT' ? 11 : 10;
+            statusColIdx = 19;
           }
 
           const statusColLetter = getColumnLetter(statusColIdx);
@@ -1467,7 +1627,7 @@ function App() {
           // Find rows matching target DLs
           for (let r = 0; r < rows.length; r++) {
             const row = rows[r] || [];
-            const dlVal = String(row[4] || '').trim().toUpperCase(); // Column E (index 4)
+            const dlVal = String(row[dlColIdx] || '').trim().toUpperCase();
             const cleanDlVal = dlVal.replace(/[^A-Z0-9]/g, '');
             const dlDigits = dlVal.replace(/\D/g, '');
 
@@ -1484,7 +1644,7 @@ function App() {
               const rowNum = r + 1; // 1-indexed for Google Sheets
               updateRanges.push({
                 range: `${tab}!${statusColLetter}${rowNum}`,
-                values: [["COMPLETED"]]
+                values: [["Completed"]] // Exact match for Google Sheet green dropdown option "Completed"
               });
               updatedInfo.push(`${tab} (fila ${rowNum}, ${dlVal || targetDLs.join(', ')})`);
             }
@@ -1495,7 +1655,7 @@ function App() {
       }
 
       if (updateRanges.length > 0) {
-        console.log("Enviando actualización de Status a COMPLETED:", updateRanges);
+        console.log("Enviando actualización de Status a Completed:", updateRanges);
         const updateRes = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values:batchUpdate`, {
           method: 'POST',
           headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
@@ -1556,16 +1716,18 @@ function App() {
       const sheetResult = await updateSheetStatusCompleted(token, editorFolder, processedDocs, sheetName);
       
       if (sheetResult && sheetResult.success) {
-        alert(`✅ Correo enviado exitosamente a ${finalEmailTo}\n📊 Estado actualizado a 'COMPLETED' en Google Sheets: ${sheetResult.details}`);
+        alert(`✅ Correo enviado exitosamente a ${finalEmailTo}\n📊 Estado actualizado a 'Completed' en Google Sheets: ${sheetResult.details}`);
       } else {
         alert(`✅ Correo enviado exitosamente a ${finalEmailTo}\n⚠️ Nota: No se pudo actualizar el Status en el Sheet (${sheetResult?.reason || 'Revisar configuración de hoja'}).`);
       }
+
       
       if (activeEmailItem) {
         try {
           const monthFolder = await getMonthFolderLabel(token);
           if (monthFolder && monthFolder.name) {
-            const newName = `${monthFolder.name}/${activeEmailItem.displayName}`;
+            const cleanChildName = getCleanClientLabelName(activeEmailItem.displayName || activeEmailItem.name);
+            const newName = `${monthFolder.name}/${cleanChildName}`;
             console.log(`Moviendo etiqueta finalizada a: ${newName}`);
             const patchRes = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/labels/${activeEmailItem.id}`, {
               method: 'PATCH',
@@ -1641,14 +1803,6 @@ function App() {
       {/* Tabs */}
       <div className="tabs">
         <button 
-          className={`tab ${activeTab === 'autoOrganize' ? 'active' : ''}`}
-          onClick={() => handleTabSwitch('autoOrganize')}
-          style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}
-        >
-          <Zap size={16} color={activeTab === 'autoOrganize' ? 'var(--accent-color)' : '#f59e0b'} />
-          Organizar Inbox
-        </button>
-        <button 
           className={`tab ${activeTab === 'inbox' ? 'active' : ''}`}
           onClick={() => handleTabSwitch('inbox')}
         >
@@ -1659,6 +1813,14 @@ function App() {
           onClick={() => handleTabSwitch('progress')}
         >
           En Progreso
+        </button>
+        <button 
+          className={`tab ${activeTab === 'autoOrganize' ? 'active' : ''}`}
+          onClick={() => handleTabSwitch('autoOrganize')}
+          style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}
+        >
+          <Zap size={16} color={activeTab === 'autoOrganize' ? 'var(--accent-color)' : '#f59e0b'} />
+          Organizar Inbox
         </button>
       </div>
 
@@ -1859,7 +2021,7 @@ function App() {
               style={{ backgroundColor: '#6366f1', padding: '10px 12px', flexShrink: 0 }}
               onClick={openMoveToLabelModal}
               disabled={processing}
-              title="Mover a una etiqueta dentro de 0. Dx September"
+              title="Mover a una sub-etiqueta mensual"
             >
               <Tag size={18} />
               Label
@@ -2074,7 +2236,7 @@ function App() {
           
           <div style={{ flex: 1, overflowY: 'auto' }}>
             {monthLabels.length === 0 && !loading && (
-              <p style={{color: 'var(--text-secondary)'}}>No se encontraron otras carpetas bajo "0. 1 HOUR".</p>
+              <p style={{color: 'var(--text-secondary)'}}>No se encontraron carpetas mensuales de finalizadas.</p>
             )}
             
             {monthLabels.map(folder => (

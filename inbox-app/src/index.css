@@ -443,4 +443,99 @@ body {
   max-height: 100% !important;
 }
 
+/* Cropper touch handles enhancement for mobile & tablet */
+.cropper-point {
+  background-color: #3b82f6 !important;
+  opacity: 0.95 !important;
+  border-radius: 4px !important;
+  z-index: 100 !important;
+}
+
+/* Invisible extended touch hitbox for handles */
+.cropper-point::before {
+  content: '' !important;
+  position: absolute !important;
+  top: -15px !important;
+  left: -15px !important;
+  right: -15px !important;
+  bottom: -15px !important;
+  z-index: 10 !important;
+}
+
+/* Mid-edge points */
+.cropper-point.point-n,
+.cropper-point.point-s {
+  width: 20px !important;
+  height: 12px !important;
+  margin-left: -10px !important;
+  border-radius: 4px !important;
+  border: 2px solid #ffffff !important;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.5) !important;
+}
+.cropper-point.point-n {
+  top: -6px !important;
+}
+.cropper-point.point-s {
+  bottom: -6px !important;
+}
+
+.cropper-point.point-e,
+.cropper-point.point-w {
+  width: 12px !important;
+  height: 20px !important;
+  margin-top: -10px !important;
+  border-radius: 4px !important;
+  border: 2px solid #ffffff !important;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.5) !important;
+}
+.cropper-point.point-e {
+  right: -6px !important;
+}
+.cropper-point.point-w {
+  left: -6px !important;
+}
+
+/* Main 4 Corner points - Extra large & circular with white border for mobile/tablet touch */
+.cropper-point.point-ne,
+.cropper-point.point-nw,
+.cropper-point.point-se,
+.cropper-point.point-sw {
+  width: 28px !important;
+  height: 28px !important;
+  background-color: #2563eb !important;
+  border: 3px solid #ffffff !important;
+  border-radius: 50% !important;
+  opacity: 1 !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.6) !important;
+  cursor: pointer !important;
+}
+
+.cropper-point.point-nw {
+  top: -14px !important;
+  left: -14px !important;
+}
+.cropper-point.point-ne {
+  top: -14px !important;
+  right: -14px !important;
+}
+.cropper-point.point-sw {
+  bottom: -14px !important;
+  left: -14px !important;
+}
+.cropper-point.point-se {
+  bottom: -14px !important;
+  right: -14px !important;
+}
+
+/* Crop box lines visibility */
+.cropper-line {
+  background-color: #3b82f6 !important;
+  opacity: 0.8 !important;
+}
+.cropper-view-box {
+  outline: 2px solid #3b82f6 !important;
+  outline-color: rgba(59, 130, 246, 0.85) !important;
+}
+
+
 

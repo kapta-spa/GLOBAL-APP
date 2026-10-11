@@ -72,47 +72,427 @@ Extract all data and translate all fields strictly into English following the hi
 
 GENERAL UNIVERSAL RULES:
 1. Output MUST be a valid, well-formed JSON object without markdown formatting.
-2. Identify the issuing country/jurisdiction (e.g., Germany, China, Brazil, France, Spain, etc.) from flags, country codes, seals, or headers.
+2. Identify the issuing country/jurisdiction (e.g., France, Germany, China, Brazil, Spain, etc.) from flags, country codes, seals, or headers.
 3. Standard JSON keys to extract and populate:
-   - "country": Name of the issuing country in English (e.g. "Germany", "China", "Brazil", "France", "Spain", etc.)
-   - "nationality": Nationality in English (e.g. "German", "Chinese", "Brazilian", "French", "Spanish", etc.)
-   - "licenseLanguage": Original document language (e.g. "German", "Chinese", "Portuguese", etc.)
-   - "surname": Family name
-   - "firstName": First given name
+   - "country": Name of the issuing country in English (e.g. "France", "Germany", "China", "Brazil", "Spain", etc.)
+   - "nationality": Nationality in English (e.g. "French", "German", "Chinese", "Brazilian", "Spanish", etc.)
+   - "licenseLanguage": Original document language (e.g. "French", "German", "Chinese", "Portuguese", etc.)
+   - "surname": Family name (in UPPERCASE)
+   - "firstName": ONLY the very first given name
    - "middleName": Remaining given names (or "-" if none)
    - "firstNames": Combined given names ("firstName" + "middleName")
    - "fullName": Full legal name ("surname" + "firstNames")
    - "licenseNumber": Main license/document number (alphanumeric)
    - "dateOfBirth": Date of birth in format "DD Month YYYY" (e.g., "15 January 1990")
-   - "placeOfBirth": Place/City/Country of birth in English
+   - "placeOfBirth": Place/City/Country of birth in English (strictly city name only, no prefixes or postal codes)
    - "issueDate": Date of issue in format "DD Month YYYY"
    - "expiryDate": Date of expiry in format "DD Month YYYY" (if indefinite, not stated, or permanent, output "Indefinite")
-   - "authority": Issuing authority translated into English, appending the country name at the end (e.g., "Berlin City Council, Germany")
-   - "class": Vehicle categories held (e.g. "AM, B, L" or "C1")
+   - "authority": Issuing authority translated into English, appending the country name at the end (e.g., "Prefecture of Police, France" or "Berlin City Council, Germany")
+   - "class": Vehicle categories held (e.g. "AM, B1, B" or "C1")
    - "categoriesDates": Category dates from back table or front in format "Category: DD Month YYYY"
-   - "classDescriptions": For each authorized category/class the driver holds (e.g. AM, B, L), output its official English description on a SEPARATE NEW LINE (using \n) formatted strictly as "CODE: Description" (e.g., "AM: Mopeds and light quadricycles not exceeding 45 km/h\nB: Passenger cars and motor vehicles up to 3,500 kg permissible maximum mass\nL: Agricultural and forestry tractors with a maximum design speed up to 40 km/h"). NEVER put multiple descriptions in the same line.
-   - "codes": Restrictions/codes found on the license
-   - "explicacionCodigos": English explanation of codes found
+   - "classDescriptions": For each authorized category/class the driver holds (e.g. AM, B, L), output its official English description on a SEPARATE NEW LINE (using \n) formatted strictly as "CODE: Description" (e.g., "AM: Mopeds and light quadricycles not exceeding 45 km/h\nB: Passenger cars and motor vehicles up to 3,500 kg permissible maximum mass"). NEVER put multiple descriptions in the same line.
+   - "codes": Document serial / back corner numbers (see country rules)
+   - "explicacionCodigos": English explanation of restriction / condition codes / remarks / record section found (see country rules)
+   - "barcodeNumber": Numeric / alphanumeric code directly beneath or near the barcode (China, etc.)
+   - "fileNumber": File number / 档案编号 on the record card (China)
+   - "cardNumber": Vertical serial/security number on the left border or margin ("Nº Espelho" in Brazilian CNH / card serial)
+   - "idDocument": Identity document number, issuing agency and state ("Doc. Identidade" in Brazilian CNH, e.g. "392634570 SSP SP")
+   - "cpf": Individual Taxpayer Registry / Number ("CPF" in Brazilian CNH, format XXX.XXX.XXX-XX)
+   - "parents": Parents' full legal names from parentage / affiliation section ("Filiação" in Brazilian CNH, in UPPERCASE, e.g. "MOTHER NAME / FATHER NAME")
+   - "firstIssued": Date of first issuance / 1ª Habilitação / 初次领证日期 in format "DD Month YYYY"
+   - "code106From": Start date of code 106 if present (format "DD Month YYYY")
+   - "code106To": End date of code 106 if present (format "DD Month YYYY")
 4. Dates: Format ALL dates as "DD Month YYYY" with the month in English text (e.g. "15 January 1990", "04 December 1987").
 5. If a field is not present on the document, set its value to "-" or empty string (never leave as null or undefined).
-6. For European/German licenses:
-   - Point 1 = surname
-   - Point 2 = firstName + middleName
-   - Point 3 = dateOfBirth and placeOfBirth
-   - Point 4a = issueDate
-   - Point 4b = expiryDate (or "Indefinite" if empty)
-   - Point 4c = authority + ", Germany"
-   - Point 5 = licenseNumber
-   - Point 9 = class`;
+
+### MANDATORY JURISDICTION RECOGNITION & EXTRACTION RULES:
+
+1. FRANCE (Permis de conduire / République Française):
+   - "codes": Look ONLY at the TOP LEFT corner of the BACK (outside the category grid). Extract all THREE (3) distinct alphanumeric series/codes found there (2 horizontal lines and 1 VERTICAL line, e.g., "14091., 30602, 182302007045" or "123456, 256987, 2358798415"). Separate all three with commas.
+     CRITICAL: DO NOT put Column 12 restrictions or code explanations in "codes". "codes" is STRICTLY the 3 numbers from the top-left of the back.
+   - "explicacionCodigos": Translate Column 12 (BACK) restriction codes to English:
+     * Code "01" / "01.06": "01- Vision correction and/or protection" (or "01.06- Prescribed spectacles or contact lenses")
+     * Code "70": "70. Exchange of driver's license number [extract number]"
+     * Code "106": MUST use this EXACT formula without simplifying:
+       "106- Subject to the application of article R. 413-5 during probationary period from [DateFrom] to [DateTo] (Speed limits: 110km/h in Freeways where limit is 130km/h, 100km/h in freeways with lower speed limit or double roads, 80 km/h on other roads.)"
+       (Replace [DateFrom] and [DateTo] with the dates found on the license formatted as "DD Month YYYY").
+     If no codes in Column 12, output "-".
+   - "categoriesDates": Column 10 from the back grid:
+     * If ALL authorized categories share the EXACT same date, output ONLY the single date itself (e.g., "16 December 2022") WITHOUT any category letters or colons.
+     * If authorized categories have DIFFERENT dates, group classes sharing the same date ("A: 02 May 2026\nB1, B: 25 May 2026"), each group on a SEPARATE line (\n).
+   - "placeOfBirth": Extract Point 3 city name ONLY (e.g. "Tours", "Paris"). Strip "Lieu de naissance:", department codes in parentheses like "(75)", and country references.
+   - "authority": Point 4c translated to English + ", France".
+
+2. GERMANY (Bundesrepublik Deutschland Führerschein):
+   - Point 1 = surname, Point 2 = firstName + middleName, Point 3 = dateOfBirth and placeOfBirth.
+   - Point 4a = issueDate, Point 4b = expiryDate (or "Indefinite"), Point 4c = authority + ", Germany", Point 5 = licenseNumber, Point 9 = class.
+   - "categoriesDates": Column 10 back table grouped by date.
+   - "codes" / "explicacionCodigos": Column 12 back codes. Compare found numerical codes in Section 12 with the official list below and output the NUMBER followed by the EXACT explanation (separated by newlines \n). If no codes in Column 12, output "-". Set BOTH "codes" and "explicacionCodigos" to this exact output:
+     * 01- Vision correction and/or protection device
+     * 70- Exchange of driver's license number, issued by
+     * 171- Class C1, also valid for motor vehicles of class D with a maximum permissible mass not exceeding 7,500 kg, but without passengers.
+     * 172- Class C, valid also for motor vehicles of class D, but without passengers.
+     * 79.03- Only three-wheeled vehicles
+     * 79.04- Only vehicle combinations of three-wheeled vehicles and a trailer with a maximum permissible mass not exceeding 750 kg.
+     * 79.06- Vehicles (vehicle combination) of category BE, provided that the maximum permissible mass of the trailer exceeds 3,500 kg.
+     * 79 (C1E > 12.000 kg, L ≤ 3)- Restriction of class CE due to the authorization resulting from the previous class 3 to drive three-axle trains with a towing vehicle of class C1 and more than 12,000 kg total mass and trains with a towing vehicle of class C1 and trailers without registration, where the total mass can be more than 12,000 kg and three-axle trains consisting of a towing vehicle of class C1 and a trailer, where the maximum permissible mass of the trailer exceeds the unladen mass of the towing vehicle (part not covered by C1E). The aforementioned authorizations do not apply to semitrailers with a total permissible mass of more than 7.5 tons. The letter L in this code stands for the number of axles.
+     * 174- Class L, also valid for driving tractors with a maximum speed determined by their design of not more than 40 km/h, also with a single-axle trailer (whereby axles with a distance of less than 1.0 m from each other are considered to be one axle) as well as combinations of these tractors and trailers, if they are driven at a speed of not more than 25 km/h
+     * 175- Class L, also valid for driving motor vehicles with a maximum speed determined by their design of not more than 25 km/h and for driving motor vehicles other than those belonging to classes A, A1, A2 and AM with an engine capacity of not more than 50 cm3
+     * 181. Class T, only valid for motor vehicles of class S (since 19.1.2013 AM)
+     * 197- The test was taken on a motor vehicle with automatic transmission and practical training for driving class B vehicles with manual transmission was completed.
+
+3. BRAZIL (Carteira Nacional de Habilitação - CNH):
+   - "surname": Family name(s) in UPPERCASE.
+   - "firstName": ONLY the very first given name in UPPERCASE.
+   - "middleName": Remaining given name(s) (or "-" if none).
+   - "firstNames": First name + middle name.
+   - "fullName": Full legal name (surname + firstNames).
+   - "licenseNumber": Central registration number (Nº Registro - 11 digits).
+   - "cardNumber": Vertical security serial number on the left vertical margin (Nº Espelho / Serial da CNH). Extract the full vertical number.
+   - "idDocument": Identity document number, issuing agency and state (Section "DOC. IDENTIDADE / ÓRG. EMISSOR / UF", e.g. "392634570 SSP SP" or "MG-12.345.678 SSP MG").
+   - "cpf": Individual Taxpayer Number (Section "C.P.F.", format XXX.XXX.XXX-XX).
+   - "parents": Parents' full names from "FILIAÇÃO" (Mother and Father names in UPPERCASE, e.g. "MARIA DA SILVA / JOSE DA SILVA").
+   - "firstObtained": First license date (1ª Habilitação) formatted as "DD Month YYYY".
+   - "dateOfBirth": Date of birth (Data de Nascimento) formatted as "DD Month YYYY".
+   - "placeOfBirth": Place/City and State of birth translated to English (Localidade).
+   - "issueDate": Issue date (Data de Emissão) formatted as "DD Month YYYY".
+   - "expiryDate": Expiration date (Validade) formatted as "DD Month YYYY".
+   - "authority": Issuing authority translated to English + ", Brazil". If DETRAN is present, format strictly as "State Traffic Department, <State Name in English>, Brazil" (e.g. "DETRAN SP" -> "State Traffic Department, São Paulo, Brazil", "DETRAN RJ" -> "State Traffic Department, Rio de Janeiro, Brazil", "DETRAN MG" -> "State Traffic Department, Minas Gerais, Brazil").
+   - "class": Vehicle categories held (Section "CAT. HAB." / Categoria, e.g. "A", "B", "AB", "C", "D", "E").
+   - "conditions" / "explicacionCodigos" / "codes": Section 12 (Observações). Translate Brazilian observation/restriction codes to English:
+     * 'A' -> "Prescribed spectacles / Corrective lenses"
+     * 'EAR' -> "Exercises remunerated activity"
+     * 'B' -> "Hearing aid mandatory"
+     * 'C' -> "Helmet / Protection mandatory"
+     * 'D' -> "Vehicle with automatic transmission"
+     * 'E' -> "Vehicle with adapted steering"
+     * 'F' -> "Vehicle with left foot acceleration / automatic clutch"
+     * 'G' -> "Adapted hand controls"
+     * 'H' -> "Adapted foot controls"
+     Translate all other codes/observations to clear English. If none, output "-".
+   - "address": Address if visible, or "Not provided".
+   - "nationality": "Brazilian".
+   - "gender": "Not stated".
+
+4. CHINA (中华人民共和国机动车驾驶证 - Chinese Driver's License):
+   - Translate all Chinese text strictly to English. Convert Chinese names to uppercase Pinyin (e.g. Surname: ZHANG, First Name: WEI).
+   - "barcodeNumber": Find and extract the full numeric string printed directly beneath the barcode (条形码) on the record card or main license.
+   - "fileNumber": Find and extract the File Number after "档案编号" (File Number) on the record card (副页).
+   - "explicacionCodigos": Translate any text/observations/remarks found in the "Record" (记录) section. If there are no records, no violations, or the section is empty or says "无", output strictly "-".
+   - "firstIssued": Extract the date indicated as "Date of first issued" (初次领证日期) in format "DD Month YYYY".
+   - "issueDate": Extract the FIRST date in the "Valid Period" (有效起始日期) in format "DD Month YYYY".
+   - "expiryDate": Extract the SECOND date in "Valid Period" (有效期限). If it indicates permanent/long-term (长期), output strictly "To Long Term".
+   - "gender": Translate to "Male" or "Female" (男 -> "Male", 女 -> "Female").
+   - "nationality": Set to "Chinese".
+   - "class": Vehicle class (准驾车型, e.g. "C1", "C2", "A1, B1").
+   - "authority": Issuing department/bureau translated to English (发证单位 / 车辆管理所).
+   - "licenseNumber": 18-digit Citizen ID / License ID (公民身份号码).
+
+5. SPAIN (Reino de España Permiso de Conducción):
+   - "authority" = Authority code translated to city + ", Spain" (e.g. 08 -> "Barcelona, Spain", 28 -> "Madrid, Spain").
+   - "codes" = Top-left corner of the back. Column 12 = "explicacionCodigos".
+
+6. ITALY (Repubblica Italiana Patente di Guida):
+   - "authority": Point 4c contains abbreviations like "MC-TE", "MC-RM", "MIT-UCO".
+     * "MC-XX" (Motorizzazione Civile) MUST be decoded to English with the full province name: "Civil Motorization - <Province Name>, Italy" (e.g., "MC-TE" -> "Civil Motorization - Teramo, Italy", "MC-RM" -> "Civil Motorization - Rome, Italy", "MC-MI" -> "Civil Motorization - Milan, Italy").
+     * "MIT-UCO" or "UCO" -> "Ministry of Infrastructure and Transport - Central Operational Office, Italy".
+     * "MIT-DTT" or "DTT" -> "Ministry of Infrastructure and Transport - Department for Land Transport, Italy".
+     * "MIT" -> "Ministry of Infrastructure and Transport, Italy".
+   - "classDescriptions": For ONLY the permitted categories the driver holds (from Point 9 or Column 10, e.g. "B"), output the description formatted as:
+     "B - passenger vehicles weighing up to 3,500 kg and seating not more than eight passengers, in addition to the driver.
+     Sources:
+     https://eur-lex.europa.eu/EN/legal-content/summary/road-safety-driving-licences.html"
+     CRITICAL: NEVER output all EU categories. Output ONLY the categories held by the driver.
+   - "categoriesDates": Column 10 from back table grouped by date on separate lines.
+   - "codes": Document code or serial from the back.
+   - "explicacionCodigos": Section 12 restriction codes (e.g. "01- Prescribed spectacles", "71- Duplicate of licence number").
+
+7. JAPAN (日本国 運転免許証 - Japanese Driver's License):
+   - Translate all Japanese text strictly to English (Romaji for proper names/addresses). No Japanese kanji/kana.
+   - "licenseNumber": 12-digit number (番号).
+   - "class": Authorized vehicle categories. Use proper title casing and ALWAYS end with "Vehicle" (or Motorcycle/Moped). E.g. "Ordinary Vehicle", "Semi-Medium vehicle", "Medium Vehicle", "Heavy Vehicle", "Heavy Special Vehicle", "Small Special Vehicle", "Heavy Motorcycle", "Ordinary Motorcycle", "Moped", "Towing Vehicle".
+   - "codes" and "explicacionCodigos": MUST be strictly the English translation of "免許の条件等" (Conditions applying to licence).
+     * If "眼鏡等" -> "Prescribed spectacles".
+     * If "AT車に限る" -> "Ordinary vehicles limited to AT".
+     * If multiple, separate with newlines (\n).
+     * If no conditions or blank, output strictly "-".
+     * CRITICAL: NEVER put serial numbers, reference codes, or digits into "codes".
+   - "firstNames": Given name(s) in Romaji.
+   - "firstName": Given name(s) in Romaji (same as firstNames).
+   - "surname": Family name in Romaji.
+   - "authority": Public Safety Commission translated to English + ", Japan" (e.g. "Tokyo Metropolitan Public Safety Commission, Japan").
+   - "categoriesDates": Date first obtained from 二・小・原, 他, etc. formatted as "DD Month YYYY".
+   - "dateOfBirth", "issueDate", "expiryDate": Convert Showa (S), Heisei (H), Reiwa (R) eras to Western format "DD Month YYYY".`;
 
 export const COUNTRY_RULES = {
+  "japan": `You are an expert sworn translator and document extraction AI specialized in Japanese Driver's Licenses (日本国 運転免許証).
+    Analyze the provided Front and Back images of a Japanese Driver's License.
+    \${referenceInstruction}
+    
+    CRITICAL TRANSLATION & FORMATTING MANDATES:
+    1. Translate/transliterate ALL Japanese text strictly to English (Romaji for names/addresses). Absolutely NO Japanese characters.
+    2. Convert all Imperial Era dates (Showa, Heisei, Reiwa) to Western calendar format: "DD Month YYYY" (e.g., "15 August 1988", "10 April 2021").
+    3. Return a clean, valid JSON object.
+    
+    SPECIFIC EXTRACTION RULES:
+    - "surname": Family name in English Romaji (氏名).
+    - "firstNames": Given name(s) in English Romaji.
+    - "firstName": Given name(s) in English Romaji (same as firstNames).
+    - "fullName": Full name in English Romaji ("Surname GivenNames").
+    - "licenseNumber": 12-digit license number (番号).
+    - "dateOfBirth": Date of birth (生年月日) converted to Western "DD Month YYYY".
+    - "placeOfBirth": Prefecture / City in English (e.g., "Tokyo, Japan").
+    - "issueDate": Issue/delivery date (交付) converted to Western "DD Month YYYY".
+    - "expiryDate": Expiry date (有効期限) converted to Western "DD Month YYYY".
+    - "address": Full address translated and romanized into English.
+    - "authority": Issuing Public Safety Commission translated to English with ", Japan" suffix (e.g. "Tokyo Metropolitan Public Safety Commission, Japan" or "Kanagawa Public Safety Commission, Japan").
+    - "class": Map the authorized categories on the license matrix (種類) or text. Use proper title casing and ALWAYS append "Vehicle" (or Motorcycle/Moped):
+      * 普通 -> "Ordinary Vehicle"
+      * 準中型 -> "Semi-Medium vehicle"
+      * 中型 -> "Medium Vehicle"
+      * 大型 -> "Heavy Vehicle"
+      * 大特 (大型特殊) -> "Heavy Special Vehicle"
+      * 小特 (小型特殊) -> "Small Special Vehicle"
+      * 大自二 (大型自動二輪) -> "Heavy Motorcycle"
+      * 普自二 (普通自動二輪) -> "Ordinary Motorcycle"
+      * 原付 -> "Moped"
+      * け引 / 牽引 -> "Towing Vehicle"
+      * 普通第二種 / 普二 -> "Ordinary Second-Class Vehicle"
+      * 大型第二種 / 大二 -> "Heavy Second-Class Vehicle"
+      (If multiple, separate with commas, e.g., "Ordinary Vehicle, Ordinary Motorcycle").
+    - "codes": Conditions applying to licence (免許の条件等).
+      * CRITICAL: "codes" is strictly the English translation of "免許の条件等". NEVER extract numbers or serial digits here.
+      * If condition is "眼鏡等" or indicates glasses/corrective lenses, translate strictly as "Prescribed spectacles".
+      * If limited to automatic transmission ("AT車に限る"), translate as "Ordinary vehicles limited to AT" (or matching vehicle category).
+      * If there are multiple conditions, output EACH condition on its own NEW LINE (\\n).
+      * If no conditions or blank, output "-".
+    - "explicacionCodigos": Set to the EXACT same translated text as "codes".
+    - "conditions": Set to the EXACT same translated text as "codes".
+    - "categoriesDates": Date licence was first obtained from the category acquisition date section (二・小・原, 他, etc.) converted to Western "DD Month YYYY".
+    - "nationality": Always set to "Japanese".
+    - "licenseLanguage": "Japanese".
+    
+    Return valid JSON.`,
+  "japon": `You are an expert sworn translator and document extraction AI specialized in Japanese Driver's Licenses (日本国 運転免許証).
+    Analyze the provided Front and Back images of a Japanese Driver's License.
+    \${referenceInstruction}
+    
+    CRITICAL TRANSLATION & FORMATTING MANDATES:
+    1. Translate/transliterate ALL Japanese text strictly to English (Romaji for names/addresses). Absolutely NO Japanese characters.
+    2. Convert all Imperial Era dates (Showa, Heisei, Reiwa) to Western calendar format: "DD Month YYYY" (e.g., "15 August 1988", "10 April 2021").
+    3. Return a clean, valid JSON object.
+    
+    SPECIFIC EXTRACTION RULES:
+    - "surname": Family name in English Romaji (氏名).
+    - "firstNames": Given name(s) in English Romaji.
+    - "firstName": Given name(s) in English Romaji (same as firstNames).
+    - "fullName": Full name in English Romaji ("Surname GivenNames").
+    - "licenseNumber": 12-digit license number (番号).
+    - "dateOfBirth": Date of birth (生年月日) converted to Western "DD Month YYYY".
+    - "placeOfBirth": Prefecture / City in English (e.g., "Tokyo, Japan").
+    - "issueDate": Issue/delivery date (交付) converted to Western "DD Month YYYY".
+    - "expiryDate": Expiry date (有効期限) converted to Western "DD Month YYYY".
+    - "address": Full address translated and romanized into English.
+    - "authority": Issuing Public Safety Commission translated to English with ", Japan" suffix (e.g. "Tokyo Metropolitan Public Safety Commission, Japan" or "Kanagawa Public Safety Commission, Japan").
+    - "class": Map the authorized categories on the license matrix (種類) or text. Use proper title casing and ALWAYS append "Vehicle" (or Motorcycle/Moped):
+      * 普通 -> "Ordinary Vehicle"
+      * 準中型 -> "Semi-Medium vehicle"
+      * 中型 -> "Medium Vehicle"
+      * 大型 -> "Heavy Vehicle"
+      * 大特 (大型特殊) -> "Heavy Special Vehicle"
+      * 小特 (小型特殊) -> "Small Special Vehicle"
+      * 大自二 (大型自動二輪) -> "Heavy Motorcycle"
+      * 普自二 (普通自動二輪) -> "Ordinary Motorcycle"
+      * 原付 -> "Moped"
+      * け引 / 牽引 -> "Towing Vehicle"
+      * 普通第二種 / 普二 -> "Ordinary Second-Class Vehicle"
+      * 大型第二種 / 大二 -> "Heavy Second-Class Vehicle"
+      (If multiple, separate with commas, e.g., "Ordinary Vehicle, Ordinary Motorcycle").
+    - "codes": Conditions applying to licence (免許の条件等).
+      * CRITICAL: "codes" is strictly the English translation of "免許の条件等". NEVER extract numbers or serial digits here.
+      * If condition is "眼鏡等" or indicates glasses/corrective lenses, translate strictly as "Prescribed spectacles".
+      * If limited to automatic transmission ("AT車に限る"), translate as "Ordinary vehicles limited to AT" (or matching vehicle category).
+      * If there are multiple conditions, output EACH condition on its own NEW LINE (\\n).
+      * If no conditions or blank, output "-".
+    - "explicacionCodigos": Set to the EXACT same translated text as "codes".
+    - "conditions": Set to the EXACT same translated text as "codes".
+    - "categoriesDates": Date licence was first obtained from the category acquisition date section (二・小・原, 他, etc.) converted to Western "DD Month YYYY".
+    - "nationality": Always set to "Japanese".
+    - "licenseLanguage": "Japanese".
+    
+    Return valid JSON.`,
   "belgica": "Analyze these two images (Front and Back of a driver's license).\n    ${referenceInstruction}\n    \n    IMPORTANT: ALL TEXT OUTPUT VALUES MUST BE IN ENGLISH.\n    \n    EXTRACT DATA RULES:\n    1. \"surname\": Family name.\n    2. \"firstName\": ONLY the very first name from the given names list.\n    3. \"middleName\": ALL remaining given names after the first one. If only one name exists, leave this empty.\n    4. \"firstNames\": All given names joined (for reference).\n    5. \"licenseNumber\": The main identification number. Extract ONLY the alphanumeric characters.\n    6. \"dateOfBirth\": Point 3 date.\n    7. \"placeOfBirth\": Point 3 location. TRANSLATE TO ENGLISH.\n    8. \"issueDate\": Point 4a.\n    9. \"expiryDate\": Point 4b.\n    10. \"authority\": Extract value from Point 4c, TRANSLATE TO ENGLISH, and ALWAYS append the country name in English at the end.\n    11. \"class\": Extract ALL categories listed in Point 9 on the FRONT. SEPARATE THEM WITH COMMAS.\n    12. \"categoriesDates\": Analyze the BACK table, Column 10. Group identical dates.\n    13. \"codes\": Look ONLY at the TOP LEFT corner of the BACK. Extract the series of 3 strings.\n    14. \"explicacionCodigos\": Look at Column 12 (BACK) and identify ONLY these specific codes. If found, generate the EXACT text below:\n        - Code \"70\": \"70. Exchange of driver's license number [extract number]\"\n        - Code \"01\": \"01- Vision correction and/or protection\"\n        - Code \"01.06\": \"01.06- Prescribed spectacles or contact lenses\"\n        - Code \"106\": \"106- Subject to the application of article R. 413-5 during probationary period from [DateFrom] to [DateTo] (Speed limits: 110km/h in Freeways where limit is 130km/h, 100km/h in freeways with lower speed limit or double roads, 80 km/h on other roads.)\"\n        \n        Combine all found into a single coherent paragraph. If none are found, leave empty.\n    15. \"code106From\" & \"code106To\": Extract these specifically if code 106 is present.\n    16. \"licenseLanguage\": Identify the language(s) of the original document text (e.g., \"French\", \"French and Dutch\", \"Spanish\").\n    17. \"classDescriptions\": For the categories the holder is PERMITTED to drive (Point 9 or valid dates in Table 10), include ONLY the matching descriptions below (one per line, do not include categories the person does NOT have):\n        - AM - 2-wheel, 3-wheel vehicles and light quadricycles with a maximum design speed of not more than 45 km/h.\n        - A1 - light motorcycles with a cylinder capacity not more than 125 cubic centimetres and a power rating less than 11 kW.\n        - A2 - motorcycles with a power rating under 35 kW.\n        - A - heavy motorcycles without power restrictions.\n        - B1 - heavy motorized quadricycle whose empty weight is a maximum of 450 kg if it is intended for the transport of persons, and 600 kg if it is intended for the transport of goods.\n        - B - passenger vehicles weighing up to 3,500 kg and seating not more than eight passengers, in addition to the driver.\n        - BE - vehicle of category B towing a heavy trailer of under 3,500 kg.\n        - C1 - goods vehicles between 3,500 kg and 7,500 kg and for up to eight passengers-\n        - C1E - vehicle of category C1 or B towing a heavy trailer; with a combined mass of up to 12,000 kg.\n        - C - goods vehicles weighing more than 3,500 kg and seating not more than eight passengers.\n        - CE - vehicle of category C towing a heavy trailer.\n        - D1 - passenger vehicles built for fewer than 16 passengers and that is no longer than 8 m.\n        - D1E - vehicle of category D1 towing a heavy trailer.\n        - D - passenger vehicles for more than eight passengers.\n        - DE - vehicle of category D towing a heavy trailer.\n        - G - Agricultural and forestry tractors and their trailers, including certain vehicles registered as agricultural machinery.\n    18. Format all dates as \"DD Month YYYY\".\n    \n    Return valid JSON.",
-  "brazil": "Analyze these two images (Front and Back of a Brazilian driver's license - CNH).\n    ${referenceInstruction}\n    \n    IMPORTANT: ALL TEXT OUTPUT VALUES MUST BE IN ENGLISH.\n    \n    EXTRACT DATA RULES:\n    1. \"surname\": Family name.\n    2. \"firstName\": ONLY the very first name.\n    3. \"middleName\": Remaining names.\n    4. \"licenseNumber\": The main identification number (Nº Registro).\n    5. \"cardNumber\": The vertical number on the left side (Nº Espelho/Serial).\n    6. \"idDocument\": Section 4c (Doc. Identidade).\n    7. \"cpf\": Section 4d (CPF).\n    8. \"parents\": Section \"Filiação\" (Names of mother/father).\n    9. \"dateOfBirth\": Date of birth.\n    10. \"firstObtained\": \"1ª Habilitação\".\n    11. \"conditions\": SECTION 12 (Observações). Translate codes or leave as detected if specific.\n    12. \"placeOfBirth\": Location of birth (English translation if applicable).\n    13. \"issueDate\": Date of issuance.\n    14. \"expiryDate\": Date of expiration.\n    15. \"authority\": Issuing authority. Translate it to English and ALWAYS append the country at the end (\", Brazil\"). If DETRAN is present, translate it as \"State Traffic Department, <State Name>, Brazil\". Example: \"DETRAN RJ\" -> \"State Traffic Department, Rio de Janeiro, Brazil\" or \"DETRAN SP\" -> \"State Traffic Department, São Paulo, Brazil\".\n    16. \"class\": Vehicle categories (A, B, C...).\n    17. \"address\": Try to find the address if present, or \"Not provided\".\n    18. \"nationality\": \"Brazilian\" (usually).\n    19. \"gender\": Detemine gender if possible, or \"M/F\".\n    \n    Format all dates as \"DD Month YYYY\" (e.g., 15 July 1985).\n    Return valid JSON matching the schema provided.",
-  "china": "Analyze these 4 images of a Chinese Driver's License.\n    ${referenceInstruction}\n    \n    IMPORTANT RULES:\n    1. TRANSLATE ALL CHINESE TEXT TO ENGLISH.\n    2. ALL DATES must be formatted with the month in English text (e.g., \"DD Month YYYY\", like \"15 January 1990\").\n    \n    SPECIFIC EXTRACTION RULES:\n    - \"firstIssued\": Extract the date indicated as \"Date of first issued\" (初次领证日期).\n    - \"issueDate\": Extract the FIRST date indicated in the \"Valid Period\" (有效起始日期).\n    - \"expiryDate\": Extract the SECOND (last) date indicated in the \"Valid Period\" (有效期限). If the field indicates long term, permanent, or no specific date, use \"To Long Term\".\n    - \"explicacionCodigos\": Translate the text found in the \"Record\" (记录) section.\n    - \"barcodeNumber\": Find and extract the number located directly underneath the barcode.\n    - \"fileNumber\": Find the number after \"档案编号\" (File Number) on the record card.\n    - \"surname\": Family name in Pinyin/English.\n    - \"firstName\": Given names in Pinyin/English.\n    - \"fullName\": Full name in Pinyin/English.\n    - \"licenseNumber\": Citizen ID / License ID.\n    - \"dateOfBirth\": Date of birth.\n    - \"nationality\": English translation.\n    - \"address\": Full address translated to English.\n    - \"gender\": \"Male\" or \"Female\".\n    - \"class\": Vehicle class (e.g., C1).\n    - \"authority\": Issuing department translated to English.\n\n    Return valid JSON.",
+  "brazil": `You are an expert OCR and translation engine specializing in Brazilian identification and driving documents.
+    Analyze the provided images of a Brazilian Driver's License (Carteira Nacional de Habilitação - CNH), including front and back.
+    \${referenceInstruction}
+    
+    CRITICAL REQUIREMENTS:
+    1. ALL TEXT OUTPUT VALUES MUST BE TRANSLATED INTO ENGLISH (UK).
+    2. ALL DATES MUST BE FORMATTED STRICTLY AS "DD Month YYYY" (e.g., "15 July 1985", "04 March 2028").
+    3. Return a clean, valid JSON object matching the required schema.
+
+    SPECIFIC EXTRACTION RULES:
+    - "surname": Family name(s) / Apellidos in UPPERCASE.
+    - "firstName": ONLY the very first given name in UPPERCASE.
+    - "middleName": Remaining given name(s) after the first name. If none, "".
+    - "firstNames": First name + middle name.
+    - "fullName": Full legal name (surname + firstNames).
+    - "licenseNumber": Main central registration number (Nº Registro - 11 digits).
+    - "cardNumber": Vertical serial/security number along the left vertical border (Nº Espelho / Serial da CNH). Extract the complete vertical number.
+    - "idDocument": Identity document number, issuing agency and state (Section "DOC. IDENTIDADE / ÓRG. EMISSOR / UF", e.g. "392634570 SSP SP" or "MG-12.345.678 SSP MG").
+    - "cpf": Individual Taxpayer Number (Section "C.P.F.", format XXX.XXX.XXX-XX).
+    - "parents": Parents' full names from "FILIAÇÃO" (Mother and Father names in UPPERCASE, separated by " / ").
+    - "dateOfBirth": Date of birth (Data de Nascimento) formatted as "DD Month YYYY".
+    - "placeOfBirth": Place/City and State of birth translated to English (Localidade).
+    - "issueDate": Issue date (Data de Emissão) formatted as "DD Month YYYY".
+    - "expiryDate": Expiration date (Validade) formatted as "DD Month YYYY".
+    - "firstObtained": First license date (1ª Habilitação) formatted as "DD Month YYYY".
+    - "authority": Issuing authority translated into English + ", Brazil". If DETRAN is present, format as "State Traffic Department, <State Name in English>, Brazil" (e.g. "DETRAN SP" -> "State Traffic Department, São Paulo, Brazil", "DETRAN RJ" -> "State Traffic Department, Rio de Janeiro, Brazil", "DETRAN MG" -> "State Traffic Department, Minas Gerais, Brazil").
+    - "class": Vehicle categories (Section "CAT. HAB." / Categoria, e.g. "A", "B", "AB", "C", "D", "E").
+    - "conditions": Section 12 (Observações). Translate Brazilian codes to clear English:
+      * 'A' -> "Prescribed spectacles / Corrective lenses"
+      * 'EAR' -> "Exercises remunerated activity"
+      * 'B' -> "Hearing aid mandatory"
+      * 'C' -> "Helmet / Protection mandatory"
+      * 'D' -> "Vehicle with automatic transmission"
+      * 'E' -> "Vehicle with adapted steering"
+      * 'F' -> "Vehicle with left foot acceleration / automatic clutch"
+      * 'G' -> "Adapted hand controls"
+      * 'H' -> "Adapted foot controls"
+      Translate any other codes or observations to English. If none, output "-".
+    - "codes": Set to the exact same text as "conditions".
+    - "explicacionCodigos": Set to the exact same text as "conditions".
+    - "address": Residential address if visible, or "Not provided".
+    - "nationality": "Brazilian".
+    - "gender": "Not stated".
+    - "licenseLanguage": "Portuguese".
+
+    Return valid JSON.`,
+  "brasil": `You are an expert OCR and translation engine specializing in Brazilian identification and driving documents.
+    Analyze the provided images of a Brazilian Driver's License (Carteira Nacional de Habilitação - CNH), including front and back.
+    \${referenceInstruction}
+    
+    CRITICAL REQUIREMENTS:
+    1. ALL TEXT OUTPUT VALUES MUST BE TRANSLATED INTO ENGLISH (UK).
+    2. ALL DATES MUST BE FORMATTED STRICTLY AS "DD Month YYYY" (e.g., "15 July 1985", "04 March 2028").
+    3. Return a clean, valid JSON object matching the required schema.
+
+    SPECIFIC EXTRACTION RULES:
+    - "surname": Family name(s) in UPPERCASE.
+    - "firstName": ONLY the very first given name in UPPERCASE.
+    - "middleName": Remaining given name(s) after the first name. If none, "".
+    - "firstNames": First name + middle name.
+    - "fullName": Full legal name (surname + firstNames).
+    - "licenseNumber": Main central registration number (Nº Registro - 11 digits).
+    - "cardNumber": Vertical serial/security number along the left vertical border (Nº Espelho / Serial da CNH). Extract the complete vertical number.
+    - "idDocument": Identity document number, issuing agency and state (Section "DOC. IDENTIDADE / ÓRG. EMISSOR / UF", e.g. "392634570 SSP SP").
+    - "cpf": Individual Taxpayer Number (Section "C.P.F.", format XXX.XXX.XXX-XX).
+    - "parents": Parents' full names from "FILIAÇÃO" (Mother and Father names in UPPERCASE, separated by " / ").
+    - "dateOfBirth": Date of birth formatted as "DD Month YYYY".
+    - "placeOfBirth": Place/City and State of birth translated to English.
+    - "issueDate": Issue date formatted as "DD Month YYYY".
+    - "expiryDate": Expiration date formatted as "DD Month YYYY".
+    - "firstObtained": First license date (1ª Habilitação) formatted as "DD Month YYYY".
+    - "authority": Issuing authority translated into English + ", Brazil". If DETRAN, format as "State Traffic Department, <State Name in English>, Brazil".
+    - "class": Vehicle categories (Section "CAT. HAB.", e.g. "A", "B", "AB", "C", "D", "E").
+    - "conditions": Section 12 (Observações) translated to English.
+    - "codes": Set to the exact same text as "conditions".
+    - "explicacionCodigos": Set to the exact same text as "conditions".
+    - "nationality": "Brazilian".
+    - "gender": "Not stated".
+    - "licenseLanguage": "Portuguese".
+
+    Return valid JSON.`,
+  "china": `Analyze the provided images of a Chinese Driver's License (机动车驾驶证), including main card (正本) and record card (副页).
+    \${referenceInstruction}
+    
+    IMPORTANT RULES:
+    1. TRANSLATE ALL CHINESE TEXT STRICTLY TO ENGLISH. Convert names to uppercase Pinyin (e.g. Surname: ZHANG, First Name: WEI).
+    2. ALL DATES must be formatted with the month written in English words: "DD Month YYYY" (e.g., "15 January 1990", "10 March 2028").
+    3. Return a clean, valid JSON object matching the required schema.
+    
+    SPECIFIC EXTRACTION RULES:
+    - "surname": Family name in uppercase Pinyin (e.g. "ZHANG").
+    - "firstName": Given name(s) in uppercase Pinyin (e.g. "WEI" or "XIAOMING").
+    - "fullName": Full name in uppercase Pinyin (e.g. "ZHANG WEI").
+    - "licenseNumber": Citizen ID number / License ID (18 digits / 公民身份号码).
+    - "dateOfBirth": Date of birth (出生日期) formatted as "DD Month YYYY".
+    - "gender": Translate to "Male" (男) or "Female" (女).
+    - "nationality": Translate to English (e.g. "Chinese").
+    - "address": Full address translated to English (住址).
+    - "firstIssued": Extract the date indicated as "Date of first issued" (初次领证日期) formatted as "DD Month YYYY".
+    - "issueDate": Extract the FIRST date indicated in the "Valid Period" (有效起始日期) formatted as "DD Month YYYY".
+    - "expiryDate": Extract the SECOND date in "Valid Period" (有效期限). If the field indicates permanent, indefinite, or long-term (长期), output strictly "To Long Term".
+    - "class": Vehicle class/category (准驾车型, e.g. "C1", "C2", "A1, B1").
+    - "authority": Issuing department/bureau translated to English (发证单位 / 车辆管理所).
+    - "barcodeNumber": Find and extract the full numeric code located directly underneath or beside the barcode (条形码) on the record card or main card.
+    - "fileNumber": Find and extract the File Number after "档案编号" (File Number) on the record card (副页).
+    - "explicacionCodigos": Translate any text, remarks, endorsements or notes found in the "Record" (记录) section. If there are no records, no violations, or if the section is blank or says "无", output strictly "-".
+
+    Return valid JSON.`,
   "czech": "Analyze these two images (Front and Back of a Czech Republic driver's license / Česká republika Řidičský průkaz).\n    ${referenceInstruction}\n    \n    IMPORTANT: ALL TEXT OUTPUT VALUES MUST BE IN ENGLISH EXCEPT THE \"language\" field.\n    \n    EXTRACT DATA RULES:\n    1. \"surname\": Family name (Příjmení / Item 1).\n    2. \"firstName\": ONLY the very first name from the given names list (Jméno / Item 2).\n    3. \"middleName\": ALL remaining given names after the first one. If only one name exists, leave this empty (\"\").\n    4. \"firstNames\": All given names joined (for reference).\n    5. \"licenseNumber\": The main identification number (Číslo řidičského průkazu / Item 5). Extract ONLY the alphanumeric characters.\n    6. \"dateOfBirth\": Point 3 date of birth (Datum narození). Format: \"DD Month YYYY\".\n    7. \"placeOfBirth\": Point 3 location (Místo narození). TRANSLATE TO ENGLISH (e.g. \"Prague\", \"Brno\", \"Ostrava\", etc.).\n    8. \"issueDate\": Point 4a date of issue (Datum vydání). Format: \"DD Month YYYY\".\n    9. \"expiryDate\": Point 4b date of expiry (Platnost do). Format: \"DD Month YYYY\". If no expiry date is found or indefinite, value must be \"Indefinite\".\n    10. \"authority\": Extract value from Point 4c (Vydal / Issuing Authority), TRANSLATE TO ENGLISH (e.g. \"Municipal Authority of Prague\", \"Magistrate of the City of Brno\"), and ALWAYS append \", Czech Republic\" at the end.\n    11. \"class\": Extract ALL categories listed in Point 9 on the FRONT. SEPARATE THEM WITH COMMAS (e.g. \"AM, A1, B, BE, T\").\n    12. \"categoriesDates\": Analyze the BACK table, Column 10 (10. Platí od). Group categories that have the EXACT same initial issue date. Format the output with the categories followed by the date, ONE GROUP PER LINE. \n        Example format:\n        AM: 01 January 2000\n        B1, B: 03 February 2001\n        C1, C: 01 March 2002\n        DO NOT put all groups on the same line. Use a newline character (\\n) between each group.\n    13. \"classDescriptions\": For EVERY license category found on the license, generate its description from the list below. EACH CATEGORY MUST START ON A NEW LINE.\n        \n        CRITICAL: DO NOT include any source links, URLs, or text like \"Source: https://...\" in this field. ONLY return the descriptions for the categories.\n        \n        List to use:\n        - AM - 2-wheel, 3-wheel vehicles and light quadricycles with a maximum design speed of not more than 45 km/h.\n        - A1 - light motorcycles with a cylinder capacity not more than 125 cubic centimetres and a power rating less than 11 kW.\n        - A2 - motorcycles with a power rating under 35 kW.\n        - A - heavy motorcycles without power restrictions.\n        - B1 - quadricycles.\n        - B - passenger vehicles weighing up to 3,500 kg and seating not more than eight passengers.\n        - BE - vehicle of category B towing a heavy trailer of under 3,500 kg.\n        - C1 - goods vehicles between 3,500 kg and 7,500 kg and for up to eight passengers.\n        - C1E - vehicle of category C1 or B towing a heavy trailer; with a combined mass of up to 12,000 kg.\n        - C - goods vehicles weighing more than 3,500 kg and seating not more than eight passengers.\n        - CE - vehicle of category C towing a heavy trailer.\n        - D1 - passenger vehicles built for fewer than 16 passengers and that is no longer than 8 m.\n        - D1E - vehicle of category D1 towing a heavy trailer.\n        - D - passenger vehicles for more than eight passengers.\n        - DE - vehicle of category D towing a heavy trailer.\n        - T - Tractors and self-propelled agricultural or forestry machinery.\n        - Code 10 - Limited to the operation of a specific vehicle type or under specific conditions.\n        \n        ONLY include descriptions for the categories actually present on the license.\n    14. \"codes\": Look at the TOP LEFT corner of the BACK or the document serial number. Extract the series/code string.\n    15. \"explicacionCodigos\": (Conditions / Restrictions) Look at Column 12 (BACK) or Front restrictions. If found, generate the EXACT text from this list ONLY:\n        - For Code \"01\" (or \"01.01\", \"01.06\"): \"01- Correction of vision and/or eye protection\"\n        - For Code \"70\": \"70. Exchange of driver's license number\"\n        - For Code \"78\": \"78- Restricted to vehicles with automatic transmission\"\n        - For Code \"95\": \"95- Driver holding CPC (Certificate of Professional Competence)\"\n        - For Class A1 restrictions: \"Class A1- limited to 45 km/h\"\n        - For Code \"106\": \"106- Operation of motor vehicles for the transport of passengers, with a maximum weight of 3,500 kilograms and more than 17 seats (including the driver’s seat)\"\n        \n        Combine all found into a single coherent paragraph. If none are found, ALWAYS return a single hyphen \"-\".\n    16. \"code106From\" & \"code106To\": Extract these specifically if code 106 is present.\n    17. \"language\": Look specifically at the BACK or title legend of the license, where the field numbers or title translations are listed. Identify and list all the languages present (e.g. \"Czech\" or \"Czech, English, French\").\n    18. Format all dates as \"DD Month YYYY\".\n    \n    IMPORTANT: IGNORE any \"Source:\" or URL information found in the reference document context. DO NOT reproduce these URLs in the extracted fields.\n    \n    Return valid JSON.",
-  "francia": "",
+  "francia": `Analyze these two images (Front and Back of a French driver's license / République Française Permis de conduire).
+    \${referenceInstruction}
+    
+    CRITICAL MANDATES:
+    1. ALL TEXT OUTPUT VALUES MUST BE IN ENGLISH.
+    2. ALL DATES (dateOfBirth, issueDate, expiryDate, categoriesDates, code106) MUST strictly use the format "DD Month YYYY" (e.g., "16 December 2022", "02 May 2026"). Translate month names to English.
+    3. Output must be a valid, well-formed JSON object.
+    
+    SPECIFIC EXTRACTION RULES:
+    1. "surname": Family name from Point 1 in UPPERCASE.
+    2. "firstName": ONLY the very first given name from Point 2.
+    3. "middleName": ALL remaining given names after the first one from Point 2 (or "-" if none).
+    4. "firstNames": All given names combined (firstName + middleName).
+    5. "fullName": Full legal name (surname + firstNames).
+    6. "licenseNumber": The main identification number from Point 5 (e.g. 17AA49102).
+    7. "dateOfBirth": Date of birth from Point 3. Format: "DD Month YYYY".
+    8. "placeOfBirth": Second part of Point 3 (Lieu de naissance). Extract ONLY the city/municipal name itself (e.g., "Tours", "Paris", "Lyon"). Translate to English if applicable. Absolutely NO postal codes, NO department numbers in parentheses like (75), and NO country names.
+    9. "issueDate": Date of issue from Point 4a. Format: "DD Month YYYY".
+    10. "expiryDate": Date of expiry from Point 4b. Format: "DD Month YYYY". If a dash, unstated, or missing, output "-".
+    11. "authority": Issuing authority from Point 4c, TRANSLATE TO ENGLISH and ALWAYS append ", France" at the end (e.g. "Prefecture of Police, France" or "Ministry of Interior, France").
+    12. "class": Extract ONLY the authorized categories (those with a valid date in Column 10 on the back). Separate with commas (e.g., "AM, B1, B").
+    13. "categoriesDates": Analyze Column 10 on the BACK grid for all authorized classes:
+        - If ALL authorized categories share the EXACT same date in Column 10: Output ONLY the single date itself (e.g., "16 December 2022") WITHOUT any class letters, prefixes, or colons.
+        - If authorized categories have DIFFERENT dates: Group classes that share the same date separated by commas, followed by a colon and the date. Put EACH different date group on a SEPARATE NEW LINE (using \\n).
+          Example:
+          A: 02 May 2026
+          B1, B: 25 May 2026
+        NEVER put multiple different dates on the same line.
+    14. "codes": Look ONLY at the TOP LEFT corner of the BACK (outside the category grid). Extract the series of 3 distinct numbers/strings found there (2 horizontal and 1 vertical line, e.g. "123456, 256987, 2358798415" or "14091., 30602, 182302007045"). Format them as a single comma-separated list.
+        CRITICAL: DO NOT put Column 12 restrictions or code explanations in "codes". "codes" is STRICTLY the 3 numbers from the top-left of the back.
+    15. "explicacionCodigos": Analyze Column 12 (BACK). Translate and format any condition/restriction codes into English:
+        - If code "01" or "01.06": "01- Vision correction and/or protection" (or "01.06- Prescribed spectacles or contact lenses")
+        - If code "70": "70. Exchange of driver's license number [extract number]"
+        - If code "106": You MUST use this EXACT formula without simplifying or modifying it:
+          "106- Subject to the application of article R. 413-5 during probationary period from [DateFrom] to [DateTo] (Speed limits: 110km/h in Freeways where limit is 130km/h, 100km/h in freeways with lower speed limit or double roads, 80 km/h on other roads.)"
+          (Replace [DateFrom] and [DateTo] with the dates found on the license formatted as "DD Month YYYY").
+        If no codes are present in Column 12, output "-".
+    16. "code106From" & "code106To": If code 106 is present, extract its start and end dates formatted as "DD Month YYYY".
+    17. "classDescriptions": For each authorized category the driver holds (from Point 9 / Column 10), output its official English description on a SEPARATE NEW LINE (using \\n) formatted strictly as "CODE: Description":
+        AM: Mopeds and light quadricycles not exceeding 45 km/h
+        A1: Light motorcycles with a cylinder capacity not more than 125 cc and a power rating less than 11 kW
+        A2: Motorcycles with a power rating under 35 kW
+        A: Heavy motorcycles without power restrictions
+        B1: Quadricycles
+        B: Passenger cars and motor vehicles up to 3,500 kg permissible maximum mass
+        BE: Vehicle of category B towing a heavy trailer of under 3,500 kg
+        C1: Goods vehicles between 3,500 kg and 7,500 kg and for up to eight passengers
+        C1E: Vehicle of category C1 or B towing a heavy trailer, with a combined mass of up to 12,000 kg
+        C: Goods vehicles weighing more than 3,500 kg and seating not more than eight passengers
+        CE: Vehicle of category C towing a heavy trailer
+        D1: Passenger vehicles built for fewer than 16 passengers and that is no longer than 8 m
+        D1E: Vehicle of category D1 towing a heavy trailer
+        D: Passenger vehicles for more than eight passengers
+        DE: Vehicle of category D towing a heavy trailer
+        DO NOT put multiple descriptions on the same line.
+    
+    Return valid JSON matching the schema.`,
   "francia_pink": "Analyze the provided images of a French Driver's License (Front and Back).\n    ${referenceInstruction}\n    \n    CORE REQUIREMENT: TRANSLATE SPECIFIC FIELDS TO ENGLISH AS DIRECTED BELOW.\n    \n    FIELDS TO EXTRACT:\n    1.  \"surname\": Family name (e.g., MARTIN).\n    2.  \"firstName\": The FIRST given name ONLY (e.g., if \"JEAN PIERRE\", extract \"JEAN\").\n    3.  \"middleName\": ALL other given names after the first one (e.g., \"PIERRE\"). Empty if none.\n    4.  \"firstNames\": All given names exactly as they appear.\n    5.  \"fullName\": Formal full name (Surname + first names).\n    6.  \"licenseNumber\": Unique document number (Point 5). Alphanumeric only.\n    7.  \"dateOfBirth\": Date in Point 3. Format: \"DD Month YYYY\" (e.g., 14 July 1985).\n    8.  \"placeOfBirth\": Location in Point 3. ***TRANSLATE TO ENGLISH*** (e.g., \"PARIS (75)\" remains \"PARIS (75)\", but \"FRANCE\" remains \"FRANCE\").\n    9.  \"issueDate\": Date in Point 4a. Format: \"DD Month YYYY\".\n    10. \"expiryDate\": Date in Point 4b. Format: \"DD Month YYYY\".\n    11. \"authority\": Point 4c. ***TRANSLATE TO ENGLISH*** and append \"FRANCE\" at the end. Example: \"PREFECTURE DE POLICE\" -> \"POLICE HEADQUARTERS, FRANCE\".\n    12. \"class\": List all ALLOWED / PERMITTED categories, separated by commas (e.g., \"B\" or \"A1, B\").\n        HOW TO DETERMINE ALLOWED CATEGORIES ON FRENCH PINK LICENSES:\n        - Traditional 3-panel pink paper licenses (permis rose à 3 volets):\n          Check the categories table (A1, A, B, B1, C, D, E(B), etc.). A category is ONLY ALLOWED if it has:\n          a) An official round or oval prefecture stamp (cachet/tampon de préfecture) stamped in the box to the right, OR\n          b) A stamped or handwritten issue/validation date, OR\n          c) The word \"Permanent\", \"A titre permanent\", or \"Valide\" stamped/written next to it.\n          * Categories without stamps or dates, or marked with a diagonal cancellation slash/line, are NOT permitted.\n        - Credit card format (plastic card):\n          Check Point 9 on front or the table on the back with valid dates in columns 10/11.\n    13. \"classDescriptions\": TRANSLATE TO ENGLISH the descriptions of all ALLOWED categories identified above.\n        Provide the formal vehicle authorization details for each permitted category, noting if it is marked as Permanent or has a validation date.\n        Use standard UK/English official definitions:\n        - Category AM: Mopeds and light quadricycles (up to 50cc or 4 kW).\n        - Category A1: Light motorcycles not exceeding 125 cc and 11 kW.\n        - Category A2: Motorcycles with power not exceeding 35 kW.\n        - Category A: All motorcycles with or without sidecar.\n        - Category B1: Heavy motor tricycles and quadricycles.\n        - Category B: Motor vehicles with maximum authorized mass not exceeding 3,500 kg and no more than 8 passenger seats (Permanent validity).\n        - Category BE / E(B): Category B vehicle coupled with a trailer over 750 kg up to 3,500 kg.\n        - Category C1: Goods vehicles between 3,500 kg and 7,500 kg.\n        - Category C: Heavy goods vehicles exceeding 3,500 kg.\n        - Category CE: Heavy goods vehicle with a trailer over 750 kg.\n        - Category D1: Passenger transport vehicles with 9 to 16 passenger seats.\n        - Category D: Passenger transport vehicles (buses) with more than 8 passenger seats.\n        Format \"classDescriptions\" clearly with each allowed category on its own line.\n    14. \"categoriesDates\": Back table or category section. List the earliest start date found for each major category if multiple exists.\n    15. \"codes\": Top left of BACK side (or series notation on pink license). Usually 3 sets of numbers/letters.\n    16. \"explicacionCodigos\": Locate Column 12 on BACK (or restrictive codes). Translate found codes to these specific English blocks:\n        - If \"70\": \"70. Exchange of driver's license number [extract it]\"\n        - If \"01\": \"01- Vision correction and/or protection\"\n        - If \"01.06\": \"01.06- Prescribed spectacles or contact lenses\"\n        - If \"106\": \"106- Subject to the application of article R. 413-5 during probationary period from [DateFrom] to [DateTo]\"\n        \n    FORMATTING & MISSING DATA RULES:\n    - If ANY field has no data, is not present, not found, or not applicable, DO NOT output \"null\", \"None\", or \"N/A\". ALWAYS output a single hyphen \"-\" as its value.\n    - All dates MUST be \"DD Month YYYY\". If a date cannot be determined, use \"-\".\n    - OUTPUT MUST BE VALID JSON matching the schema.",
-  "german": "You are an expert driver's license OCR and translation engine.\n    Analyze these two images (Front and Back of a German driver's license / Bundesrepublik Deutschland Führerschein).\n    \n    CRITICAL MANDATES:\n    1. ALL TEXT OUTPUT VALUES MUST BE IN ENGLISH.\n    2. ALL DATES (dateOfBirth, issueDate, expiryDate, categoriesDates) MUST strictly use the format \"DD Month YYYY\" (e.g., \"01 January 2026\"). Translate month names to English.\n    3. You MUST extract every single field. Do NOT leave any required field blank or null. If a field like middleName or codes is not present on the license, output \"-\".\n    4. If expiryDate is empty, missing, or indefinite on the license, output strictly \"Indefinite\".\n    \n    FIELD INSTRUCTIONS:\n    - \"nationality\": Always set to \"German\".\n    - \"licenseLanguage\": Always set to \"German\".\n    - \"surname\": Family name from Point 1.\n    - \"firstName\": ONLY the very first given name from Point 2.\n    - \"middleName\": ALL remaining given names from Point 2 (or \"-\" if none).\n    - \"firstNames\": Combined given names (firstName + middleName).\n    - \"fullName\": Full legal name (surname + firstName + middleName).\n    - \"licenseNumber\": Main identification/license number from Point 5.\n    - \"dateOfBirth\": Date from Point 3 (Format: \"DD Month YYYY\").\n    - \"placeOfBirth\": Location/city/country from Point 3 (Translate to English).\n    - \"issueDate\": Date from Point 4a (Format: \"DD Month YYYY\").\n    - \"expiryDate\": Date from Point 4b (Format: \"DD Month YYYY\"). Output \"Indefinite\" if missing or blank.\n    - \"authority\": Translate the issuing authority from Point 4c into English, followed by a comma and \", Germany\" (e.g., \"Berlin City Council, Germany\" or \"District Office, Germany\").\n    - \"class\": Extract ALL authorized categories/classes listed on the license (Point 9 or back table, e.g., AM, A1, A2, A, B, BE, B1, C1, C1E, C, CE, D1, D1E, D, DE, M, S, L, T).\n    - \"categoriesDates\": Analyze Column 10 on the BACK. List categories with their valid dates in format \"Category: Date\" or \"Category1, Category2: Date\". One line per group of categories that share the same date, separated by newlines (\\n). Example:\n      AM: 01 January 2000\n      B1, B: 03 February 2001\n      C1, C: 01 March 2002\n    - \"classDescriptions\": Output official English descriptions for each permitted class identified on a SEPARATE NEW LINE (using \\n) formatted strictly as \"CODE: Description\":\n      AM: Mopeds and light quadricycles not exceeding 45 km/h\n      A1: Light motorcycles with a cylinder capacity not more than 125 cc and a power rating less than 11 kW\n      A2: Motorcycles with a power rating under 35 kW\n      A: Heavy motorcycles without power restrictions\n      B: Passenger cars and motor vehicles up to 3,500 kg permissible maximum mass\n      BE: Vehicle of category B towing a heavy trailer of under 3,500 kg\n      B1: Quadricycles\n      C1: Goods vehicles between 3,500 kg and 7,500 kg and for up to eight passengers\n      C1E: Vehicle of category C1 or B towing a heavy trailer, with a combined mass of up to 12,000 kg\n      C: Goods vehicles weighing more than 3,500 kg and seating not more than eight passengers\n      CE: Vehicle of category C towing a heavy trailer\n      D1: Passenger vehicles built for fewer than 16 passengers and that is no longer than 8 m\n      D1E: Vehicle of category D1 towing a heavy trailer\n      D: Passenger vehicles for more than eight passengers\n      DE: Vehicle of category D towing a heavy trailer\n      L: Agricultural and forestry tractors with a maximum design speed up to 40 km/h\n      T: Agricultural tractors with a maximum design speed up to 60 km/h\n      M: Mopeds with maximum design speed up to 45 km/h\n      S: Trikes, quadricycles and microcars\n    - \"codes\" (and \"explicacionCodigos\"): Analyze Column 12 on the BACK. Compare found numerical codes with the list below. Output the NUMBER followed by the EXACT explanation.\n        Format: \"NUMBER- Explanation\" (separated by newlines \\n)\n        Example: \"01- Vision correction and/or protection device\"\n        \n        LIST OF CODES:\n        - 01- Vision correction and/or protection device\n        - 70- Exchange of driver's license number, issued by\n        - 171- Class C1, also valid for motor vehicles of class D with a maximum permissible mass not exceeding 7,500 kg, but without passengers.\n        - 172- Class C, valid also for motor vehicles of class D, but without passengers.\n        - 79.03- Only three-wheeled vehicles\n        - 79.04- Only vehicle combinations of three-wheeled vehicles and a trailer with a maximum permissible mass not exceeding 750 kg.\n        - 79.06- Vehicles (vehicle combination) of category BE, provided that the maximum permissible mass of the trailer exceeds 3,500 kg.\n        - 79 (C1E > 12.000 kg, L ≤ 3)- Restriction of class CE due to the authorization resulting from the previous class 3 to drive three-axle trains with a towing vehicle of class C1 and more than 12,000 kg total mass and trains with a towing vehicle of class C1 and trailers without registration, where the total mass can be more than 12,000 kg and three-axle trains consisting of a towing vehicle of class C1 and a trailer, where the maximum permissible mass of the trailer exceeds the unladen mass of the towing vehicle (part not covered by C1E). The aforementioned authorizations do not apply to semitrailers with a total permissible mass of more than 7.5 tons. The letter L in this code stands for the number of axles.\n        - 174- Class L, also valid for driving tractors with a maximum speed determined by their design of not more than 40 km/h, also with a single-axle trailer (whereby axles with a distance of less than 1.0 m from each other are considered to be one axle) as well as combinations of these tractors and trailers, if they are driven at a speed of not more than 25 km/h\n        - 175- Class L, also valid for driving motor vehicles with a maximum speed determined by their design of not more than 25 km/h and for driving motor vehicles other than those belonging to classes A, A1, A2 and AM with an engine capacity of not more than 50 cm3\n        - 181- Class T, only valid for motor vehicles of class S (since 19.1.2013 AM)\n        - 197- The test was taken on a motor vehicle with automatic transmission and practical training for driving class B vehicles with manual transmission was completed.\n\n        If a code from the license is NOT in this list, DISCARD IT.\n\n    Return valid JSON containing all keys.",
+  "german": "You are an expert driver's license OCR and translation engine.\n    Analyze these two images (Front and Back of a German driver's license / Bundesrepublik Deutschland Führerschein).\n    \n    CRITICAL MANDATES:\n    1. ALL TEXT OUTPUT VALUES MUST BE IN ENGLISH.\n    2. ALL DATES (dateOfBirth, issueDate, expiryDate, categoriesDates) MUST strictly use the format \"DD Month YYYY\" (e.g., \"01 January 2026\"). Translate month names to English.\n    3. You MUST extract every single field. Do NOT leave any required field blank or null. If a field like middleName or codes is not present on the license, output \"-\".\n    4. If expiryDate is empty, missing, or indefinite on the license, output strictly \"Indefinite\".\n    \n    FIELD INSTRUCTIONS:\n    - \"nationality\": Always set to \"German\".\n    - \"licenseLanguage\": Always set to \"German\".\n    - \"surname\": Family name from Point 1.\n    - \"firstName\": ONLY the very first given name from Point 2.\n    - \"middleName\": ALL remaining given names from Point 2 (or \"-\" if none).\n    - \"firstNames\": Combined given names (firstName + middleName).\n    - \"fullName\": Full legal name (surname + firstName + middleName).\n    - \"licenseNumber\": Main identification/license number from Point 5.\n    - \"dateOfBirth\": Date from Point 3 (Format: \"DD Month YYYY\").\n    - \"placeOfBirth\": Location/city/country from Point 3 (Translate to English).\n    - \"issueDate\": Date from Point 4a (Format: \"DD Month YYYY\").\n    - \"expiryDate\": Date from Point 4b (Format: \"DD Month YYYY\"). Output \"Indefinite\" if missing or blank.\n    - \"authority\": Translate the issuing authority from Point 4c into English, followed by a comma and \", Germany\" (e.g., \"Berlin City Council, Germany\" or \"District Office, Germany\").\n    - \"class\": Extract ALL authorized categories/classes listed on the license (Point 9 or back table, e.g., AM, A1, A2, A, B, BE, B1, C1, C1E, C, CE, D1, D1E, D, DE, M, S, L, T).\n    - \"categoriesDates\": Analyze Column 10 on the BACK. List categories with their valid dates in format \"Category: Date\" or \"Category1, Category2: Date\". One line per group of categories that share the same date, separated by newlines (\\n). Example:\n      AM: 01 January 2000\n      B1, B: 03 February 2001\n      C1, C: 01 March 2002\n    - \"classDescriptions\": Output official English descriptions for each permitted class identified on a SEPARATE NEW LINE (using \\n) formatted strictly as \"CODE: Description\":\n      AM: Mopeds and light quadricycles not exceeding 45 km/h\n      A1: Light motorcycles with a cylinder capacity not more than 125 cc and a power rating less than 11 kW\n      A2: Motorcycles with a power rating under 35 kW\n      A: Heavy motorcycles without power restrictions\n      B: Passenger cars and motor vehicles up to 3,500 kg permissible maximum mass\n      BE: Vehicle of category B towing a heavy trailer of under 3,500 kg\n      B1: Quadricycles\n      C1: Goods vehicles between 3,500 kg and 7,500 kg and for up to eight passengers\n      C1E: Vehicle of category C1 or B towing a heavy trailer, with a combined mass of up to 12,000 kg\n      C: Goods vehicles weighing more than 3,500 kg and seating not more than eight passengers\n      CE: Vehicle of category C towing a heavy trailer\n      D1: Passenger vehicles built for fewer than 16 passengers and that is no longer than 8 m\n      D1E: Vehicle of category D1 towing a heavy trailer\n      D: Passenger vehicles for more than eight passengers\n      DE: Vehicle of category D towing a heavy trailer\n      L: Agricultural and forestry tractors with a maximum design speed up to 40 km/h\n      T: Agricultural tractors with a maximum design speed up to 60 km/h\n      M: Mopeds with maximum design speed up to 45 km/h\n      S: Trikes, quadricycles and microcars\n    - \"codes\" (and \"explicacionCodigos\"): Analyze Column 12 on the BACK. Compare found numerical codes with the list below. Output the NUMBER followed by the EXACT explanation.\n        Format: \"NUMBER- Explanation\" (separated by newlines \\n)\n        Example: \"01- Vision correction and/or protection device\"\n        \n        LIST OF CODES:\n        - 01- Vision correction and/or protection device\n        - 70- Exchange of driver's license number, issued by\n        - 171- Class C1, also valid for motor vehicles of class D with a maximum permissible mass not exceeding 7,500 kg, but without passengers.\n        - 172- Class C, valid also for motor vehicles of class D, but without passengers.\n        - 79.03- Only three-wheeled vehicles\n        - 79.04- Only vehicle combinations of three-wheeled vehicles and a trailer with a maximum permissible mass not exceeding 750 kg.\n        - 79.06- Vehicles (vehicle combination) of category BE, provided that the maximum permissible mass of the trailer exceeds 3,500 kg.\n        - 79 (C1E > 12.000 kg, L ≤ 3)- Restriction of class CE due to the authorization resulting from the previous class 3 to drive three-axle trains with a towing vehicle of class C1 and more than 12,000 kg total mass and trains with a towing vehicle of class C1 and trailers without registration, where the total mass can be more than 12,000 kg and three-axle trains consisting of a towing vehicle of class C1 and a trailer, where the maximum permissible mass of the trailer exceeds the unladen mass of the towing vehicle (part not covered by C1E). The aforementioned authorizations do not apply to semitrailers with a total permissible mass of more than 7.5 tons. The letter L in this code stands for the number of axles.\n        - 174- Class L, also valid for driving tractors with a maximum speed determined by their design of not more than 40 km/h, also with a single-axle trailer (whereby axles with a distance of less than 1.0 m from each other are considered to be one axle) as well as combinations of these tractors and trailers, if they are driven at a speed of not more than 25 km/h\n        - 175- Class L, also valid for driving motor vehicles with a maximum speed determined by their design of not more than 25 km/h and for driving motor vehicles other than those belonging to classes A, A1, A2 and AM with an engine capacity of not more than 50 cm3\n        - 181. Class T, only valid for motor vehicles of class S (since 19.1.2013 AM)\n        - 197- The test was taken on a motor vehicle with automatic transmission and practical training for driving class B vehicles with manual transmission was completed.\n\n        If a code from the license is NOT in this list, DISCARD IT.\n        If no codes are present in Column 12 on the license, output \"-\".\n        Set BOTH \"codes\" and \"explicacionCodigos\" to this exact output.\n\n    Return valid JSON containing all keys.",
+  "germany": "You are an expert driver's license OCR and translation engine.\n    Analyze these two images (Front and Back of a German driver's license / Bundesrepublik Deutschland Führerschein).\n    \n    CRITICAL MANDATES:\n    1. ALL TEXT OUTPUT VALUES MUST BE IN ENGLISH.\n    2. ALL DATES (dateOfBirth, issueDate, expiryDate, categoriesDates) MUST strictly use the format \"DD Month YYYY\" (e.g., \"01 January 2026\"). Translate month names to English.\n    3. You MUST extract every single field. Do NOT leave any required field blank or null. If a field like middleName or codes is not present on the license, output \"-\".\n    4. If expiryDate is empty, missing, or indefinite on the license, output strictly \"Indefinite\".\n    \n    FIELD INSTRUCTIONS:\n    - \"nationality\": Always set to \"German\".\n    - \"licenseLanguage\": Always set to \"German\".\n    - \"surname\": Family name from Point 1.\n    - \"firstName\": ONLY the very first given name from Point 2.\n    - \"middleName\": ALL remaining given names from Point 2 (or \"-\" if none).\n    - \"firstNames\": Combined given names (firstName + middleName).\n    - \"fullName\": Full legal name (surname + firstName + middleName).\n    - \"licenseNumber\": Main identification/license number from Point 5.\n    - \"dateOfBirth\": Date from Point 3 (Format: \"DD Month YYYY\").\n    - \"placeOfBirth\": Location/city/country from Point 3 (Translate to English).\n    - \"issueDate\": Date from Point 4a (Format: \"DD Month YYYY\").\n    - \"expiryDate\": Date from Point 4b (Format: \"DD Month YYYY\"). Output \"Indefinite\" if missing or blank.\n    - \"authority\": Translate the issuing authority from Point 4c into English, followed by a comma and \", Germany\" (e.g., \"Berlin City Council, Germany\" or \"District Office, Germany\").\n    - \"class\": Extract ALL authorized categories/classes listed on the license (Point 9 or back table, e.g., AM, A1, A2, A, B, BE, B1, C1, C1E, C, CE, D1, D1E, D, DE, M, S, L, T).\n    - \"categoriesDates\": Analyze Column 10 on the BACK. List categories with their valid dates in format \"Category: Date\" or \"Category1, Category2: Date\". One line per group of categories that share the same date, separated by newlines (\\n). Example:\n      AM: 01 January 2000\n      B1, B: 03 February 2001\n      C1, C: 01 March 2002\n    - \"classDescriptions\": Output official English descriptions for each permitted class identified on a SEPARATE NEW LINE (using \\n) formatted strictly as \"CODE: Description\":\n      AM: Mopeds and light quadricycles not exceeding 45 km/h\n      A1: Light motorcycles with a cylinder capacity not more than 125 cc and a power rating less than 11 kW\n      A2: Motorcycles with a power rating under 35 kW\n      A: Heavy motorcycles without power restrictions\n      B: Passenger cars and motor vehicles up to 3,500 kg permissible maximum mass\n      BE: Vehicle of category B towing a heavy trailer of under 3,500 kg\n      B1: Quadricycles\n      C1: Goods vehicles between 3,500 kg and 7,500 kg and for up to eight passengers\n      C1E: Vehicle of category C1 or B towing a heavy trailer, with a combined mass of up to 12,000 kg\n      C: Goods vehicles weighing more than 3,500 kg and seating not more than eight passengers\n      CE: Vehicle of category C towing a heavy trailer\n      D1: Passenger vehicles built for fewer than 16 passengers and that is no longer than 8 m\n      D1E: Vehicle of category D1 towing a heavy trailer\n      D: Passenger vehicles for more than eight passengers\n      DE: Vehicle of category D towing a heavy trailer\n      L: Agricultural and forestry tractors with a maximum design speed up to 40 km/h\n      T: Agricultural tractors with a maximum design speed up to 60 km/h\n      M: Mopeds with maximum design speed up to 45 km/h\n      S: Trikes, quadricycles and microcars\n    - \"codes\" (and \"explicacionCodigos\"): Analyze Column 12 on the BACK. Compare found numerical codes with the list below. Output the NUMBER followed by the EXACT explanation.\n        Format: \"NUMBER- Explanation\" (separated by newlines \\n)\n        Example: \"01- Vision correction and/or protection device\"\n        \n        LIST OF CODES:\n        - 01- Vision correction and/or protection device\n        - 70- Exchange of driver's license number, issued by\n        - 171- Class C1, also valid for motor vehicles of class D with a maximum permissible mass not exceeding 7,500 kg, but without passengers.\n        - 172- Class C, valid also for motor vehicles of class D, but without passengers.\n        - 79.03- Only three-wheeled vehicles\n        - 79.04- Only vehicle combinations of three-wheeled vehicles and a trailer with a maximum permissible mass not exceeding 750 kg.\n        - 79.06- Vehicles (vehicle combination) of category BE, provided that the maximum permissible mass of the trailer exceeds 3,500 kg.\n        - 79 (C1E > 12.000 kg, L ≤ 3)- Restriction of class CE due to the authorization resulting from the previous class 3 to drive three-axle trains with a towing vehicle of class C1 and more than 12,000 kg total mass and trains with a towing vehicle of class C1 and trailers without registration, where the total mass can be more than 12,000 kg and three-axle trains consisting of a towing vehicle of class C1 and a trailer, where the maximum permissible mass of the trailer exceeds the unladen mass of the towing vehicle (part not covered by C1E). The aforementioned authorizations do not apply to semitrailers with a total permissible mass of more than 7.5 tons. The letter L in this code stands for the number of axles.\n        - 174- Class L, also valid for driving tractors with a maximum speed determined by their design of not more than 40 km/h, also with a single-axle trailer (whereby axles with a distance of less than 1.0 m from each other are considered to be one axle) as well as combinations of these tractors and trailers, if they are driven at a speed of not more than 25 km/h\n        - 175- Class L, also valid for driving motor vehicles with a maximum speed determined by their design of not more than 25 km/h and for driving motor vehicles other than those belonging to classes A, A1, A2 and AM with an engine capacity of not more than 50 cm3\n        - 181. Class T, only valid for motor vehicles of class S (since 19.1.2013 AM)\n        - 197- The test was taken on a motor vehicle with automatic transmission and practical training for driving class B vehicles with manual transmission was completed.\n\n        If a code from the license is NOT in this list, DISCARD IT.\n        If no codes are present in Column 12 on the license, output \"-\".\n        Set BOTH \"codes\" and \"explicacionCodigos\" to this exact output.\n\n    Return valid JSON containing all keys.",
+  "alemania": "You are an expert driver's license OCR and translation engine.\n    Analyze these two images (Front and Back of a German driver's license / Bundesrepublik Deutschland Führerschein).\n    \n    CRITICAL MANDATES:\n    1. ALL TEXT OUTPUT VALUES MUST BE IN ENGLISH.\n    2. ALL DATES (dateOfBirth, issueDate, expiryDate, categoriesDates) MUST strictly use the format \"DD Month YYYY\" (e.g., \"01 January 2026\"). Translate month names to English.\n    3. You MUST extract every single field. Do NOT leave any required field blank or null. If a field like middleName or codes is not present on the license, output \"-\".\n    4. If expiryDate is empty, missing, or indefinite on the license, output strictly \"Indefinite\".\n    \n    FIELD INSTRUCTIONS:\n    - \"nationality\": Always set to \"German\".\n    - \"licenseLanguage\": Always set to \"German\".\n    - \"surname\": Family name from Point 1.\n    - \"firstName\": ONLY the very first given name from Point 2.\n    - \"middleName\": ALL remaining given names from Point 2 (or \"-\" if none).\n    - \"firstNames\": Combined given names (firstName + middleName).\n    - \"fullName\": Full legal name (surname + firstName + middleName).\n    - \"licenseNumber\": Main identification/license number from Point 5.\n    - \"dateOfBirth\": Date from Point 3 (Format: \"DD Month YYYY\").\n    - \"placeOfBirth\": Location/city/country from Point 3 (Translate to English).\n    - \"issueDate\": Date from Point 4a (Format: \"DD Month YYYY\").\n    - \"expiryDate\": Date from Point 4b (Format: \"DD Month YYYY\"). Output \"Indefinite\" if missing or blank.\n    - \"authority\": Translate the issuing authority from Point 4c into English, followed by a comma and \", Germany\" (e.g., \"Berlin City Council, Germany\" or \"District Office, Germany\").\n    - \"class\": Extract ALL authorized categories/classes listed on the license (Point 9 or back table, e.g., AM, A1, A2, A, B, BE, B1, C1, C1E, C, CE, D1, D1E, D, DE, M, S, L, T).\n    - \"categoriesDates\": Analyze Column 10 on the BACK. List categories with their valid dates in format \"Category: Date\" or \"Category1, Category2: Date\". One line per group of categories that share the same date, separated by newlines (\\n). Example:\n      AM: 01 January 2000\n      B1, B: 03 February 2001\n      C1, C: 01 March 2002\n    - \"classDescriptions\": Output official English descriptions for each permitted class identified on a SEPARATE NEW LINE (using \\n) formatted strictly as \"CODE: Description\":\n      AM: Mopeds and light quadricycles not exceeding 45 km/h\n      A1: Light motorcycles with a cylinder capacity not more than 125 cc and a power rating less than 11 kW\n      A2: Motorcycles with a power rating under 35 kW\n      A: Heavy motorcycles without power restrictions\n      B: Passenger cars and motor vehicles up to 3,500 kg permissible maximum mass\n      BE: Vehicle of category B towing a heavy trailer of under 3,500 kg\n      B1: Quadricycles\n      C1: Goods vehicles between 3,500 kg and 7,500 kg and for up to eight passengers\n      C1E: Vehicle of category C1 or B towing a heavy trailer, with a combined mass of up to 12,000 kg\n      C: Goods vehicles weighing more than 3,500 kg and seating not more than eight passengers\n      CE: Vehicle of category C towing a heavy trailer\n      D1: Passenger vehicles built for fewer than 16 passengers and that is no longer than 8 m\n      D1E: Vehicle of category D1 towing a heavy trailer\n      D: Passenger vehicles for more than eight passengers\n      DE: Vehicle of category D towing a heavy trailer\n      L: Agricultural and forestry tractors with a maximum design speed up to 40 km/h\n      T: Agricultural tractors with a maximum design speed up to 60 km/h\n      M: Mopeds with maximum design speed up to 45 km/h\n      S: Trikes, quadricycles and microcars\n    - \"codes\" (and \"explicacionCodigos\"): Analyze Column 12 on the BACK. Compare found numerical codes with the list below. Output the NUMBER followed by the EXACT explanation.\n        Format: \"NUMBER- Explanation\" (separated by newlines \\n)\n        Example: \"01- Vision correction and/or protection device\"\n        \n        LIST OF CODES:\n        - 01- Vision correction and/or protection device\n        - 70- Exchange of driver's license number, issued by\n        - 171- Class C1, also valid for motor vehicles of class D with a maximum permissible mass not exceeding 7,500 kg, but without passengers.\n        - 172- Class C, valid also for motor vehicles of class D, but without passengers.\n        - 79.03- Only three-wheeled vehicles\n        - 79.04- Only vehicle combinations of three-wheeled vehicles and a trailer with a maximum permissible mass not exceeding 750 kg.\n        - 79.06- Vehicles (vehicle combination) of category BE, provided that the maximum permissible mass of the trailer exceeds 3,500 kg.\n        - 79 (C1E > 12.000 kg, L ≤ 3)- Restriction of class CE due to the authorization resulting from the previous class 3 to drive three-axle trains with a towing vehicle of class C1 and more than 12,000 kg total mass and trains with a towing vehicle of class C1 and trailers without registration, where the total mass can be more than 12,000 kg and three-axle trains consisting of a towing vehicle of class C1 and a trailer, where the maximum permissible mass of the trailer exceeds the unladen mass of the towing vehicle (part not covered by C1E). The aforementioned authorizations do not apply to semitrailers with a total permissible mass of more than 7.5 tons. The letter L in this code stands for the number of axles.\n        - 174- Class L, also valid for driving tractors with a maximum speed determined by their design of not more than 40 km/h, also with a single-axle trailer (whereby axles with a distance of less than 1.0 m from each other are considered to be one axle) as well as combinations of these tractors and trailers, if they are driven at a speed of not more than 25 km/h\n        - 175- Class L, also valid for driving motor vehicles with a maximum speed determined by their design of not more than 25 km/h and for driving motor vehicles other than those belonging to classes A, A1, A2 and AM with an engine capacity of not more than 50 cm3\n        - 181. Class T, only valid for motor vehicles of class S (since 19.1.2013 AM)\n        - 197- The test was taken on a motor vehicle with automatic transmission and practical training for driving class B vehicles with manual transmission was completed.\n\n        If a code from the license is NOT in this list, DISCARD IT.\n        If no codes are present in Column 12 on the license, output \"-\".\n        Set BOTH \"codes\" and \"explicacionCodigos\" to this exact output.\n\n    Return valid JSON containing all keys.",
+  "deutschland": "You are an expert driver's license OCR and translation engine.\n    Analyze these two images (Front and Back of a German driver's license / Bundesrepublik Deutschland Führerschein).\n    \n    CRITICAL MANDATES:\n    1. ALL TEXT OUTPUT VALUES MUST BE IN ENGLISH.\n    2. ALL DATES (dateOfBirth, issueDate, expiryDate, categoriesDates) MUST strictly use the format \"DD Month YYYY\" (e.g., \"01 January 2026\"). Translate month names to English.\n    3. You MUST extract every single field. Do NOT leave any required field blank or null. If a field like middleName or codes is not present on the license, output \"-\".\n    4. If expiryDate is empty, missing, or indefinite on the license, output strictly \"Indefinite\".\n    \n    FIELD INSTRUCTIONS:\n    - \"nationality\": Always set to \"German\".\n    - \"licenseLanguage\": Always set to \"German\".\n    - \"surname\": Family name from Point 1.\n    - \"firstName\": ONLY the very first given name from Point 2.\n    - \"middleName\": ALL remaining given names from Point 2 (or \"-\" if none).\n    - \"firstNames\": Combined given names (firstName + middleName).\n    - \"fullName\": Full legal name (surname + firstName + middleName).\n    - \"licenseNumber\": Main identification/license number from Point 5.\n    - \"dateOfBirth\": Date from Point 3 (Format: \"DD Month YYYY\").\n    - \"placeOfBirth\": Location/city/country from Point 3 (Translate to English).\n    - \"issueDate\": Date from Point 4a (Format: \"DD Month YYYY\").\n    - \"expiryDate\": Date from Point 4b (Format: \"DD Month YYYY\"). Output \"Indefinite\" if missing or blank.\n    - \"authority\": Translate the issuing authority from Point 4c into English, followed by a comma and \", Germany\" (e.g., \"Berlin City Council, Germany\" or \"District Office, Germany\").\n    - \"class\": Extract ALL authorized categories/classes listed on the license (Point 9 or back table, e.g., AM, A1, A2, A, B, BE, B1, C1, C1E, C, CE, D1, D1E, D, DE, M, S, L, T).\n    - \"categoriesDates\": Analyze Column 10 on the BACK. List categories with their valid dates in format \"Category: Date\" or \"Category1, Category2: Date\". One line per group of categories that share the same date, separated by newlines (\\n). Example:\n      AM: 01 January 2000\n      B1, B: 03 February 2001\n      C1, C: 01 March 2002\n    - \"classDescriptions\": Output official English descriptions for each permitted class identified on a SEPARATE NEW LINE (using \\n) formatted strictly as \"CODE: Description\":\n      AM: Mopeds and light quadricycles not exceeding 45 km/h\n      A1: Light motorcycles with a cylinder capacity not more than 125 cc and a power rating less than 11 kW\n      A2: Motorcycles with a power rating under 35 kW\n      A: Heavy motorcycles without power restrictions\n      B: Passenger cars and motor vehicles up to 3,500 kg permissible maximum mass\n      BE: Vehicle of category B towing a heavy trailer of under 3,500 kg\n      B1: Quadricycles\n      C1: Goods vehicles between 3,500 kg and 7,500 kg and for up to eight passengers\n      C1E: Vehicle of category C1 or B towing a heavy trailer, with a combined mass of up to 12,000 kg\n      C: Goods vehicles weighing more than 3,500 kg and seating not more than eight passengers\n      CE: Vehicle of category C towing a heavy trailer\n      D1: Passenger vehicles built for fewer than 16 passengers and that is no longer than 8 m\n      D1E: Vehicle of category D1 towing a heavy trailer\n      D: Passenger vehicles for more than eight passengers\n      DE: Vehicle of category D towing a heavy trailer\n      L: Agricultural and forestry tractors with a maximum design speed up to 40 km/h\n      T: Agricultural tractors with a maximum design speed up to 60 km/h\n      M: Mopeds with maximum design speed up to 45 km/h\n      S: Trikes, quadricycles and microcars\n    - \"codes\" (and \"explicacionCodigos\"): Analyze Column 12 on the BACK. Compare found numerical codes with the list below. Output the NUMBER followed by the EXACT explanation.\n        Format: \"NUMBER- Explanation\" (separated by newlines \\n)\n        Example: \"01- Vision correction and/or protection device\"\n        \n        LIST OF CODES:\n        - 01- Vision correction and/or protection device\n        - 70- Exchange of driver's license number, issued by\n        - 171- Class C1, also valid for motor vehicles of class D with a maximum permissible mass not exceeding 7,500 kg, but without passengers.\n        - 172- Class C, valid also for motor vehicles of class D, but without passengers.\n        - 79.03- Only three-wheeled vehicles\n        - 79.04- Only vehicle combinations of three-wheeled vehicles and a trailer with a maximum permissible mass not exceeding 750 kg.\n        - 79.06- Vehicles (vehicle combination) of category BE, provided that the maximum permissible mass of the trailer exceeds 3,500 kg.\n        - 79 (C1E > 12.000 kg, L ≤ 3)- Restriction of class CE due to the authorization resulting from the previous class 3 to drive three-axle trains with a towing vehicle of class C1 and more than 12,000 kg total mass and trains with a towing vehicle of class C1 and trailers without registration, where the total mass can be more than 12,000 kg and three-axle trains consisting of a towing vehicle of class C1 and a trailer, where the maximum permissible mass of the trailer exceeds the unladen mass of the towing vehicle (part not covered by C1E). The aforementioned authorizations do not apply to semitrailers with a total permissible mass of more than 7.5 tons. The letter L in this code stands for the number of axles.\n        - 174- Class L, also valid for driving tractors with a maximum speed determined by their design of not more than 40 km/h, also with a single-axle trailer (whereby axles with a distance of less than 1.0 m from each other are considered to be one axle) as well as combinations of these tractors and trailers, if they are driven at a speed of not more than 25 km/h\n        - 175- Class L, also valid for driving motor vehicles with a maximum speed determined by their design of not more than 25 km/h and for driving motor vehicles other than those belonging to classes A, A1, A2 and AM with an engine capacity of not more than 50 cm3\n        - 181. Class T, only valid for motor vehicles of class S (since 19.1.2013 AM)\n        - 197- The test was taken on a motor vehicle with automatic transmission and practical training for driving class B vehicles with manual transmission was completed.\n\n        If a code from the license is NOT in this list, DISCARD IT.\n        If no codes are present in Column 12 on the license, output \"-\".\n        Set BOTH \"codes\" and \"explicacionCodigos\" to this exact output.\n\n    Return valid JSON containing all keys.",
   "hungria": "Analyze these two images (Front and Back of a driver's license).\n    ${referenceInstruction}\n    \n    IMPORTANT: ALL TEXT OUTPUT VALUES MUST BE IN ENGLISH.\n    \n    EXTRACT DATA RULES:\n    1. \"surname\": Family name.\n    2. \"firstName\": ONLY the very first name from the given names list.\n    3. \"middleName\": ALL remaining given names after the first one. If only one name exists, leave this empty.\n    4. \"firstNames\": All given names joined (for reference).\n    5. \"licenseNumber\": The main identification number. Extract ONLY the alphanumeric characters.\n    6. \"dateOfBirth\": Point 3 date.\n    7. \"placeOfBirth\": Point 3 location. TRANSLATE TO ENGLISH.\n    8. \"issueDate\": Point 4a.\n    9. \"expiryDate\": Point 4b.\n    10. \"authority\": Extract value from Point 4c, TRANSLATE TO ENGLISH, and ALWAYS append the country name in English at the end (e.g. \"Hungary\").\n    11. \"class\": Extract ALL categories listed in Point 9 on the FRONT and/or in the BACK table (Column 9/10). SEPARATE THEM WITH COMMAS. Recognize both standard EU categories (AM, A1, A2, A, B1, B, C1, C, D1, D, BE, CE, DE, etc.) AND special national Hungarian categories:\n        - K: Garden tractor, animal-drawn vehicle\n        - T: Agricultural tractor and 2 heavy trailers, slow vehicle and trailer, garden tractor, animal-drawn vehicle\n        - M: Moped, animal-drawn vehicle, garden tractor (after 16 years of age)\n        - TR: Trolleybus, agricultural tractor and 2 heavy trailers, moped, slow vehicle and trailer, garden tractor, animal-drawn vehicle\n        - V: Tram, garden tractor, animal-drawn vehicle\n    12. \"categoriesDates\": Analyze the BACK table, Column 10. Group identical dates.\n    13. \"codes\": Look ONLY at the TOP LEFT corner of the BACK. Extract the series of 3 strings.\n    14. \"explicacionCodigos\": Look at Column 12 (BACK) and identify ONLY these specific codes. If found, generate the EXACT text below:\n        - Code \"70\": \"70. Exchange of driver's license number [extract number]\"\n        - Code \"01\": \"01- Vision correction and/or protection\"\n        - Code \"01.06\": \"01.06- Prescribed spectacles or contact lenses\"\n        - Code \"106\": \"106- Subject to the application of article R. 413-5 during probationary period from [DateFrom] to [DateTo] (Speed limits: 110km/h in Freeways where limit is 130km/h, 100km/h in freeways with lower speed limit or double roads, 80 km/h on other roads.)\"\n        \n        Combine all found into a single coherent paragraph. If none are found, leave empty.\n    15. \"code106From\" & \"code106To\": Extract these specifically if code 106 is present.\n    16. \"licenseLanguage\": Identify the language(s) of the original document text (e.g., \"French\", \"French and Dutch\", \"Spanish\").\n    17. Format all dates as \"DD Month YYYY\".\n    18. \"classDescriptions\": For only the permitted categories extracted in \"class\", list their descriptions.\n    \n    Return valid JSON.",
   "indonesia": "Analyze these two images (Front and Back of a driver's license).\n    ${referenceInstruction}\n    \n    IMPORTANT: ALL TEXT OUTPUT VALUES MUST BE IN ENGLISH.\n    \n    EXTRACT DATA RULES:\n    1. \"surname\": Family name (Label 1).\n    2. \"firstName\": The FIRST given name from Label 2. Ensure it is complete.\n    3. \"middleName\": ALL names that follow the first given name in Label 2. If there are multiple additional names, include them ALL here.\n    4. \"firstNames\": ALL names from Label 2 combined exactly as they appear.\n    5. \"licenseNumber\": The main identification number (Label 5). Extract ONLY the alphanumeric characters.\n    6. \"dateOfBirth\": Date found at Point 3.\n    7. \"placeOfBirth\": Location found at Point 3. TRANSLATE TO ENGLISH.\n    8. \"issueDate\": General issue date (Point 4a).\n    9. \"expiryDate\": General expiry date (Point 4b).\n    10. \"authority\": Issuing authority (Point 4c). TRANSLATE TO ENGLISH and append country name if not present.\n    11. \"address\": Extract the full address indicated on the license. Ensure street, city, and zip are included if visible.\n    12. \"gender\": Identify the gender. Output MUST be exactly \"Male\" or \"Female\".\n    13. \"blood\": Identify the blood type (e.g., A+, O-, B+, etc.).\n    14. \"codes\": Look at the REVERSE (BACK) side, TOP RIGHT corner. Extract any numeric/alphanumeric strings found there.\n    15. \"class\": Extract ALL categories listed in Point 9 on the FRONT (e.g. A, B, BE). SEPARATE THEM WITH COMMAS.\n    16. \"categoriesDates\": Analyze the BACK table, Column 10 (valid from). Group identical dates for different categories if they exist.\n    17. \"explicacionCodigos\": Look at Column 12 (BACK) for ALL categories and identify specific codes for the whole license:\n        - Code \"70\": \"70. Exchange of driver's license number [extract number]\"\n        - Code \"01\": \"01- Vision correction and/or protection\"\n        - Code \"01.06\": \"01.06- Prescribed spectacles or contact lenses\"\n        - Code \"106\": \"106- Subject to the application of article R. 413-5 from [DateFrom] to [DateTo]\"\n    18. Format all dates as \"DD Month YYYY\" (e.g., 15 January 2024).\n    19. Capture ALL names accurately. Do not truncate any names.\n    \n    Return valid JSON.",
   "israel": "Analyze these two images (Front and Back of a driver's license).\n    ${referenceInstruction}\n    \n    IMPORTANT: ALL TEXT OUTPUT VALUES MUST BE IN ENGLISH.\n    \n    EXTRACT DATA RULES:\n    1. \"surname\": Family name.\n    2. \"firstName\": ONLY the very first name from the given names list.\n    3. \"middleName\": ALL remaining given names after the first one.\n    4. \"personal\": The alphanumeric value indicated exactly at Point 4d (FRONT).\n    5. \"code\": The series of four distinct numbers or alphanumeric strings found immediately below label 4d (FRONT). Join them with spaces.\n    6. \"first\": Locate the authorized class (usually B) in the table on the BACK. Extract ONLY the YEAR from the issue date (Column 10) for that category.\n    7. \"licenseNumber\": The main identification number (Point 5). Extract ONLY the alphanumeric characters.\n    8. \"dateOfBirth\": Point 3 date.\n    9. \"placeOfBirth\": Point 3 location. TRANSLATE TO ENGLISH.\n    10. \"issueDate\": Point 4a.\n    11. \"expiryDate\": Point 4b.\n    12. \"authority\": Extract value from Point 4c, TRANSLATE TO ENGLISH, and ALWAYS append the country name in English at the end.\n    13. \"class\": Point 9 categories on FRONT. SEPARATE WITH COMMAS.\n    14. \"categoriesDates\": Analyze the BACK table, Column 10.\n    15. \"explicacionCodigos\": Column 12 (BACK) for codes 70, 01, 01.06, or 106.\n    \n    Format all dates as \"DD Month YYYY\".\n    \n    Return valid JSON.",
@@ -129,7 +509,121 @@ export const COUNTRY_RULES = {
   "canada": "Analyze the provided front and back images of a Canadian Driver's License.\nCRITICAL REQUIREMENT 1: ALL EXTRACTED TEXT VALUES MUST BE IN ENGLISH.\nCRITICAL REQUIREMENT 2: EVERY SINGLE FIELD MUST BE EXTRACTED. IF MISSING OR BLANK, OUTPUT STRICTLY \"-\".\n\nExtraction Rules:\n- \"surname\": Family name / Nom.\n- \"firstName\": ONLY the very first given name.\n- \"middleName\": ALL remaining given names after the first one. If none, \"-\".\n- \"firstNames\": All given names joined by space.\n- \"fullName\": Full name (surname + firstName + middleName).\n- \"licenseNumber\": Main identification/license number (Point 5).\n- \"dateOfBirth\": Date of birth (Point 3). Format as \"DD Month YYYY\".\n- \"placeOfBirth\": Place of birth (Point 3). Translate location names to English. If missing, \"-\".\n- \"issueDate\": Date of issue (Point 4a). Format as \"DD Month YYYY\".\n- \"expiryDate\": Expiration date (Point 4b). Format as \"DD Month YYYY\".\n- \"address\": Residence address (Point 8).\n- \"reference\": Reference number (Point 5).\n- \"height\": Stature/Height (e.g. \"175 cm\", \"5'10\\\"\"). If missing, \"-\".\n- \"eye\": Eye color translated to English (BR -> Brown, BL -> Blue, VR -> Green, GR -> Grey, HZ -> Hazel, BK -> Black).\n- \"eyeColor\": Same as eye.\n- \"sex\": Sex/Gender (M -> Male, F -> Female, X -> X).\n- \"gender\": Same as sex.\n- \"authority\": Issuing authority (Point 4c), translated to English with \", Canada\" appended.\n- \"class\": Categories listed in Point 9.\n- \"categoriesDates\": Categories and validity dates.\n- \"codes\": Condition/restriction codes.\n- \"explicacionCodigos\": Clear English explanation of all condition/restriction codes. If none, \"-\".",
   "denmark": "Analyze the provided images (Front and Back of a Danish driver's license / Danmark Kørekort).\nIMPORTANT: ALL TEXT OUTPUT VALUES MUST BE IN ENGLISH.\n\nEXTRACT DATA RULES:\n1. \"personal\" / \"point4d\": Extract the number located in section 4d on the front of the license card.\n2. \"surname\": Family name (Point 1).\n3. \"firstName\": ONLY the very first given name from Point 2.\n4. \"middleName\": ALL remaining given names after the first one from Point 2. If none, \"-\".\n5. \"firstNames\": All given names joined together.\n6. \"fullName\": Full name (surname + firstName + middleName).\n7. \"licenseNumber\": Main identification number (Point 5). Extract ONLY alphanumeric characters.\n8. \"dateOfBirth\": Point 3 date. Format as \"DD Month YYYY\".\n9. \"placeOfBirth\": Point 3 location if present. Translate to English.\n10. \"issueDate\": Point 4a. Format as \"DD Month YYYY\".\n11. \"expiryDate\": Point 4b. Format as \"DD Month YYYY\".\n12. \"authority\": Extract value from Point 4c, translate to English, and ALWAYS append \", Denmark\" at the end.\n13. \"class\": Extract ALL categories listed in Point 9 / back table. Separate with commas.\n14. \"classDescriptions\": For EACH category present in \"class\", provide its description on a NEW LINE.\n15. \"categoriesDates\": Column 10 on the back table. Group obtaining dates on NEW LINES (e.g. \"B: 15 May 2012\").\n16. \"codes\" / \"explicacionCodigos\": Extract codes from Section 12 on the BACK of the license and output English translations (e.g. \"01- Prescribed spectacles\"). If none, \"-\".",
   "finland": "Analyze the provided Finnish Driver's License images (Ajokortti / Körkort).\nIMPORTANT: ALL VALUES MUST BE TRANSLATED TO ENGLISH. FORMAT ALL DATES AS \"DD Month YYYY\".\n\nRules:\n1. \"surname\": Family name (Point 1).\n2. \"firstName\": ONLY first given name (Point 2).\n3. \"middleName\": Remaining given names (Point 2).\n4. \"firstNames\": All given names.\n5. \"fullName\": Full name.\n6. \"licenseNumber\": License number (Point 5).\n7. \"dateOfBirth\": Date of birth (Point 3).\n8. \"placeOfBirth\": Place of birth (Point 3) translated to English.\n9. \"issueDate\": Issue date (Point 4a).\n10. \"expiryDate\": Expiry date (Point 4b).\n11. \"authority\": Point 4c translated + \", Finland\" (e.g. \"Traficom, Finland\").\n12. \"class\": Categories (Point 9).\n13. \"personal\" / \"point4d\": Personal identity code (Point 4d).\n14. \"categoriesDates\": Column 10 table dates.\n15. \"codes\" / \"explicacionCodigos\": Restriction codes from Section 12.",
-  "italia": "Analyze the provided Italian Driver's License images (Patente di Guida).\nIMPORTANT: ALL VALUES MUST BE TRANSLATED TO ENGLISH. FORMAT ALL DATES AS \"DD Month YYYY\".\n\nRules:\n1. \"surname\": Cognome (Point 1).\n2. \"firstName\": Nome (Point 2) - First given name.\n3. \"middleName\": Remaining given names if any.\n4. \"fullName\": Full name.\n5. \"licenseNumber\": Main license number (Point 5).\n6. \"dateOfBirth\": Date of birth (Point 3).\n7. \"placeOfBirth\": Place of birth (Point 3) translated to English.\n8. \"issueDate\": Issue date (Point 4a).\n9. \"expiryDate\": Expiry date (Point 4b).\n10. \"authority\": Point 4c translated + \", Italy\" (e.g. \"MIT-UCO, Italy\" or \"Motorizzazione Civile, Italy\").\n11. \"class\": Categories (Point 9).\n12. \"point4d\" / \"personal\": Tax code / Codice Fiscale (Point 4d).\n13. \"categoriesDates\": Category validity dates from back table.\n14. \"codes\" / \"explicacionCodigos\": Restriction codes from Section 12.",
-  "italy": "Analyze the provided Italian Driver's License images (Patente di Guida).\nIMPORTANT: ALL VALUES MUST BE TRANSLATED TO ENGLISH. FORMAT ALL DATES AS \"DD Month YYYY\".\n\nRules:\n1. \"surname\": Cognome (Point 1).\n2. \"firstName\": Nome (Point 2) - First given name.\n3. \"middleName\": Remaining given names if any.\n4. \"fullName\": Full name.\n5. \"licenseNumber\": Main license number (Point 5).\n6. \"dateOfBirth\": Date of birth (Point 3).\n7. \"placeOfBirth\": Place of birth (Point 3) translated to English.\n8. \"issueDate\": Issue date (Point 4a).\n9. \"expiryDate\": Expiry date (Point 4b).\n10. \"authority\": Point 4c translated + \", Italy\" (e.g. \"MIT-UCO, Italy\" or \"Motorizzazione Civile, Italy\").\n11. \"class\": Categories (Point 9).\n12. \"point4d\" / \"personal\": Tax code / Codice Fiscale (Point 4d).\n13. \"categoriesDates\": Category validity dates from back table.\n14. \"codes\" / \"explicacionCodigos\": Restriction codes from Section 12.",
+  "italia": `Analyze the provided Italian Driver's License images (Patente di Guida).
+    \${referenceInstruction}
+    
+    IMPORTANT: ALL TEXT OUTPUT VALUES MUST BE IN ENGLISH. FORMAT ALL DATES AS "DD Month YYYY".
+    
+    EXTRACT DATA RULES:
+    1. "surname": Family name (Cognome - Point 1 on front) in UPPERCASE.
+    2. "firstName": ONLY the very first given name (Nome - Point 2 on front).
+    3. "middleName": ALL remaining given names after the first one from Point 2 (or "-" if none).
+    4. "firstNames": All given names combined.
+    5. "fullName": Full legal name (surname + firstNames).
+    6. "licenseNumber": Main license identification number (Point 5). Extract ONLY alphanumeric characters.
+    7. "dateOfBirth": Date of birth from Point 3 (Format: "DD Month YYYY", e.g. "15 May 1985").
+    8. "placeOfBirth": Place of birth from Point 3. TRANSLATE TO ENGLISH.
+    9. "issueDate": Date of issue from Point 4a. Format: "DD Month YYYY".
+    10. "expiryDate": Date of expiry from Point 4b. Format: "DD Month YYYY".
+    11. "authority": Extract value from Point 4c and DECODE ANY ABBREVIATIONS to full English + ", Italy":
+        - If "MC-XX" or "MC XX" (Motorizzazione Civile + 2-letter province code): decode to "Civil Motorization - <Province Name>, Italy" (e.g., "MC-TE" -> "Civil Motorization - Teramo, Italy", "MC-RM" -> "Civil Motorization - Rome, Italy", "MC-MI" -> "Civil Motorization - Milan, Italy", "MC-NA" -> "Civil Motorization - Naples, Italy").
+        - If "MIT-UCO" or "UCO": "Ministry of Infrastructure and Transport - Central Operational Office, Italy".
+        - If "MIT-DTT" or "DTT": "Ministry of Infrastructure and Transport - Department for Land Transport, Italy".
+        - If "MIT": "Ministry of Infrastructure and Transport, Italy".
+        - If "Prefettura di <City>": "Prefecture of <City>, Italy".
+    12. "class": Extract ONLY the authorized categories (Point 9 or valid dates in table 10 on the back). SEPARATE WITH COMMAS (e.g., "B" or "AM, B").
+    13. "classDescriptions": For ONLY the categories the driver is PERMITTED to drive (the ones extracted in "class"), include their official English description followed by the official source.
+        CRITICAL: NEVER include categories the person does not hold.
+        Example for Category B:
+        B - passenger vehicles weighing up to 3,500 kg and seating not more than eight passengers, in addition to the driver.
+        Sources:
+        https://eur-lex.europa.eu/EN/legal-content/summary/road-safety-driving-licences.html
+        
+        List to use for held categories:
+        - AM - 2-wheel, 3-wheel vehicles and light quadricycles with a maximum design speed of not more than 45 km/h.
+        - A1 - light motorcycles with a cylinder capacity not more than 125 cubic centimetres and a power rating less than 11 kW.
+        - A2 - motorcycles with a power rating under 35 kW.
+        - A - heavy motorcycles without power restrictions.
+        - B1 - heavy motorized quadricycle whose empty weight is a maximum of 450 kg if it is intended for the transport of persons, and 600 kg if it is intended for the transport of goods.
+        - B - passenger vehicles weighing up to 3,500 kg and seating not more than eight passengers, in addition to the driver.
+        - BE - vehicle of category B towing a heavy trailer of under 3,500 kg.
+        - C1 - goods vehicles between 3,500 kg and 7,500 kg and for up to eight passengers.
+        - C1E - vehicle of category C1 or B towing a heavy trailer; with a combined mass of up to 12,000 kg.
+        - C - goods vehicles weighing more than 3,500 kg and seating not more than eight passengers.
+        - CE - vehicle of category C towing a heavy trailer.
+        - D1 - passenger vehicles built for fewer than 16 passengers and that is no longer than 8 m.
+        - D1E - vehicle of category D1 towing a heavy trailer.
+        - D - passenger vehicles for more than eight passengers.
+        - DE - vehicle of category D towing a heavy trailer.
+    14. "categoriesDates": Analyze the BACK table, Column 10 (valid from). Group categories that have the EXACT same initial date. Format: "Category: DD Month YYYY" or "Cat1, Cat2: DD Month YYYY", ONE GROUP PER LINE. If all held categories share the same date, output ONLY that single date.
+    15. "point4d" / "personal": Codice Fiscale / Tax code from Point 4d.
+    16. "codes": Document series / card number located at the bottom right corner of the REVERSE side (e.g. "AP 0451798").
+    17. "explicacionCodigos": Restriction / observation codes from Section 12 on the BACK:
+        - If "01" or "01.06": "01- Prescribed spectacles" (or "01- Vision correction and/or protection")
+        - If "71": "71- Duplicate of licence number [extract number]"
+        - If "70": "70- Exchange of driver's license number [extract number]"
+        - If "106": "106- Subject to the application of article R. 413-5 during probationary period from [DateFrom] to [DateTo] (Speed limits: 110km/h in Freeways where limit is 130km/h, 100km/h in freeways with lower speed limit or double roads, 80 km/h on other roads.)"
+        If none found, output "-".
+    18. "code106From" & "code106To": Extract if code 106 is present.
+    
+    Return valid JSON matching the schema.`,
+  "italy": `Analyze the provided Italian Driver's License images (Patente di Guida).
+    \${referenceInstruction}
+    
+    IMPORTANT: ALL TEXT OUTPUT VALUES MUST BE IN ENGLISH. FORMAT ALL DATES AS "DD Month YYYY".
+    
+    EXTRACT DATA RULES:
+    1. "surname": Family name (Cognome - Point 1 on front) in UPPERCASE.
+    2. "firstName": ONLY the very first given name (Nome - Point 2 on front).
+    3. "middleName": ALL remaining given names after the first one from Point 2 (or "-" if none).
+    4. "firstNames": All given names combined.
+    5. "fullName": Full legal name (surname + firstNames).
+    6. "licenseNumber": Main license identification number (Point 5). Extract ONLY alphanumeric characters.
+    7. "dateOfBirth": Date of birth from Point 3 (Format: "DD Month YYYY", e.g. "15 May 1985").
+    8. "placeOfBirth": Place of birth from Point 3. TRANSLATE TO ENGLISH.
+    9. "issueDate": Date of issue from Point 4a. Format: "DD Month YYYY".
+    10. "expiryDate": Date of expiry from Point 4b. Format: "DD Month YYYY".
+    11. "authority": Extract value from Point 4c and DECODE ANY ABBREVIATIONS to full English + ", Italy":
+        - If "MC-XX" or "MC XX" (Motorizzazione Civile + 2-letter province code): decode to "Civil Motorization - <Province Name>, Italy" (e.g., "MC-TE" -> "Civil Motorization - Teramo, Italy", "MC-RM" -> "Civil Motorization - Rome, Italy", "MC-MI" -> "Civil Motorization - Milan, Italy", "MC-NA" -> "Civil Motorization - Naples, Italy").
+        - If "MIT-UCO" or "UCO": "Ministry of Infrastructure and Transport - Central Operational Office, Italy".
+        - If "MIT-DTT" or "DTT": "Ministry of Infrastructure and Transport - Department for Land Transport, Italy".
+        - If "MIT": "Ministry of Infrastructure and Transport, Italy".
+        - If "Prefettura di <City>": "Prefecture of <City>, Italy".
+    12. "class": Extract ONLY the authorized categories (Point 9 or valid dates in table 10 on the back). SEPARATE WITH COMMAS (e.g., "B" or "AM, B").
+    13. "classDescriptions": For ONLY the categories the driver is PERMITTED to drive (the ones extracted in "class"), include their official English description followed by the official source.
+        CRITICAL: NEVER include categories the person does not hold.
+        Example for Category B:
+        B - passenger vehicles weighing up to 3,500 kg and seating not more than eight passengers, in addition to the driver.
+        Sources:
+        https://eur-lex.europa.eu/EN/legal-content/summary/road-safety-driving-licences.html
+        
+        List to use for held categories:
+        - AM - 2-wheel, 3-wheel vehicles and light quadricycles with a maximum design speed of not more than 45 km/h.
+        - A1 - light motorcycles with a cylinder capacity not more than 125 cubic centimetres and a power rating less than 11 kW.
+        - A2 - motorcycles with a power rating under 35 kW.
+        - A - heavy motorcycles without power restrictions.
+        - B1 - heavy motorized quadricycle whose empty weight is a maximum of 450 kg if it is intended for the transport of persons, and 600 kg if it is intended for the transport of goods.
+        - B - passenger vehicles weighing up to 3,500 kg and seating not more than eight passengers, in addition to the driver.
+        - BE - vehicle of category B towing a heavy trailer of under 3,500 kg.
+        - C1 - goods vehicles between 3,500 kg and 7,500 kg and for up to eight passengers.
+        - C1E - vehicle of category C1 or B towing a heavy trailer; with a combined mass of up to 12,000 kg.
+        - C - goods vehicles weighing more than 3,500 kg and seating not more than eight passengers.
+        - CE - vehicle of category C towing a heavy trailer.
+        - D1 - passenger vehicles built for fewer than 16 passengers and that is no longer than 8 m.
+        - D1E - vehicle of category D1 towing a heavy trailer.
+        - D - passenger vehicles for more than eight passengers.
+        - DE - vehicle of category D towing a heavy trailer.
+    14. "categoriesDates": Analyze the BACK table, Column 10 (valid from). Group categories that have the EXACT same initial date. Format: "Category: DD Month YYYY" or "Cat1, Cat2: DD Month YYYY", ONE GROUP PER LINE. If all held categories share the same date, output ONLY that single date.
+    15. "point4d" / "personal": Codice Fiscale / Tax code from Point 4d.
+    16. "codes": Document series / card number located at the bottom right corner of the REVERSE side (e.g. "AP 0451798").
+    17. "explicacionCodigos": Restriction / observation codes from Section 12 on the BACK:
+        - If "01" or "01.06": "01- Prescribed spectacles" (or "01- Vision correction and/or protection")
+        - If "71": "71- Duplicate of licence number [extract number]"
+        - If "70": "70- Exchange of driver's license number [extract number]"
+        - If "106": "106- Subject to the application of article R. 413-5 during probationary period from [DateFrom] to [DateTo] (Speed limits: 110km/h in Freeways where limit is 130km/h, 100km/h in freeways with lower speed limit or double roads, 80 km/h on other roads.)"
+        If none found, output "-".
+    18. "code106From" & "code106To": Extract if code 106 is present.
+    
+    Return valid JSON matching the schema.`,
   "taiwan": "Analyze the provided Taiwanese Driver's License images (中華民國交通部制發 - 駕駛執照).\nIMPORTANT: TRANSLATE ALL CHINESE TEXT TO ENGLISH. FORMAT ALL DATES AS \"DD Month YYYY\".\n\nRules:\n1. \"surname\": Family name in Pinyin/English.\n2. \"firstName\": Given name in Pinyin/English.\n3. \"fullName\": Full name.\n4. \"licenseNumber\": Main ID / License number (駕照號碼 / 身分證字號).\n5. \"dateOfBirth\": Date of birth (出生年月日).\n6. \"gender\": Sex/Gender (性別: Male / Female).\n7. \"address\": Full translated address (住址).\n8. \"firstIssued\" / \"issueDate\": Issue date (發照日).\n9. \"expiryDate\": Expiry date (有效日期). If indefinite, \"Indefinite\" or \"To Long Term\".\n10. \"class\": License vehicle class (e.g., \"Ordinary Light Motorcycle\", \"Ordinary Small Vehicle\", \"C1\").\n11. \"conditions\" / \"codes\": Conditions / Restrictions (審驗日 / 條件). If none, \"None\".\n12. \"authority\": Issuing office translated (e.g. \"Motor Vehicles Office, Directorate General of Highways, Taiwan\")."
 };

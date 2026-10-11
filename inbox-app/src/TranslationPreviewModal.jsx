@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { X, Save, Download, ArrowRight, RefreshCw, FileText, CheckCircle2 } from 'lucide-react';
-import { generateClassDescriptions, generateBrazilClassDescriptions, generateChinaClassDescriptions, formatCategoriesDates, formatLicenseClasses, formatClassDescriptions } from './utils/classDescriptions';
+import { generateClassDescriptions, generateBrazilClassDescriptions, generateChinaClassDescriptions, generateItalyClassDescriptions, normalizeItalianAuthority, filterClassDescriptionsByHeldClasses, formatCategoriesDates, formatLicenseClasses, formatJapanLicenseClasses, getCleanJapanCondition, formatClassDescriptions, getCleanGermanCodes } from './utils/classDescriptions';
 import { getAssignedNumber, loadCountryTemplate } from './utils/documentGenerator';
-import { getNormalizedCountryKey } from './utils/geminiApi';
+import { getNormalizedCountryKey, formatBrazilAuthority } from './utils/geminiApi';
 import { COUNTRY_TEMPLATES } from './config/countryPrompts';
 
 export const AVAILABLE_TEMPLATES = [
@@ -70,6 +70,28 @@ export default function TranslationPreviewModal({
         }
       }
 
+      // Synchronize Brazil identifiers across all variations
+      const rawCardNumber = normalized.cardNumber || normalized.card_number || normalized.cardNumberVertical || normalized.numeroEspelho || normalized.numero_espelho || normalized.espelho || normalized.nEspelho || normalized.serialNumber || normalized.serial;
+      if (rawCardNumber) normalized.cardNumber = String(rawCardNumber).trim();
+
+      const rawIdDoc = normalized.idDocument || normalized.id_document || normalized.docIdentidade || normalized.doc_identidade || normalized.identityDocument || normalized.rg || normalized.identidade || normalized.sec4c || normalized.point4c;
+      if (rawIdDoc) normalized.idDocument = String(rawIdDoc).trim();
+
+      const rawCpf = normalized.cpf || normalized.CPF || normalized.individualTaxpayerNumber || normalized.taxpayerNumber || normalized.taxId || normalized.taxNumber || normalized.sec4d || normalized.point4d;
+      if (rawCpf) {
+        normalized.cpf = String(rawCpf).trim();
+        normalized.personal = normalized.cpf;
+        normalized.point4d = normalized.cpf;
+      }
+
+      const rawParents = normalized.parents || normalized.filiação || normalized.filiacao || normalized.nameOfParents || normalized.parentNames || normalized.parentsNames || normalized.motherName || normalized.fatherName;
+      if (rawParents) {
+        normalized.parents = String(rawParents).toUpperCase().trim();
+        normalized.nameOfParents = normalized.parents;
+        normalized.filiação = normalized.parents;
+        normalized.filiacao = normalized.parents;
+      }
+
       const folderLower = (folderName || '').toLowerCase();
       const isChina = Boolean(normalized.barcodeNumber && normalized.barcodeNumber !== '-') ||
                       Boolean(normalized.fileNumber && normalized.fileNumber !== '-') ||
@@ -79,19 +101,34 @@ export default function TranslationPreviewModal({
 
       const isBrazil = (normalized.nationality && /brazil|brasil/i.test(normalized.nationality)) ||
                        (normalized.authority && /brazil|brasil|detran|denatran|senatran/i.test(normalized.authority)) ||
+                       (normalized.country && /brazil|brasil/i.test(normalized.country)) ||
                        Boolean(normalized.cpf && normalized.cpf !== '-') ||
                        Boolean(normalized.idDocument && normalized.idDocument !== '-') ||
                        Boolean(normalized.cardNumber && normalized.cardNumber !== '-') ||
                        Boolean(normalized.parents && normalized.parents !== '-') ||
                        /brazil|brasil|cnh/i.test(folderLower);
 
+      const isItaly = (normalized.nationality && /ital/i.test(normalized.nationality)) ||
+                      (normalized.authority && /ital|MC[-/\s]?[A-Z]{2}|MIT-UCO|UCO|MIT-DTT|DTT/i.test(normalized.authority)) ||
+                      /italia|italy/i.test(folderLower);
+
+      const isJapan = (normalized.nationality && /japan|japon/i.test(normalized.nationality)) ||
+                      (normalized.authority && /japan|japon|public safety commission/i.test(normalized.authority)) ||
+                      /japan|japon/i.test(folderLower);
+
+      const isGerman = (normalized.nationality && /german|alemania|deutsch/i.test(normalized.nationality)) ||
+                       (normalized.authority && /germany|alemania|deutschland/i.test(normalized.authority)) ||
+                       (normalized.country && /germany|alemania|deutschland/i.test(normalized.country)) ||
+                       /german|aleman|alemania|deutsch/i.test(folderLower);
+
       // Default Nationality
       if (!normalized.nationality || normalized.nationality.trim() === '' || normalized.nationality === '-') {
         if (isChina) normalized.nationality = 'Chinese';
         else if (isBrazil) normalized.nationality = 'Brazilian';
-        else if (/german|aleman|deutsch/i.test(folderLower) || /germany|deutschland|berlin|munich|münchen|köln/i.test(normalized.authority || '') || /germany|deutschland/i.test(normalized.placeOfBirth || '')) normalized.nationality = 'German';
+        else if (isItaly) normalized.nationality = 'Italian';
+        else if (isJapan) normalized.nationality = 'Japanese';
+        else if (isGerman || /germany|deutschland|berlin|munich|münchen|köln/i.test(normalized.authority || '') || /germany|deutschland/i.test(normalized.placeOfBirth || '')) normalized.nationality = 'German';
         else if (/franc/i.test(folderLower)) normalized.nationality = 'French';
-        else if (/japan|japon/i.test(folderLower)) normalized.nationality = 'Japanese';
         else if (/taiwan/i.test(folderLower)) normalized.nationality = 'Taiwanese';
         else if (/denmark|dinamarca|danmark/i.test(folderLower)) normalized.nationality = 'Danish';
         else if (/netherland|holand|dutch/i.test(folderLower)) normalized.nationality = 'Dutch';
@@ -99,6 +136,45 @@ export default function TranslationPreviewModal({
         else if (/canada/i.test(folderLower)) normalized.nationality = 'Canadian';
         else if (/vietnam/i.test(folderLower)) normalized.nationality = 'Vietnamese';
         else if (/hungar|hungri/i.test(folderLower)) normalized.nationality = 'Hungarian';
+      }
+
+      // Italian authority normalization
+      if (isItaly && normalized.authority) {
+        normalized.authority = normalizeItalianAuthority(normalized.authority);
+      }
+
+      // Brazil authority normalization
+      if (isBrazil && normalized.authority) {
+        normalized.authority = formatBrazilAuthority(normalized.authority);
+      }
+
+      // Japan authority normalization & conditions sync
+      if (isJapan) {
+        if (normalized.authority && !normalized.authority.toLowerCase().includes('japan')) {
+          normalized.authority = `${normalized.authority.trim()}, Japan`;
+        }
+        if (normalized.class) {
+          normalized.class = formatJapanLicenseClasses(normalized.class);
+        }
+        const cleanCond = getCleanJapanCondition(normalized);
+        normalized.codes = cleanCond;
+        normalized.explicacionCodigos = cleanCond;
+        normalized.conditions = cleanCond;
+        normalized.explicacion = cleanCond;
+      }
+
+      // German authority normalization & codes sync
+      if (isGerman) {
+        if (normalized.authority && !normalized.authority.toLowerCase().includes('germany')) {
+          normalized.authority = `${normalized.authority.trim()}, Germany`;
+        }
+        const cleanGerman = getCleanGermanCodes(normalized);
+        if (cleanGerman !== '-') {
+          normalized.codes = cleanGerman;
+          normalized.explicacionCodigos = cleanGerman;
+          normalized.conditions = cleanGerman;
+          normalized.explicacion = cleanGerman;
+        }
       }
 
       // Auto-detect best initial template
@@ -122,13 +198,18 @@ export default function TranslationPreviewModal({
       if (!autoTemplate) {
         if (isChina) autoTemplate = 'china.docx';
         else if (isBrazil) autoTemplate = 'brazil.docx';
+        else if (isItaly) autoTemplate = 'italia.docx';
+        else if (isJapan) autoTemplate = 'japon.docx';
         else autoTemplate = 'alemania.docx';
       }
       setSelectedTemplate(autoTemplate);
 
-      if (isBrazil && (!normalized.gender || normalized.gender === '-' || normalized.gender.toLowerCase() === 'not stated')) {
+      if (isBrazil) {
         normalized.gender = 'Not stated';
         normalized.sex = 'Not stated';
+        if (normalized.parents) normalized.parents = normalized.parents.toUpperCase().trim();
+        if (normalized.surname) normalized.surname = normalized.surname.toUpperCase().trim();
+        if (normalized.firstName) normalized.firstName = normalized.firstName.toUpperCase().trim();
       }
 
       // Sync citizen
@@ -139,9 +220,9 @@ export default function TranslationPreviewModal({
         normalized.citizen = defaultCitizen;
       }
 
-      // Format license classes (e.g., C1, C2)
+      // Format license classes (e.g., C1, C2 or Ordinary Vehicle)
       if (normalized.class) {
-        normalized.class = formatLicenseClasses(normalized.class, isChina);
+        normalized.class = formatLicenseClasses(normalized.class, isChina, isJapan);
       }
 
       // China expiry permanent / long term check
@@ -158,11 +239,17 @@ export default function TranslationPreviewModal({
           normalized.classDescriptions = generateChinaClassDescriptions(normalized.class);
         } else if (isBrazil) {
           normalized.classDescriptions = generateBrazilClassDescriptions(normalized.class);
+        } else if (isItaly) {
+          normalized.classDescriptions = generateItalyClassDescriptions(normalized.class);
         } else {
           normalized.classDescriptions = generateClassDescriptions(normalized.class);
         }
       } else if (normalized.classDescriptions) {
-        normalized.classDescriptions = formatClassDescriptions(normalized.classDescriptions);
+        if (isItaly) {
+          normalized.classDescriptions = filterClassDescriptionsByHeldClasses(normalized.classDescriptions, normalized.class, 'italia');
+        } else {
+          normalized.classDescriptions = formatClassDescriptions(normalized.classDescriptions);
+        }
       }
 
       // Format categoriesDates grouping if present
@@ -179,12 +266,25 @@ export default function TranslationPreviewModal({
       }
 
       // Sync barcodeNumber & fileNumber
-      if (normalized.barcode && !normalized.barcodeNumber) normalized.barcodeNumber = normalized.barcode;
-      if (normalized.barcodeNumber && !normalized.barcode) normalized.barcode = normalized.barcodeNumber;
-      if (normalized.file && !normalized.fileNumber) normalized.fileNumber = normalized.file;
-      if (normalized.fileNo && !normalized.fileNumber) normalized.fileNumber = normalized.fileNo;
-      if (normalized.fileNumber && !normalized.file) normalized.file = normalized.fileNumber;
-      if (normalized.fileNumber && !normalized.fileNo) normalized.fileNo = normalized.fileNumber;
+      const rawBarcode = normalized.barcodeNumber || normalized.barcode || normalized.barcode_number || normalized.barCode || normalized.barCodeNumber || normalized.barcodeNo;
+      if (rawBarcode) {
+        normalized.barcodeNumber = rawBarcode;
+        normalized.barcode = rawBarcode;
+      }
+
+      const rawFile = normalized.fileNumber || normalized.file || normalized.fileNo || normalized.file_no || normalized.filenumber || normalized.file_number || normalized.recordNumber || normalized.recordFileNumber || normalized.archiveNumber || normalized.danganNumber;
+      if (rawFile) {
+        normalized.fileNumber = rawFile;
+        normalized.file = rawFile;
+        normalized.fileNo = rawFile;
+      }
+
+      const rawExplicacion = normalized.explicacionCodigos || normalized.conditions || normalized.condition || normalized.explicacion || normalized.record || normalized.records || normalized.recordCard || normalized.remarks || normalized.observations || normalized.observaciones || normalized.notes;
+      if (rawExplicacion) {
+        normalized.explicacionCodigos = rawExplicacion;
+        normalized.conditions = rawExplicacion;
+        normalized.explicacion = rawExplicacion;
+      }
 
       // Sync reference and assignedNumber
       if (normalized.assignedNumber && (!normalized.reference || normalized.reference === '-')) {
@@ -194,28 +294,20 @@ export default function TranslationPreviewModal({
       }
 
       // Middle name fallback: for Brazil and China leave empty string "", for other countries '-'
-      if (!normalized.middleName || normalized.middleName.trim() === '""' || ((isBrazil || isChina) && normalized.middleName.trim() === '-')) {
-        normalized.middleName = (isBrazil || isChina) ? '' : '-';
+      if (!normalized.middleName || normalized.middleName.trim() === '""' || ((isChina || isBrazil) && normalized.middleName.trim() === '-')) {
+        normalized.middleName = (isChina || isBrazil) ? '' : '-';
       }
       
-      // Sync codes, explicacionCodigos and conditions
-      let condCodes = (normalized.conditions && normalized.conditions.trim() !== '' && normalized.conditions !== '-')
-        ? normalized.conditions.trim()
-        : ((normalized.explicacionCodigos && normalized.explicacionCodigos.trim() !== '' && normalized.explicacionCodigos !== '-') 
-          ? normalized.explicacionCodigos.trim() 
-          : ((normalized.codes && normalized.codes.trim() !== '' && normalized.codes !== '-') ? normalized.codes.trim() : '-'));
-
-      if (condCodes !== '-' && normalized.citizen && normalized.citizen !== '-') {
-        const cleanCond = condCodes.replace(/[\s\/,-]+/g, '');
-        const cleanCit = normalized.citizen.replace(/[\s\/,-]+/g, '');
-        if ((cleanCit && (cleanCond === cleanCit || cleanCond.includes(cleanCit))) || /^\d{8,}[\s\/,-]*\d*$/.test(condCodes.trim())) {
-          condCodes = '-';
-        }
+      // Keep codes and explicacionCodigos strictly separate and preserved
+      if (normalized.codes === undefined || normalized.codes === null || normalized.codes.trim() === '') {
+        normalized.codes = '-';
       }
-
-      normalized.codes = condCodes;
-      normalized.explicacionCodigos = condCodes;
-      normalized.conditions = condCodes;
+      if (normalized.explicacionCodigos === undefined || normalized.explicacionCodigos === null || normalized.explicacionCodigos.trim() === '') {
+        normalized.explicacionCodigos = (normalized.conditions && normalized.conditions !== '-') ? normalized.conditions : '-';
+      }
+      if (normalized.conditions === undefined || normalized.conditions === null || normalized.conditions.trim() === '') {
+        normalized.conditions = normalized.explicacionCodigos;
+      }
 
       // Sync firstName and firstNames
       if (normalized.firstName !== undefined && normalized.firstNames === undefined) {
@@ -279,16 +371,34 @@ export default function TranslationPreviewModal({
       if (name === 'firstName') updated.firstNames = value;
       if (name === 'firstNames') updated.firstName = value;
       if (name === 'explicacionCodigos') {
-        updated.codes = value;
         updated.conditions = value;
-      }
-      if (name === 'codes') {
-        updated.explicacionCodigos = value;
-        updated.conditions = value;
+        updated.explicacion = value;
+        if (selectedTemplate === 'japon.docx' || prev.nationality === 'Japanese' || selectedTemplate === 'alemania.docx' || prev.nationality === 'German') {
+          updated.codes = value;
+        }
       }
       if (name === 'conditions') {
-        updated.codes = value;
         updated.explicacionCodigos = value;
+        updated.explicacion = value;
+        if (selectedTemplate === 'japon.docx' || prev.nationality === 'Japanese' || selectedTemplate === 'alemania.docx' || prev.nationality === 'German') {
+          updated.codes = value;
+        }
+      }
+      if (name === 'codes') {
+        if (selectedTemplate === 'japon.docx' || prev.nationality === 'Japanese' || selectedTemplate === 'alemania.docx' || prev.nationality === 'German') {
+          updated.explicacionCodigos = value;
+          updated.conditions = value;
+          updated.explicacion = value;
+        }
+      }
+      if (name === 'barcodeNumber') updated.barcode = value;
+      if (name === 'barcode') updated.barcodeNumber = value;
+      if (name === 'fileNumber') {
+        updated.file = value;
+        updated.fileNo = value;
+      }
+      if (name === 'file' || name === 'fileNo') {
+        updated.fileNumber = value;
       }
       if (name === 'reverse') updated.code = value;
       if (name === 'code') updated.reverse = value;
@@ -346,7 +456,18 @@ export default function TranslationPreviewModal({
     try {
       setIsGenerating(true);
       const arrayBuffer = await getEffectiveTemplateBuffer();
-      onSave(formData, arrayBuffer);
+      const isJapan = selectedTemplate === 'japon.docx' || (formData.nationality && /japan|japon/i.test(formData.nationality)) || (formData.authority && /japan|japon|public safety commission/i.test(formData.authority));
+      const isGerman = selectedTemplate === 'alemania.docx' || (formData.nationality && /german|alemania|deutsch/i.test(formData.nationality)) || (formData.authority && /germany|alemania|deutschland/i.test(formData.authority));
+      const cleanGermanCodes = isGerman ? getCleanGermanCodes(formData) : '';
+      const cleanData = {
+        ...formData,
+        templateName: selectedTemplate,
+        class: isJapan ? formatJapanLicenseClasses(formData.class) : formData.class,
+        codes: isGerman ? (cleanGermanCodes !== '-' ? cleanGermanCodes : formData.codes) : (isJapan ? getCleanJapanCondition(formData) : formData.codes),
+        explicacionCodigos: isGerman ? (cleanGermanCodes !== '-' ? cleanGermanCodes : formData.explicacionCodigos) : (isJapan ? getCleanJapanCondition(formData) : formData.explicacionCodigos),
+        conditions: isGerman ? (cleanGermanCodes !== '-' ? cleanGermanCodes : formData.conditions) : (isJapan ? getCleanJapanCondition(formData) : formData.conditions)
+      };
+      onSave(cleanData, arrayBuffer);
     } catch (err) {
       console.error("Error al cargar la plantilla Word:", err);
       alert("Error al cargar la plantilla Word: " + err.message);
@@ -359,8 +480,19 @@ export default function TranslationPreviewModal({
     try {
       setIsGenerating(true);
       const arrayBuffer = await getEffectiveTemplateBuffer();
+      const isJapan = selectedTemplate === 'japon.docx' || (formData.nationality && /japan|japon/i.test(formData.nationality)) || (formData.authority && /japan|japon|public safety commission/i.test(formData.authority));
+      const isGerman = selectedTemplate === 'alemania.docx' || (formData.nationality && /german|alemania|deutsch/i.test(formData.nationality)) || (formData.authority && /germany|alemania|deutschland/i.test(formData.authority));
+      const cleanGermanCodes = isGerman ? getCleanGermanCodes(formData) : '';
+      const cleanData = {
+        ...formData,
+        templateName: selectedTemplate,
+        class: isJapan ? formatJapanLicenseClasses(formData.class) : formData.class,
+        codes: isGerman ? (cleanGermanCodes !== '-' ? cleanGermanCodes : formData.codes) : (isJapan ? getCleanJapanCondition(formData) : formData.codes),
+        explicacionCodigos: isGerman ? (cleanGermanCodes !== '-' ? cleanGermanCodes : formData.explicacionCodigos) : (isJapan ? getCleanJapanCondition(formData) : formData.explicacionCodigos),
+        conditions: isGerman ? (cleanGermanCodes !== '-' ? cleanGermanCodes : formData.conditions) : (isJapan ? getCleanJapanCondition(formData) : formData.conditions)
+      };
       if (onDownloadWord) {
-        onDownloadWord(formData, arrayBuffer);
+        onDownloadWord(cleanData, arrayBuffer);
       }
     } catch (err) {
       console.error("Error al cargar la plantilla Word:", err);
@@ -433,6 +565,20 @@ export default function TranslationPreviewModal({
                     setFormData(prev => ({ ...prev, classDescriptions: generateChinaClassDescriptions(prev.class) }));
                   } else if (newTemp === 'brazil.docx' && formData.class) {
                     setFormData(prev => ({ ...prev, classDescriptions: generateBrazilClassDescriptions(prev.class) }));
+                  } else if (newTemp === 'italia.docx' && formData.class) {
+                    setFormData(prev => ({ ...prev, classDescriptions: generateItalyClassDescriptions(prev.class) }));
+                  } else if (newTemp === 'japon.docx') {
+                    setFormData(prev => {
+                      const cleanCond = getCleanJapanCondition(prev);
+                      return {
+                        ...prev,
+                        class: prev.class ? formatJapanLicenseClasses(prev.class) : prev.class,
+                        codes: cleanCond,
+                        explicacionCodigos: cleanCond,
+                        conditions: cleanCond,
+                        explicacion: cleanCond
+                      };
+                    });
                   } else if (formData.class) {
                     setFormData(prev => ({ ...prev, classDescriptions: generateClassDescriptions(prev.class) }));
                   }
@@ -621,11 +767,17 @@ export default function TranslationPreviewModal({
                                    (formData.authority && formData.authority.toLowerCase().includes('brazil')) ||
                                    Boolean(formData.cpf && formData.cpf !== '-') ||
                                    Boolean(folderName && /brazil|brasil/i.test(folderName));
+                  const isItaly = (formData.nationality && formData.nationality.toLowerCase().includes('ital')) ||
+                                  (formData.authority && /ital|MC[-/\s]?[A-Z]{2}|MIT-UCO|UCO|MIT-DTT|DTT/i.test(formData.authority)) ||
+                                  selectedTemplate === 'italia.docx' ||
+                                  Boolean(folderName && /italia|italy/i.test(folderName));
                   const generated = isChina
                     ? generateChinaClassDescriptions(formData.class || '')
                     : (isBrazil 
                       ? generateBrazilClassDescriptions(formData.class || '') 
-                      : generateClassDescriptions(formData.class || ''));
+                      : (isItaly
+                        ? generateItalyClassDescriptions(formData.class || '')
+                        : generateClassDescriptions(formData.class || '')));
                   if (generated) {
                     setFormData(prev => ({ ...prev, classDescriptions: generated }));
                   } else {
@@ -651,9 +803,29 @@ export default function TranslationPreviewModal({
 
           <div style={{ marginBottom: '24px' }}>
             <label style={{ display: 'block', fontSize: '14px', fontWeight: 'bold', marginBottom: '4px', color: '#374151' }}>
-              Conditions / Condiciones (Codes / {"{{codes}}"} / {"{{explicacionCodigos}}"})
+              Series / Códigos Reverso Sup. Izq ({"{{codes}}"})
             </label>
-            <textarea name="explicacionCodigos" value={formData.explicacionCodigos || ''} onChange={handleChange} style={{...inputStyle, height: '80px'}} />
+            <input 
+              type="text" 
+              name="codes" 
+              value={formData.codes || ''} 
+              onChange={handleChange} 
+              style={inputStyle} 
+              placeholder="ej. 14091., 30602, 182302007045" 
+            />
+          </div>
+
+          <div style={{ marginBottom: '24px' }}>
+            <label style={{ display: 'block', fontSize: '14px', fontWeight: 'bold', marginBottom: '4px', color: '#374151' }}>
+              Restrictions / Conditions / Explicación Códigos ({"{{explicacionCodigos}}"})
+            </label>
+            <textarea 
+              name="explicacionCodigos" 
+              value={formData.explicacionCodigos || formData.conditions || ''} 
+              onChange={handleChange} 
+              style={{...inputStyle, height: '90px'}} 
+              placeholder="ej. 106- Subject to the application of article R. 413-5..."
+            />
           </div>
 
           <div style={{ marginBottom: '24px' }}>

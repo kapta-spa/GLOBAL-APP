@@ -4,6 +4,8 @@ import {
   Tag, FileSpreadsheet, Globe, Check, AlertCircle, ArrowRight, 
   ExternalLink, Layers, ShieldCheck, Play
 } from 'lucide-react';
+import { isValidCustomerEmail, extractClientEmailFromMessage } from './utils/gmailService';
+
 
 const TRANSLATION_MAP = {
   'español': 'Spanish', 'espanol': 'Spanish', 'inglés': 'English', 'ingles': 'English',
@@ -196,7 +198,8 @@ export default function AutoOrganizeTab({ token, sheetName, onRefreshTrigger, ha
         const dateStr = headers.find(h => h.name === 'Date')?.value || '';
         const text = decodeBody(msg.payload, msg.snippet);
         const method = /paypal/i.test(from) || /PAYPAL/i.test(subject) ? 'PayPal' : 'Stripe';
-        const emailMatch = text.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i);
+        const allPaymentEmails = text.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi) || [];
+        const validPaymentEmail = allPaymentEmails.find(em => isValidCustomerEmail(em))?.toLowerCase() || '';
         const amountMatch = text.match(/(?:NZ\$|\$)\s*([\d,]+(?:\.\d{1,2})?)|\$\s*([\d,]+(?:\.\d{1,2})?)\s*NZD|([\d,]+(?:\.\d{1,2})?)\s*NZD/i);
         const amount = amountMatch ? Number((amountMatch[1] || amountMatch[2] || amountMatch[3]).replace(/,/g, '')) : null;
 
@@ -207,7 +210,7 @@ export default function AutoOrganizeTab({ token, sheetName, onRefreshTrigger, ha
           from,
           date: dateStr ? new Date(dateStr) : new Date(),
           method,
-          email: emailMatch ? emailMatch[0].toLowerCase() : '',
+          email: validPaymentEmail,
           amount,
           snippet: msg.snippet
         };
@@ -383,14 +386,13 @@ export default function AutoOrganizeTab({ token, sheetName, onRefreshTrigger, ha
         const countryMatch = text.match(buildRegex('Land des[^:]*|Country[^:]*|País|Pais|国|発行国'));
         const languageMatch = text.match(buildRegex('Sprache des[^:]*|Language[^:]*|Idioma|言語'));
         const priceMatch = text.match(/-\s*\$(\d+)/) || text.match(/Price.*\$(\d+)/i) || text.match(/\$(\d+)/);
-        const emailMatch = text.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i);
+        const customerEmail = extractClientEmailFromMessage(msg, text);
 
         const nombre = cleanExtracted(nombreMatch ? nombreMatch[1] : '');
         const apellido = cleanExtracted(apellidoMatch ? apellidoMatch[1] : '');
         const fullName = `${nombre} ${apellido}`.trim() || cleanExtracted(nombreMatch ? nombreMatch[1] : '');
         const country = translateToEnglish(cleanExtracted(countryMatch ? countryMatch[1] : ''));
         const language = translateToEnglish(cleanExtracted(languageMatch ? languageMatch[1] : ''));
-        const customerEmail = emailMatch ? emailMatch[0].toLowerCase() : '';
         const rawPriceNum = priceMatch ? priceMatch[1] : '65';
         const price = `$${rawPriceNum}`;
 

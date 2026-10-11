@@ -1,6 +1,6 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { BASE_PROMPT, COUNTRY_RULES } from "../config/countryPrompts";
-import { generateClassDescriptions, generateBrazilClassDescriptions, generateChinaClassDescriptions, formatCategoriesDates, formatLicenseClasses, formatClassDescriptions } from "./classDescriptions";
+import { generateClassDescriptions, generateBrazilClassDescriptions, generateChinaClassDescriptions, generateItalyClassDescriptions, normalizeItalianAuthority, filterClassDescriptionsByHeldClasses, formatCategoriesDates, formatLicenseClasses, formatJapanLicenseClasses, getCleanJapanCondition, formatClassDescriptions, getCleanGermanCodes, normalizeGermanCodes } from "./classDescriptions";
 
 const cleanAndParseJSON = (text) => {
   let cleaned = text.trim();
@@ -286,6 +286,48 @@ export const getNormalizedCountryKey = (country = '') => {
   return '';
 };
 
+export const formatBrazilAuthority = (authStr = '') => {
+  if (!authStr || typeof authStr !== 'string') return 'State Traffic Department, Brazil';
+  let cleaned = authStr.trim();
+
+  const stateMap = {
+    AC: "Acre", AL: "Alagoas", AP: "Amapá", AM: "Amazonas", BA: "Bahia",
+    CE: "Ceará", DF: "Federal District", ES: "Espírito Santo", GO: "Goiás",
+    MA: "Maranhão", MT: "Mato Grosso", MS: "Mato Grosso do Sul", MG: "Minas Gerais",
+    PA: "Pará", PB: "Paraíba", PR: "Paraná", PE: "Pernambuco", PI: "Piauí",
+    RJ: "Rio de Janeiro", RN: "Rio Grande do Norte", RS: "Rio Grande do Sul",
+    RO: "Rondônia", RR: "Roraima", SC: "Santa Catarina", SP: "São Paulo",
+    SE: "Sergipe", TO: "Tocantins"
+  };
+
+  if (/detran|denatran|senatran/i.test(cleaned)) {
+    const match = cleaned.match(/(?:detran|denatran|senatran)[\s\/\-_:]*([a-z]{2})\b/i);
+    if (match && match[1]) {
+      const uf = match[1].toUpperCase();
+      const stateName = stateMap[uf] || uf;
+      return `State Traffic Department, ${stateName}, Brazil`;
+    } else {
+      let foundState = "";
+      for (const [uf, name] of Object.entries(stateMap)) {
+        if (new RegExp(`\\b(${name}|${uf})\\b`, "i").test(cleaned)) {
+          foundState = name;
+          break;
+        }
+      }
+      if (foundState) {
+        return `State Traffic Department, ${foundState}, Brazil`;
+      }
+      return `State Traffic Department, Brazil`;
+    }
+  }
+
+  if (!/brazil/i.test(cleaned)) {
+    cleaned = `${cleaned.replace(/,\s*$/, '')}, Brazil`;
+  }
+
+  return cleaned;
+};
+
 export const extractLicenseData = async (apiKey, base64Images, country = '', onChunk = null) => {
   if (!apiKey) throw new Error("API Key de Gemini no encontrada. Agrégala en Settings.");
   
@@ -380,57 +422,324 @@ export const extractLicenseData = async (apiKey, base64Images, country = '', onC
       extractedData.sex = extractedData.gender;
     }
 
-    // Synchronize codes and explicacionCodigos
-    if (extractedData.codes && (!extractedData.explicacionCodigos || extractedData.explicacionCodigos === '-')) {
-      extractedData.explicacionCodigos = extractedData.codes;
-    } else if (extractedData.explicacionCodigos && (!extractedData.codes || extractedData.codes === '-')) {
-      extractedData.codes = extractedData.explicacionCodigos;
+    // Synchronize barcode, file numbers and explicacionCodigos across all variations
+    const rawBarcode = extractedData.barcodeNumber || 
+                       extractedData.barcode || 
+                       extractedData.barcode_number || 
+                       extractedData.barCode || 
+                       extractedData.barCodeNumber || 
+                       extractedData.barcodeNo || 
+                       extractedData.bar_code || 
+                       extractedData.codebar;
+    if (rawBarcode) {
+      extractedData.barcodeNumber = String(rawBarcode).trim();
+      extractedData.barcode = String(rawBarcode).trim();
     }
 
-    // Synchronize barcode and file numbers for China
-    if (extractedData.barcode && !extractedData.barcodeNumber) extractedData.barcodeNumber = extractedData.barcode;
-    if (extractedData.barcodeNumber && !extractedData.barcode) extractedData.barcode = extractedData.barcodeNumber;
-    if (extractedData.file && !extractedData.fileNumber) extractedData.fileNumber = extractedData.file;
-    if (extractedData.fileNo && !extractedData.fileNumber) extractedData.fileNumber = extractedData.fileNo;
+    const rawFile = extractedData.fileNumber || 
+                    extractedData.file || 
+                    extractedData.fileNo || 
+                    extractedData.file_no || 
+                    extractedData.filenumber || 
+                    extractedData.file_number || 
+                    extractedData.recordNumber || 
+                    extractedData.recordFileNumber || 
+                    extractedData.archiveNumber || 
+                    extractedData.archiveNo || 
+                    extractedData.dangan || 
+                    extractedData.danganNumber || 
+                    extractedData.danganBianhao;
+    if (rawFile) {
+      extractedData.fileNumber = String(rawFile).trim();
+      extractedData.file = String(rawFile).trim();
+      extractedData.fileNo = String(rawFile).trim();
+    }
 
-    // Synchronize Brazil specifics
-    if (matchedKey === 'brazil') {
+    const rawExplicacion = extractedData.explicacionCodigos || 
+                           extractedData.conditions || 
+                           extractedData.condition || 
+                           extractedData.explicacion || 
+                           extractedData.record || 
+                           extractedData.records || 
+                           extractedData.recordCard || 
+                           extractedData.recordDetails || 
+                           extractedData.remarks || 
+                           extractedData.remark || 
+                           extractedData.observations || 
+                           extractedData.observaciones || 
+                           extractedData.notes || 
+                           extractedData.note || 
+                           extractedData.violations;
+    if (rawExplicacion) {
+      extractedData.explicacionCodigos = String(rawExplicacion).trim();
+      extractedData.conditions = String(rawExplicacion).trim();
+      extractedData.explicacion = String(rawExplicacion).trim();
+    }
+
+    // China document detection
+    const isChinaDoc = matchedKey === 'china' ||
+                       getNormalizedCountryKey(extractedData.country || '') === 'china' ||
+                       /chin/i.test(extractedData.nationality || '') ||
+                       /chin/i.test(extractedData.authority || '') ||
+                       /chin/i.test(extractedData.licenseLanguage || '') ||
+                       Boolean(extractedData.barcodeNumber && extractedData.barcodeNumber !== '-') ||
+                       Boolean(extractedData.fileNumber && extractedData.fileNumber !== '-');
+
+    if (isChinaDoc) {
+      if (!extractedData.nationality || extractedData.nationality === '-' || extractedData.nationality.trim() === '') {
+        extractedData.nationality = 'Chinese';
+      }
+      if (!extractedData.explicacionCodigos || extractedData.explicacionCodigos.trim() === '') {
+        extractedData.explicacionCodigos = '-';
+        extractedData.conditions = '-';
+        extractedData.explicacion = '-';
+      }
+      if (extractedData.expiryDate && typeof extractedData.expiryDate === 'string') {
+        const expLow = extractedData.expiryDate.toLowerCase();
+        if (expLow.includes('long') || expLow.includes('term') || expLow.includes('perm') || expLow.includes('indefinite') || extractedData.expiryDate.includes('长期')) {
+          extractedData.expiryDate = 'To Long Term';
+        }
+      }
+      if (extractedData.gender) {
+        const g = extractedData.gender.trim();
+        if (g === '男' || g.toLowerCase() === 'm' || g.toLowerCase() === 'male') {
+          extractedData.gender = 'Male';
+          extractedData.sex = 'Male';
+        } else if (g === '女' || g.toLowerCase() === 'f' || g.toLowerCase() === 'female') {
+          extractedData.gender = 'Female';
+          extractedData.sex = 'Female';
+        }
+      }
+      if (extractedData.firstIssued && (!extractedData.firstObtained || extractedData.firstObtained === '-')) {
+        extractedData.firstObtained = extractedData.firstIssued;
+      }
+    }
+
+    // Brazil document detection and identifier synchronization
+    const rawCardNumber = extractedData.cardNumber || 
+                          extractedData.card_number || 
+                          extractedData.cardNumberVertical ||
+                          extractedData.numeroEspelho || 
+                          extractedData.numero_espelho || 
+                          extractedData.espelho || 
+                          extractedData.nEspelho || 
+                          extractedData.serialNumber || 
+                          extractedData.serial || 
+                          extractedData.cnhSerial || 
+                          extractedData.cardNo || 
+                          extractedData.verticalNumber || 
+                          extractedData.securityNumber;
+    if (rawCardNumber) {
+      extractedData.cardNumber = String(rawCardNumber).trim();
+    }
+
+    const rawIdDoc = extractedData.idDocument || 
+                     extractedData.id_document || 
+                     extractedData.docIdentidade || 
+                     extractedData.doc_identidade || 
+                     extractedData.identityDocument || 
+                     extractedData.rg || 
+                     extractedData.identidade || 
+                     extractedData.docIdentity || 
+                     extractedData.documentoIdentidade || 
+                     extractedData.sec4c || 
+                     extractedData.point4c;
+    if (rawIdDoc) {
+      extractedData.idDocument = String(rawIdDoc).trim();
+    }
+
+    const rawCpf = extractedData.cpf || 
+                   extractedData.CPF || 
+                   extractedData.individualTaxpayerNumber || 
+                   extractedData.taxpayerNumber || 
+                   extractedData.taxId || 
+                   extractedData.taxNumber || 
+                   extractedData.sec4d || 
+                   extractedData.point4d;
+    if (rawCpf) {
+      extractedData.cpf = String(rawCpf).trim();
+      extractedData.personal = extractedData.cpf;
+      extractedData.point4d = extractedData.cpf;
+    }
+
+    const rawParents = extractedData.parents || 
+                       extractedData.filiação || 
+                       extractedData.filiacao || 
+                       extractedData.nameOfParents || 
+                       extractedData.parentNames || 
+                       extractedData.parentsNames || 
+                       extractedData.motherName || 
+                       extractedData.fatherName || 
+                       extractedData.filiation ||
+                       extractedData.affiliation;
+    if (rawParents) {
+      extractedData.parents = String(rawParents).toUpperCase().trim();
+      extractedData.nameOfParents = extractedData.parents;
+    }
+
+    const isBrazilDoc = matchedKey === 'brazil' ||
+                        getNormalizedCountryKey(extractedData.country || '') === 'brazil' ||
+                        /brazil|brasil/i.test(extractedData.nationality || '') ||
+                        /brazil|brasil|detran|denatran|senatran/i.test(extractedData.authority || '') ||
+                        /carteira nacional de habilita|cnh/i.test(extractedData.licenseLanguage || '') ||
+                        Boolean(extractedData.cpf && extractedData.cpf !== '-') ||
+                        Boolean(extractedData.cardNumber && extractedData.cardNumber !== '-') ||
+                        Boolean(extractedData.idDocument && extractedData.idDocument !== '-') ||
+                        Boolean(extractedData.parents && extractedData.parents !== '-');
+
+    if (isBrazilDoc) {
       if (extractedData.surname) extractedData.surname = extractedData.surname.toUpperCase().trim();
       if (extractedData.firstName) extractedData.firstName = extractedData.firstName.toUpperCase().trim();
       if (extractedData.parents) extractedData.parents = extractedData.parents.toUpperCase().trim();
+      if (!extractedData.country || extractedData.country === '-' || extractedData.country.trim() === '') {
+        extractedData.country = 'Brazil';
+      }
       if (!extractedData.nationality || extractedData.nationality === '-') extractedData.nationality = 'Brazilian';
-      if (!extractedData.gender || extractedData.gender === '-') extractedData.gender = 'Not stated';
-      extractedData.sex = extractedData.gender;
+      extractedData.gender = 'Not stated';
+      extractedData.sex = 'Not stated';
+      if (extractedData.authority) {
+        extractedData.authority = formatBrazilAuthority(extractedData.authority);
+      }
+      if (extractedData.firstIssued && (!extractedData.firstObtained || extractedData.firstObtained === '-')) {
+        extractedData.firstObtained = extractedData.firstIssued;
+      } else if (extractedData.firstObtained && (!extractedData.firstIssued || extractedData.firstIssued === '-')) {
+        extractedData.firstIssued = extractedData.firstObtained;
+      }
+      if (extractedData.middleName && extractedData.middleName.trim() === '-') {
+        extractedData.middleName = '';
+      }
+    }
+
+    // Clean placeOfBirth
+    if (extractedData.placeOfBirth && typeof extractedData.placeOfBirth === 'string') {
+      let pob = extractedData.placeOfBirth.trim();
+      pob = pob.replace(/^(lieu de naissance|place of birth|birthplace|born in|lieu|birth place|de nacimiento)\s*[:\-–—]?\s*/i, '');
+      pob = pob.replace(/\s*\(\s*\d+\s*\)/g, '');
+      pob = pob.replace(/\s+\d{2,5}$/g, '');
+      pob = pob.replace(/\s*,\s*France\s*/i, '');
+      pob = pob.replace(/\s*,\s*FR\s*/i, '');
+      if (pob.includes(',')) pob = pob.split(',')[0];
+      if (pob.includes(';')) pob = pob.split(';')[0];
+      extractedData.placeOfBirth = pob.trim().replace(/^[\-\–\—\s]+|[\-\–\—\s]+$/g, '');
     }
 
     // Normalize date strings
-    const dateKeys = ['dateOfBirth', 'issueDate', 'expiryDate', 'firstIssued', 'firstObtained', 'categoriesDates'];
+    const dateKeys = ['dateOfBirth', 'issueDate', 'expiryDate', 'firstIssued', 'firstObtained'];
     dateKeys.forEach(dk => {
       if (extractedData[dk] && typeof extractedData[dk] === 'string') {
         extractedData[dk] = normalizeDateToEnglish(extractedData[dk]);
       }
     });
 
-    // Format license classes
-    const isChinaDoc = matchedKey === 'china' || Boolean(extractedData.barcodeNumber && extractedData.barcodeNumber !== '-');
-    if (extractedData.class) {
-      extractedData.class = formatLicenseClasses(extractedData.class, isChinaDoc);
+    // Format categoriesDates
+    if (extractedData.categoriesDates && typeof extractedData.categoriesDates === 'string') {
+      extractedData.categoriesDates = formatCategoriesDates(extractedData.categoriesDates);
     }
 
-    // Generate class descriptions fallback if missing
+    // Ensure Code 106 full formula if 106 is present
+    if (extractedData.explicacionCodigos && typeof extractedData.explicacionCodigos === 'string' && extractedData.explicacionCodigos.includes('106')) {
+      const fromDate = extractedData.code106From ? normalizeDateToEnglish(extractedData.code106From) : '';
+      const toDate = extractedData.code106To ? normalizeDateToEnglish(extractedData.code106To) : '';
+      if (!extractedData.explicacionCodigos.includes('Speed limits: 110km/h')) {
+        let dateFrom = fromDate;
+        let dateTo = toDate;
+        const dateMatch = extractedData.explicacionCodigos.match(/from\s+([A-Za-z0-9\s\.\/-]+)\s+to\s+([A-Za-z0-9\s\.\/-]+)/i);
+        if (dateMatch) {
+          if (!dateFrom) dateFrom = normalizeDateToEnglish(dateMatch[1].trim());
+          if (!dateTo) dateTo = normalizeDateToEnglish(dateMatch[2].replace(/[()\.;].*$/, '').trim());
+        }
+        if (dateFrom && dateTo) {
+          extractedData.explicacionCodigos = `106- Subject to the application of article R. 413-5 during probationary period from ${dateFrom} to ${dateTo} (Speed limits: 110km/h in Freeways where limit is 130km/h, 100km/h in freeways with lower speed limit or double roads, 80 km/h on other roads.)`;
+        }
+      }
+    }
+
+    // Japan document detection
+    const isJapanDoc = matchedKey === 'japan' ||
+                       matchedKey === 'japon' ||
+                       getNormalizedCountryKey(extractedData.country || '') === 'japan' ||
+                       /japan|japon/i.test(extractedData.nationality || '') ||
+                       /japan|japon|public safety commission/i.test(extractedData.authority || '') ||
+                       /japan|japon/i.test(extractedData.licenseLanguage || '');
+
+    if (isJapanDoc) {
+      if (!extractedData.nationality || extractedData.nationality === '-' || extractedData.nationality.trim() === '') {
+        extractedData.nationality = 'Japanese';
+      }
+      if (extractedData.authority && !extractedData.authority.toLowerCase().includes('japan')) {
+        extractedData.authority = `${extractedData.authority.trim()}, Japan`;
+      }
+      if (extractedData.class) {
+        extractedData.class = formatJapanLicenseClasses(extractedData.class);
+      }
+      const cleanCond = getCleanJapanCondition(extractedData);
+      extractedData.codes = cleanCond;
+      extractedData.explicacionCodigos = cleanCond;
+      extractedData.conditions = cleanCond;
+      extractedData.explicacion = cleanCond;
+
+      if (extractedData.firstName && !extractedData.firstNames) {
+        extractedData.firstNames = extractedData.firstName;
+      } else if (extractedData.firstNames && !extractedData.firstName) {
+        extractedData.firstName = extractedData.firstNames;
+      }
+    }
+
+    // Germany document detection & codes normalization
+    const isGermanDoc = matchedKey === 'german' ||
+                        matchedKey === 'germany' ||
+                        matchedKey === 'alemania' ||
+                        matchedKey === 'deutschland' ||
+                        getNormalizedCountryKey(extractedData.country || '') === 'german' ||
+                        /german|alemania|deutsch/i.test(extractedData.nationality || '') ||
+                        /germany|alemania|deutschland/i.test(extractedData.authority || '') ||
+                        /german|deutsch/i.test(extractedData.licenseLanguage || '');
+
+    if (isGermanDoc) {
+      if (!extractedData.nationality || extractedData.nationality === '-' || extractedData.nationality.trim() === '') {
+        extractedData.nationality = 'German';
+      }
+      if (extractedData.authority && !extractedData.authority.toLowerCase().includes('germany')) {
+        extractedData.authority = `${extractedData.authority.trim()}, Germany`;
+      }
+      const cleanGerman = getCleanGermanCodes(extractedData);
+      extractedData.codes = cleanGerman;
+      extractedData.explicacionCodigos = cleanGerman;
+      extractedData.conditions = cleanGerman;
+      extractedData.explicacion = cleanGerman;
+    }
+
+    // Italian authority normalization
+    const isItalyDoc = matchedKey === 'italia' || /MC[-/\s]?[A-Z]{2}|MIT-UCO|UCO|MIT-DTT|DTT/i.test(extractedData.authority || '') || /ital/i.test(country);
+    if (isItalyDoc && extractedData.authority) {
+      extractedData.authority = normalizeItalianAuthority(extractedData.authority);
+    }
+
+    // Format license classes
+    if (extractedData.class) {
+      extractedData.class = formatLicenseClasses(extractedData.class, isChinaDoc, isJapanDoc);
+    }
+
+    // Generate class descriptions fallback if missing, or filter if already present
     const currentClassDesc = typeof extractedData.classDescriptions === 'string' ? extractedData.classDescriptions.trim() : '';
     if (!currentClassDesc || currentClassDesc === '-') {
       if (extractedData.class) {
         if (isChinaDoc) {
           extractedData.classDescriptions = generateChinaClassDescriptions(extractedData.class);
-        } else if (matchedKey === 'brazil') {
+        } else if (isBrazilDoc) {
           extractedData.classDescriptions = generateBrazilClassDescriptions(extractedData.class);
+        } else if (isItalyDoc) {
+          extractedData.classDescriptions = generateItalyClassDescriptions(extractedData.class);
         } else {
           extractedData.classDescriptions = generateClassDescriptions(extractedData.class);
         }
       }
     } else {
-      extractedData.classDescriptions = formatClassDescriptions(extractedData.classDescriptions);
+      if (isItalyDoc) {
+        extractedData.classDescriptions = filterClassDescriptionsByHeldClasses(extractedData.classDescriptions, extractedData.class, 'italia');
+      } else {
+        extractedData.classDescriptions = filterClassDescriptionsByHeldClasses(extractedData.classDescriptions, extractedData.class, matchedKey);
+      }
     }
   }
 

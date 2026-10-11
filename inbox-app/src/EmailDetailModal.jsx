@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { X, Check, Mail, Calendar, User, CheckCircle2, Paperclip, Eye, Crop, Download, Image as ImageIcon, FileText, Loader2 } from 'lucide-react';
+import { extractClientEmailFromMessage } from './utils/gmailService';
 
 export default function EmailDetailModal({ 
   email, 
@@ -14,6 +15,7 @@ export default function EmailDetailModal({
   const [loadingAttachments, setLoadingAttachments] = useState(false);
   const [downloadingId, setDownloadingId] = useState(null);
   const [previewImageUrl, setPreviewImageUrl] = useState(null);
+  const [clientEmail, setClientEmail] = useState('');
 
   useEffect(() => {
     if (isOpen && email && token) {
@@ -22,6 +24,7 @@ export default function EmailDetailModal({
       setAttachments([]);
       setPreviewImageUrl(null);
       setDownloadingId(null);
+      setClientEmail('');
     }
   }, [isOpen, email, token]);
 
@@ -36,6 +39,11 @@ export default function EmailDetailModal({
       if (!res.ok) return;
       const data = await res.json();
       
+      const parsedClientEmail = extractClientEmailFromMessage(data, email.snippet || '');
+      if (parsedClientEmail) {
+        setClientEmail(parsedClientEmail);
+      }
+
       const foundAttachments = [];
       const searchParts = (parts) => {
         if (!parts) return;
@@ -58,15 +66,15 @@ export default function EmailDetailModal({
           foundAttachments.push({
             id: data.payload.body.attachmentId,
             filename: data.payload.filename,
-            mimeType: data.payload.mimeType,
-            size: data.payload.body.size
+            mimeType: data.payload.mimeType || 'application/octet-stream',
+            size: data.payload.body.size || 0
           });
         }
       }
 
       setAttachments(foundAttachments);
     } catch (err) {
-      console.error("Error al buscar adjuntos del correo:", err);
+      console.error("Error cargando adjuntos:", err);
     } finally {
       setLoadingAttachments(false);
     }
@@ -89,7 +97,7 @@ export default function EmailDetailModal({
       const dataUrl = await getAttachmentDataUrl(att.id, att.mimeType);
       onClose();
       if (onProcessAttachments) {
-        onProcessAttachments([dataUrl], email.subject || 'Correo');
+        onProcessAttachments([dataUrl], email.subject || 'Correo', clientEmail);
       }
     } catch (err) {
       alert("Error al cargar la imagen en el editor: " + err.message);
@@ -109,7 +117,7 @@ export default function EmailDetailModal({
       );
       onClose();
       if (onProcessAttachments) {
-        onProcessAttachments(urls, email.subject || 'Correo');
+        onProcessAttachments(urls, email.subject || 'Correo', clientEmail);
       }
     } catch (err) {
       alert("Error al cargar las imágenes: " + err.message);

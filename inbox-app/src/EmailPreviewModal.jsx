@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { X, Send, UploadCloud, FileText, ArrowLeft, Trash2, Download, RefreshCw } from 'lucide-react';
+import { X, Send, UploadCloud, FileText, ArrowLeft, Trash2, Download, RefreshCw, AlertTriangle, CheckCircle2 } from 'lucide-react';
 import { convertDocxToPdf } from './utils/driveConverter';
+import { isValidCustomerEmail } from './utils/gmailService';
 
 export default function EmailPreviewModal({ 
   isOpen, 
@@ -15,11 +16,15 @@ export default function EmailPreviewModal({
   const [pdfBlobs, setPdfBlobs] = useState([]);
   const [isConverting, setIsConverting] = useState(false);
   const [error, setError] = useState('');
-  const [emailTo, setEmailTo] = useState(customerEmail || '');
+  const [emailTo, setEmailTo] = useState(isValidCustomerEmail(customerEmail) ? customerEmail : '');
 
   useEffect(() => {
-    if (isOpen && customerEmail) {
-      setEmailTo(customerEmail);
+    if (isOpen) {
+      if (isValidCustomerEmail(customerEmail)) {
+        setEmailTo(customerEmail);
+      } else {
+        setEmailTo('');
+      }
     }
   }, [isOpen, customerEmail]);
 
@@ -69,12 +74,18 @@ export default function EmailPreviewModal({
       alert("Necesitas tener al menos un archivo PDF adjunto antes de enviar.");
       return;
     }
-    if (!emailTo || !emailTo.trim()) {
-      alert("Por favor ingresa un correo electrónico de destino.");
+    const cleanEmail = (emailTo || '').trim();
+    if (!cleanEmail) {
+      alert("⚠️ Por favor ingresa el correo electrónico del cliente para enviarle la traducción.");
       return;
     }
-    onSendEmail(pdfBlobs, emailTo.trim());
+    if (!isValidCustomerEmail(cleanEmail)) {
+      alert(`⚠️ ATENCIÓN: El correo ingresado (${cleanEmail}) NO es válido o es el correo de la empresa (info@globaltranslations.co.nz).\n\nPor favor ingresa el correo personal o de contacto del CLIENTE para asegurar que le llegue la traducción.`);
+      return;
+    }
+    onSendEmail(pdfBlobs, cleanEmail);
   };
+
 
   return (
     <div className="modal-overlay open">
@@ -199,18 +210,50 @@ export default function EmailPreviewModal({
             <h3 style={{ marginTop: 0, fontSize: '1.1rem', color: '#1e293b' }}>2. Previsualización del Correo</h3>
             
             <div style={{ marginTop: '16px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              <div style={{ display: 'flex', alignItems: 'center' }}>
-                <strong style={{ width: '120px' }}>Correo Cliente:</strong> 
-                <input 
-                  type="email" 
-                  value={emailTo} 
-                  onChange={(e) => setEmailTo(e.target.value)}
-                  placeholder="Correo del cliente"
-                  style={{ flex: 1, padding: '8px', border: '1px solid #cbd5e1', borderRadius: '4px', fontSize: '14px' }}
-                />
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <strong style={{ minWidth: '120px', color: '#1e293b' }}>Correo Cliente:</strong> 
+                  <div style={{ flex: 1, position: 'relative', display: 'flex', alignItems: 'center' }}>
+                    <input 
+                      type="email" 
+                      value={emailTo} 
+                      onChange={(e) => setEmailTo(e.target.value)}
+                      placeholder="ejemplo: cliente@gmail.com (escribe el correo del cliente)"
+                      style={{ 
+                        width: '100%', 
+                        padding: '10px 36px 10px 12px', 
+                        border: `2px solid ${!emailTo ? '#f59e0b' : isValidCustomerEmail(emailTo) ? '#10b981' : '#ef4444'}`, 
+                        borderRadius: '6px', 
+                        fontSize: '14px',
+                        outline: 'none',
+                        backgroundColor: !emailTo ? '#fffbeb' : isValidCustomerEmail(emailTo) ? '#f0fdf4' : '#fef2f2'
+                      }}
+                    />
+                    <div style={{ position: 'absolute', right: '10px', display: 'flex', alignItems: 'center' }}>
+                      {isValidCustomerEmail(emailTo) ? (
+                        <CheckCircle2 size={18} style={{ color: '#10b981' }} />
+                      ) : (
+                        <AlertTriangle size={18} style={{ color: !emailTo ? '#f59e0b' : '#ef4444' }} />
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {!emailTo && (
+                  <div style={{ marginLeft: '130px', fontSize: '12px', color: '#d97706', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                    ⚠️ No se detectó correo automático. Por favor escribe aquí el correo electrónico del cliente.
+                  </div>
+                )}
+
+                {emailTo && !isValidCustomerEmail(emailTo) && (
+                  <div style={{ marginLeft: '130px', fontSize: '12px', color: '#dc2626', fontWeight: '500', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                    ⛔ Error: Has ingresado "{emailTo}". Este correo pertenece a la empresa o al sistema y NO al cliente. Escribe el correo del cliente.
+                  </div>
+                )}
               </div>
+
               <div style={{ display: 'flex', alignItems: 'center' }}>
-                <strong style={{ width: '120px' }}>Asunto:</strong> <span style={{ color: '#475569' }}>Your Translation is ready!</span>
+                <strong style={{ minWidth: '120px', color: '#1e293b' }}>Asunto:</strong> <span style={{ color: '#475569' }}>Your Translation is ready!</span>
               </div>
               <div style={{ padding: '16px', border: '1px solid #e2e8f0', borderRadius: '4px', background: '#ffffff', fontSize: '14px', fontFamily: 'Arial, sans-serif', color: '#000000' }}>
                 
