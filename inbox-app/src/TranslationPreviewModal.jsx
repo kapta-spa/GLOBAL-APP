@@ -253,7 +253,7 @@ export default function TranslationPreviewModal({
       }
 
       // Format categoriesDates grouping if present
-      if (normalized.categoriesDates && !isBrazil && !isChina) {
+      if (normalized.categoriesDates) {
         normalized.categoriesDates = formatCategoriesDates(normalized.categoriesDates);
       }
 
@@ -463,6 +463,7 @@ export default function TranslationPreviewModal({
         ...formData,
         templateName: selectedTemplate,
         class: isJapan ? formatJapanLicenseClasses(formData.class) : formData.class,
+        categoriesDates: formatCategoriesDates(formData.categoriesDates),
         codes: isGerman ? (cleanGermanCodes !== '-' ? cleanGermanCodes : formData.codes) : (isJapan ? getCleanJapanCondition(formData) : formData.codes),
         explicacionCodigos: isGerman ? (cleanGermanCodes !== '-' ? cleanGermanCodes : formData.explicacionCodigos) : (isJapan ? getCleanJapanCondition(formData) : formData.explicacionCodigos),
         conditions: isGerman ? (cleanGermanCodes !== '-' ? cleanGermanCodes : formData.conditions) : (isJapan ? getCleanJapanCondition(formData) : formData.conditions)
@@ -487,6 +488,7 @@ export default function TranslationPreviewModal({
         ...formData,
         templateName: selectedTemplate,
         class: isJapan ? formatJapanLicenseClasses(formData.class) : formData.class,
+        categoriesDates: formatCategoriesDates(formData.categoriesDates),
         codes: isGerman ? (cleanGermanCodes !== '-' ? cleanGermanCodes : formData.codes) : (isJapan ? getCleanJapanCondition(formData) : formData.codes),
         explicacionCodigos: isGerman ? (cleanGermanCodes !== '-' ? cleanGermanCodes : formData.explicacionCodigos) : (isJapan ? getCleanJapanCondition(formData) : formData.explicacionCodigos),
         conditions: isGerman ? (cleanGermanCodes !== '-' ? cleanGermanCodes : formData.conditions) : (isJapan ? getCleanJapanCondition(formData) : formData.conditions)

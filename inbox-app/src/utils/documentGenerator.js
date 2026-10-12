@@ -305,10 +305,10 @@ export const generateWordDocument = async (templateArrayBuffer, data, imagesBase
     // Dates
     dateOfBirth: val(data.dateOfBirth),
     firstIssued: val(data.firstIssued || data.issueDate || data.firstObtained),
-    firstObtained: val(data.firstObtained || data.categoriesDates || data.firstIssued),
+    firstObtained: val(data.firstObtained || formatCategoriesDates(data.categoriesDates || data.firstObtained || data.firstIssued)),
     issueDate: val(data.issueDate || data.firstIssued),
     expiryDate: val(data.expiryDate) || 'Indefinite',
-    categoriesDates: val(data.categoriesDates || data.firstObtained || data.firstIssued),
+    categoriesDates: val(formatCategoriesDates(data.categoriesDates || data.firstObtained || data.firstIssued)),
     today: today,
     fechaHoy: today,
 

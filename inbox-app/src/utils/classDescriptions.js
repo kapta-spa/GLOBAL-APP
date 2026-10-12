@@ -436,65 +436,164 @@ export const filterClassDescriptionsByHeldClasses = (classDescriptions, classHel
   return generateClassDescriptions(classHeld);
 };
 
+const monthNamesEnCategories = [
+  "January", "February", "March", "April", "May", "June",
+  "July", "August", "September", "October", "November", "December"
+];
+
+const ptEsMonthMapCategories = {
+  'janeiro': 'January', 'jan': 'January', 'enero': 'January', 'ene': 'January',
+  'fevereiro': 'February', 'fev': 'February', 'febrero': 'February', 'feb': 'February',
+  'março': 'March', 'marco': 'March', 'marzo': 'March', 'mar': 'March',
+  'abril': 'April', 'abr': 'April',
+  'maio': 'May', 'mai': 'May', 'mayo': 'May', 'may': 'May',
+  'junho': 'June', 'jun': 'June', 'junio': 'June',
+  'julho': 'July', 'jul': 'July', 'julio': 'July',
+  'agosto': 'August', 'ago': 'August',
+  'setembro': 'September', 'set': 'September', 'septiembre': 'September', 'sep': 'September',
+  'outubro': 'October', 'out': 'October', 'octubre': 'October', 'oct': 'October',
+  'novembro': 'November', 'nov': 'November', 'noviembre': 'November',
+  'dezembro': 'December', 'dez': 'December', 'diciembre': 'December', 'dic': 'December'
+};
+
+export const normalizeDateToEnglishFormat = (rawDate) => {
+  if (!rawDate || typeof rawDate !== 'string') return '';
+  let s = rawDate.trim().replace(/^[:\-\–\—=,\s]+|[:\-\–\—=,\s]+$/g, '');
+  if (!s || s === '-' || s.toLowerCase() === 'indefinite' || s.toLowerCase() === 'none' || s.toLowerCase() === 'to long term') return s;
+
+  // DD/MM/YYYY or DD.MM.YYYY or DD-MM-YYYY
+  const dmy = s.match(/^(\d{1,2})[\/\.-](\d{1,2})[\/\.-](\d{4})$/);
+  if (dmy) {
+    const day = dmy[1].padStart(2, '0');
+    const mIdx = parseInt(dmy[2], 10) - 1;
+    const year = dmy[3];
+    if (mIdx >= 0 && mIdx < 12) return `${day} ${monthNamesEnCategories[mIdx]} ${year}`;
+  }
+
+  // YYYY-MM-DD or YYYY/MM/DD or YYYY.MM.DD
+  const ymd = s.match(/^(\d{4})[\/\.-](\d{1,2})[\/\.-](\d{1,2})$/);
+  if (ymd) {
+    const year = ymd[1];
+    const mIdx = parseInt(ymd[2], 10) - 1;
+    const day = ymd[3].padStart(2, '0');
+    if (mIdx >= 0 && mIdx < 12) return `${day} ${monthNamesEnCategories[mIdx]} ${year}`;
+  }
+
+  // DD Month YYYY (e.g. 1 February 2025 or 01 Feb 2025)
+  const enMatch = s.match(/^(\d{1,2})\s+([A-Za-z]+)\s+(\d{4})$/);
+  if (enMatch) {
+    const day = enMatch[1].padStart(2, '0');
+    const mWord = enMatch[2].toLowerCase();
+    const year = enMatch[3];
+    const found = monthNamesEnCategories.find(m => m.toLowerCase() === mWord) || ptEsMonthMapCategories[mWord];
+    if (found) return `${day} ${found} ${year}`;
+  }
+
+  // Foreign month e.g. "01 de febrero de 2025" or "01 feb 2025"
+  for (const [transMonth, enMonth] of Object.entries(ptEsMonthMapCategories)) {
+    const regex = new RegExp(`^(\\d{1,2})(?:\\s+de|\\s+)?\\s+${transMonth}(?:\\s+de)?\\s+(\\d{4})$`, 'i');
+    const m = s.match(regex);
+    if (m) {
+      const day = m[1].padStart(2, '0');
+      const year = m[2];
+      return `${day} ${enMonth} ${year}`;
+    }
+  }
+
+  return s;
+};
+
 export const formatCategoriesDates = (str) => {
   if (!str || typeof str !== 'string') return str || '-';
   const trimmed = str.trim();
   if (!trimmed || trimmed === '-' || trimmed.toLowerCase() === 'none') return trimmed;
 
-  // If already a single plain date like "16 December 2022" without colons
-  if (!trimmed.includes(':')) {
-    return trimmed;
+  // If already a single plain date without any letters or colons (e.g. "01/02/2025" or "01 February 2025")
+  const directDate = normalizeDateToEnglishFormat(trimmed);
+  if (/^\d{1,2}\s+[A-Za-z]+\s+\d{4}$/.test(directDate)) {
+    return directDate;
   }
 
-  const lines = trimmed.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
-  if (lines.length === 0) return '-';
-
-  const segments = [];
-  for (const line of lines) {
-    // Split on comma only if followed by another class pattern with colon (e.g. ", B1, B:")
-    const matches = line.split(/,(?=\s*[A-Z0-9\s/&]+:)/i);
-    for (const match of matches) {
-      if (match.trim()) segments.push(match.trim());
-    }
-  }
-
+  // Split entries: either by newline, or by semicolon, or by comma that occurs after a year (\d{4})
+  const rawEntries = trimmed.split(/(?<=\d{4})\s*[,;\n\r]+\s*|\r?\n/).map(e => e.trim()).filter(Boolean);
   const dateToClasses = new Map();
-  const unparsedLines = [];
+  const unparsed = [];
 
-  for (const seg of segments) {
-    const colonIdx = seg.indexOf(':');
+  for (const entry of rawEntries) {
+    let clsPart = '';
+    let datePart = '';
+
+    const colonIdx = entry.lastIndexOf(':');
     if (colonIdx !== -1) {
-      const clsPart = seg.substring(0, colonIdx).trim();
-      const datePart = seg.substring(colonIdx + 1).trim();
-      if (clsPart && datePart) {
-        const classes = clsPart.split(/[\s,]+/).map(c => c.trim()).filter(Boolean);
-        if (!dateToClasses.has(datePart)) {
-          dateToClasses.set(datePart, []);
+      clsPart = entry.substring(0, colonIdx).trim();
+      datePart = entry.substring(colonIdx + 1).trim();
+    } else {
+      const dashMatch = entry.match(/^([A-Za-z0-9\s,\/&]+?)\s*[\-\–\—=]\s*(.+)$/);
+      if (dashMatch) {
+        clsPart = dashMatch[1].trim();
+        datePart = dashMatch[2].trim();
+      } else {
+        const endMatch = entry.match(/^([A-Za-z0-9\s,\/&]+?)\s+((?:\d{1,2}[\/\.-]\d{1,2}[\/\.-]\d{4}|\d{4}[\/\.-]\d{1,2}[\/\.-]\d{1,2}|\d{1,2}\s+[A-Za-z]+(?:\s+de)?\s+\d{4}))$/i);
+        if (endMatch) {
+          clsPart = endMatch[1].trim();
+          datePart = endMatch[2].trim();
         }
-        const existing = dateToClasses.get(datePart);
+      }
+    }
+
+    if (clsPart && datePart) {
+      const normDate = normalizeDateToEnglishFormat(datePart);
+      let cleanCls = clsPart.replace(/\b(?:classes?|categories|category|cat\.?|clases?|classe)\b/gi, '').trim();
+      const classes = cleanCls
+        .split(/[\s,\/&]+/)
+        .map(c => c.trim().replace(/^[^a-zA-Z0-9]+|[^a-zA-Z0-9]+$/g, ''))
+        .filter(c => c && c.length <= 6);
+
+      if (classes.length > 0 && normDate) {
+        if (!dateToClasses.has(normDate)) {
+          dateToClasses.set(normDate, []);
+        }
+        const existing = dateToClasses.get(normDate);
         classes.forEach(c => {
           if (!existing.includes(c)) existing.push(c);
         });
         continue;
       }
     }
-    unparsedLines.push(seg);
+
+    const singleDate = normalizeDateToEnglishFormat(entry);
+    if (/^\d{1,2}\s+[A-Za-z]+\s+\d{4}$/.test(singleDate)) {
+      if (!dateToClasses.has(singleDate)) {
+        dateToClasses.set(singleDate, []);
+      }
+      continue;
+    }
+
+    unparsed.push(entry);
   }
 
-  if (dateToClasses.size === 0) return trimmed;
+  if (dateToClasses.size === 0) {
+    return unparsed.join('\n') || trimmed;
+  }
 
-  // If all classes share the exact same date and there are no unparsed lines, return only the date
-  if (dateToClasses.size === 1 && unparsedLines.length === 0) {
+  // RULE: If all authorized classes share the exact same date, output ONLY the date
+  if (dateToClasses.size === 1 && unparsed.length === 0) {
     const [onlyDate] = dateToClasses.keys();
     return onlyDate;
   }
 
+  // RULE: Classes sharing the same date are grouped: "Cat1, Cat2: DD Month YYYY"
   const resultLines = [];
   for (const [date, classes] of dateToClasses.entries()) {
-    resultLines.push(`${classes.join(', ')}: ${date}`);
+    if (classes && classes.length > 0) {
+      resultLines.push(`${classes.join(', ')}: ${date}`);
+    } else {
+      resultLines.push(date);
+    }
   }
-  if (unparsedLines.length > 0) {
-    resultLines.push(...unparsedLines);
+
+  if (unparsed.length > 0) {
+    resultLines.push(...unparsed);
   }
 
   return resultLines.join('\n');

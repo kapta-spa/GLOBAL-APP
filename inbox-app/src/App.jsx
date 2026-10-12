@@ -1681,6 +1681,7 @@ const getCleanClientLabelName = (rawName) => {
   };
 
   const handleSendEmailFinal = async (pdfBlobsArray, finalEmailTo) => {
+    setProcessing(true);
     try {
       if (!finalEmailTo) {
         alert("Falta el correo del cliente.");
@@ -1751,6 +1752,8 @@ const getCleanClientLabelName = (rawName) => {
     } catch (err) {
       console.error(err);
       alert("Error enviando correo: " + err.message);
+    } finally {
+      setProcessing(false);
     }
   };
 

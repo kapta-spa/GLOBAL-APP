@@ -15,6 +15,7 @@ export default function EmailPreviewModal({
 }) {
   const [pdfBlobs, setPdfBlobs] = useState([]);
   const [isConverting, setIsConverting] = useState(false);
+  const [isSending, setIsSending] = useState(false);
   const [error, setError] = useState('');
   const [emailTo, setEmailTo] = useState(isValidCustomerEmail(customerEmail) ? customerEmail : '');
 
@@ -69,7 +70,8 @@ export default function EmailPreviewModal({
     setPdfBlobs(prev => prev.filter((_, index) => index !== indexToRemove));
   };
 
-  const handleSend = () => {
+  const handleSend = async () => {
+    if (isSending) return;
     if (pdfBlobs.length === 0) {
       alert("Necesitas tener al menos un archivo PDF adjunto antes de enviar.");
       return;
@@ -83,13 +85,49 @@ export default function EmailPreviewModal({
       alert(`⚠️ ATENCIÓN: El correo ingresado (${cleanEmail}) NO es válido o es el correo de la empresa (info@globaltranslations.co.nz).\n\nPor favor ingresa el correo personal o de contacto del CLIENTE para asegurar que le llegue la traducción.`);
       return;
     }
-    onSendEmail(pdfBlobs, cleanEmail);
+    setIsSending(true);
+    try {
+      await onSendEmail(pdfBlobs, cleanEmail);
+    } catch (err) {
+      setIsSending(false);
+    }
   };
 
 
   return (
     <div className="modal-overlay open">
-      <div className="modal-content email-preview-modal" style={{ maxWidth: '800px', width: '90%', maxHeight: '90vh', overflowY: 'auto' }}>
+      <div className="modal-content email-preview-modal" style={{ maxWidth: '800px', width: '90%', maxHeight: '90vh', overflowY: 'auto', position: 'relative' }}>
+        {isSending && (
+          <div style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(15, 23, 42, 0.85)',
+            backdropFilter: 'blur(4px)',
+            borderRadius: '12px',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 9999,
+            color: '#ffffff',
+            padding: '24px',
+            textAlign: 'center'
+          }}>
+            <svg className="spinner" viewBox="0 0 50 50" style={{ width: 56, height: 56, marginBottom: 16 }}>
+              <circle cx="25" cy="25" r="20" fill="none" />
+            </svg>
+            <h3 style={{ margin: '0 0 8px 0', fontSize: '1.4rem', color: '#ffffff', fontWeight: 'bold' }}>
+              Enviando traducción...
+            </h3>
+            <p style={{ margin: 0, fontSize: '0.95rem', color: '#94a3b8', maxWidth: '420px', lineHeight: '1.5' }}>
+              Enviando correo al cliente con los PDFs adjuntos y actualizando Google Sheets. Por favor espera un momento...
+            </p>
+          </div>
+        )}
+
         <div className="modal-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
             <h2 style={{ margin: 0 }}>Enviar Traducción Final</h2>
@@ -110,7 +148,7 @@ export default function EmailPreviewModal({
             )}
             <span style={{ fontSize: '13px', color: '#6b7280' }}>({folderName})</span>
           </div>
-          <button className="icon-btn" onClick={onClose}>
+          <button className="icon-btn" onClick={onClose} disabled={isSending}>
             <X size={24} />
           </button>
         </div>
@@ -323,12 +361,28 @@ export default function EmailPreviewModal({
         </div>
 
         <div className="modal-footer" style={{ marginTop: '20px', display: 'flex', flexWrap: 'wrap', justifyContent: 'flex-end', gap: '10px' }}>
-          <button className="btn-secondary" onClick={onBack} style={{ marginRight: 'auto', display: 'flex', alignItems: 'center' }}>
+          <button className="btn-secondary" onClick={onBack} disabled={isSending} style={{ marginRight: 'auto', display: 'flex', alignItems: 'center' }}>
             <ArrowLeft size={18} style={{ marginRight: '8px' }} /> Volver
           </button>
-          <button className="btn-secondary" onClick={onClose}>Cancelar</button>
-          <button className="btn-primary" onClick={handleSend} disabled={pdfBlobs.length === 0}>
-            <Send size={18} style={{ marginRight: '8px', flexShrink: 0 }} /> Enviar Correo Final
+          <button className="btn-secondary" onClick={onClose} disabled={isSending}>Cancelar</button>
+          <button 
+            className="btn-primary" 
+            onClick={handleSend} 
+            disabled={pdfBlobs.length === 0 || isSending}
+            style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minWidth: '175px', gap: '8px' }}
+          >
+            {isSending ? (
+              <>
+                <svg className="spinner" viewBox="0 0 50 50" style={{ width: 18, height: 18, margin: 0 }}>
+                  <circle cx="25" cy="25" r="20" fill="none" />
+                </svg>
+                <span>Enviando...</span>
+              </>
+            ) : (
+              <>
+                <Send size={18} style={{ flexShrink: 0 }} /> Enviar Correo Final
+              </>
+            )}
           </button>
         </div>
       </div>
