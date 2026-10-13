@@ -255,6 +255,66 @@ const normalizeDateToEnglish = (dateStr) => {
   return s;
 };
 
+export const COUNTRY_CANONICAL_NAMES = {
+  'china': 'China',
+  'chino': 'China',
+  'german': 'Germany',
+  'germany': 'Germany',
+  'alemania': 'Germany',
+  'deutschland': 'Germany',
+  'francia': 'France',
+  'francia_pink': 'France',
+  'france': 'France',
+  'brazil': 'Brazil',
+  'brasil': 'Brazil',
+  'cnh': 'Brazil',
+  'belgica': 'Belgium',
+  'belgium': 'Belgium',
+  'canada': 'Canada',
+  'czech': 'Czech Republic',
+  'checa': 'Czech Republic',
+  'denmark': 'Denmark',
+  'dinamarca': 'Denmark',
+  'danmark': 'Denmark',
+  'finland': 'Finland',
+  'finlandia': 'Finland',
+  'hungria': 'Hungary',
+  'hungary': 'Hungary',
+  'indonesia': 'Indonesia',
+  'israel': 'Israel',
+  'italia': 'Italy',
+  'italy': 'Italy',
+  'japon': 'Japan',
+  'japan': 'Japan',
+  'korea': 'South Korea',
+  'corea': 'South Korea',
+  'latino': 'Latin America',
+  'chile': 'Chile',
+  'mexico': 'Mexico',
+  'méxico': 'Mexico',
+  'colombia': 'Colombia',
+  'argentina': 'Argentina',
+  'peru': 'Peru',
+  'perú': 'Peru',
+  'uruguay': 'Uruguay',
+  'netherlands': 'Netherlands',
+  'holanda': 'Netherlands',
+  'norway': 'Norway',
+  'noruega': 'Norway',
+  'portugal': 'Portugal',
+  'spain': 'Spain',
+  'españa': 'Spain',
+  'espana': 'Spain',
+  'suiza': 'Switzerland',
+  'swiss': 'Switzerland',
+  'switzerland': 'Switzerland',
+  'swedish': 'Sweden',
+  'sweden': 'Sweden',
+  'suecia': 'Sweden',
+  'taiwan': 'Taiwan',
+  'vietnam': 'Vietnam'
+};
+
 export const getNormalizedCountryKey = (country = '') => {
   if (!country || typeof country !== 'string') return '';
   const c = country.toLowerCase().trim();
@@ -262,28 +322,143 @@ export const getNormalizedCountryKey = (country = '') => {
   if (/alemania|german|germany|deutsch|berlin|munich|münchen|hamburg|frankfurt|cologne|köln|stuttgart|düsseldorf|leipzig|dresden|hannover|nürnberg|bonn|führerschein|fahrerlaubnis/i.test(c)) return 'german';
   if (/francia.*pink|france.*pink/i.test(c)) return 'francia_pink';
   if (/francia|france|french|paris/i.test(c)) return 'francia';
-  if (/brazil|brasil|cnh|detran|denatran|senatran/i.test(c)) return 'brazil';
-  if (/belgica|belgique|belgium|bruxelles|brussels/i.test(c)) return 'belgica';
+  if (/brazil|brasil|cnh|detran|denatran|senatran|brazilian/i.test(c)) return 'brazil';
+  if (/belgica|belgique|belgium|bruxelles|brussels|belgian/i.test(c)) return 'belgica';
   if (/canada|canad/i.test(c)) return 'canada';
   if (/czech|checa|česk|prague|praha/i.test(c)) return 'czech';
-  if (/denmark|dinamarca|danmark|copenhagen|københavn/i.test(c)) return 'denmark';
-  if (/finland|finlandia|helsinki|suomi/i.test(c)) return 'finland';
-  if (/hungria|hungary|budapest|magyar/i.test(c)) return 'hungria';
-  if (/indonesia|jakarta/i.test(c)) return 'indonesia';
-  if (/israel|tel aviv|jerusalem/i.test(c)) return 'israel';
-  if (/italia|italy|roma|rome|milano/i.test(c)) return 'italia';
-  if (/japon|japan|tokyo|nihon|nippon/i.test(c)) return 'japan';
-  if (/korea|corea|seoul/i.test(c)) return 'korea';
+  if (/denmark|dinamarca|danmark|copenhagen|københavn|danish|dansk/i.test(c)) return 'denmark';
+  if (/finland|finlandia|helsinki|suomi|finnish/i.test(c)) return 'finland';
+  if (/hungria|hungary|budapest|magyar|hungarian/i.test(c)) return 'hungria';
+  if (/indonesia|jakarta|indonesian/i.test(c)) return 'indonesia';
+  if (/israel|tel aviv|jerusalem|israeli/i.test(c)) return 'israel';
+  if (/italia|italy|roma|rome|milano|italian/i.test(c)) return 'italia';
+  if (/japon|japan|tokyo|nihon|nippon|japanese/i.test(c)) return 'japan';
+  if (/korea|corea|seoul|korean/i.test(c)) return 'korea';
   if (/latino|chile|mexico|méxico|colombia|argentina|peru|perú|uruguay/i.test(c)) return 'latino';
   if (/netherland|holand|pa[ií]ses bajos|dutch|amsterdam/i.test(c)) return 'netherlands';
-  if (/norway|noruega|oslo|norge/i.test(c)) return 'norway';
+  if (/norway|noruega|oslo|norge|norwegian|norsk/i.test(c)) return 'norway';
   if (/portugal|lisboa|lisbon|portug/i.test(c)) return 'portugal';
-  if (/spain|espa[nñ]a|madrid|barcelona/i.test(c)) return 'spain';
+  if (/spain|espa[nñ]a|madrid|barcelona|spanish/i.test(c)) return 'spain';
   if (/suiza|swiss|switzerland|zürich|zurich|geneva|genève|schweiz/i.test(c)) return 'swiss';
-  if (/swedish|suecia|sweden|stockholm|sverige/i.test(c)) return 'swedish';
-  if (/taiwan|taiw[aá]n|taipei/i.test(c)) return 'taiwan';
-  if (/vietnam|hanoi|saigon|ho chi minh/i.test(c)) return 'vietnam';
+  if (/swedish|suecia|sweden|stockholm|sverige|svenska/i.test(c)) return 'swedish';
+  if (/taiwan|taiw[aá]n|taipei|taiwanese/i.test(c)) return 'taiwan';
+  if (/vietnam|hanoi|saigon|ho chi minh|vietnamese/i.test(c)) return 'vietnam';
   return '';
+};
+
+export const COUNTRY_TOKENS = [
+  { key: 'denmark', names: ['Denmark', 'Dinamarca', 'Danmark', 'Danish', 'Dansk'] },
+  { key: 'german', names: ['Germany', 'Deutschland', 'Alemania', 'German', 'Deutsch'] },
+  { key: 'brazil', names: ['Brazil', 'Brasil', 'Brazilian', 'Brasileiro', 'Brasileira'] },
+  { key: 'francia', names: ['France', 'Francia', 'French', 'Français', 'Francaise'] },
+  { key: 'italia', names: ['Italy', 'Italia', 'Italian', 'Italiano', 'Italiana'] },
+  { key: 'spain', names: ['Spain', 'España', 'Espana', 'Spanish', 'Español', 'Espanol'] },
+  { key: 'japan', names: ['Japan', 'Japón', 'Japon', 'Japanese', 'Nihon', 'Nippon'] },
+  { key: 'china', names: ['China', 'Chinese', 'Chino'] },
+  { key: 'belgica', names: ['Belgium', 'Bélgica', 'Belgica', 'Belgique', 'Belgian'] },
+  { key: 'canada', names: ['Canada', 'Canadá', 'Canadian'] },
+  { key: 'czech', names: ['Czech Republic', 'Czechia', 'República Checa', 'Republica Checa', 'Czech', 'Česká', 'Ceska'] },
+  { key: 'finland', names: ['Finland', 'Finlandia', 'Finnish', 'Suomi'] },
+  { key: 'hungria', names: ['Hungary', 'Hungría', 'Hungria', 'Hungarian', 'Magyar'] },
+  { key: 'indonesia', names: ['Indonesia', 'Indonesian'] },
+  { key: 'israel', names: ['Israel', 'Israeli'] },
+  { key: 'korea', names: ['South Korea', 'Korea', 'Corea', 'Korean'] },
+  { key: 'netherlands', names: ['Netherlands', 'Países Bajos', 'Paises Bajos', 'Holanda', 'Dutch', 'Nederlands'] },
+  { key: 'norway', names: ['Norway', 'Noruega', 'Norwegian', 'Norge', 'Norsk'] },
+  { key: 'portugal', names: ['Portugal', 'Portuguese', 'Português', 'Portugues'] },
+  { key: 'swiss', names: ['Switzerland', 'Suiza', 'Swiss', 'Schweiz'] },
+  { key: 'swedish', names: ['Sweden', 'Suecia', 'Swedish', 'Sverige', 'Svenska'] },
+  { key: 'taiwan', names: ['Taiwan', 'Taiwán', 'Taiwanese'] },
+  { key: 'vietnam', names: ['Vietnam', 'Vietnamese'] },
+  { key: 'latino', names: ['Mexico', 'México', 'Colombia', 'Chile', 'Argentina', 'Peru', 'Perú', 'Uruguay', 'Mexican', 'Colombian', 'Chilean', 'Argentine', 'Peruvian', 'Uruguayan'] },
+  { key: 'uk', names: ['United Kingdom', 'Great Britain', 'UK', 'Britain', 'British'] },
+  { key: 'usa', names: ['United States', 'USA', 'America', 'American'] },
+  { key: 'australia', names: ['Australia', 'Australian'] },
+  { key: 'poland', names: ['Poland', 'Polonia', 'Polish', 'Polski'] },
+  { key: 'austria', names: ['Austria', 'Austrian', 'Österreich', 'Osterreich'] },
+  { key: 'ireland', names: ['Ireland', 'Irlanda', 'Irish'] },
+  { key: 'greece', names: ['Greece', 'Grecia', 'Greek'] },
+  { key: 'turkey', names: ['Turkey', 'Turquía', 'Turquia', 'Turkish'] },
+  { key: 'india', names: ['India', 'Indian'] },
+  { key: 'south_africa', names: ['South Africa', 'South African'] },
+  { key: 'new_zealand', names: ['New Zealand', 'New Zealander'] },
+  { key: 'philippines', names: ['Philippines', 'Filipinas', 'Filipino', 'Philippine'] },
+  { key: 'romania', names: ['Romania', 'Rumania', 'Romanian'] }
+];
+
+export const findCountryToken = (str) => {
+  if (!str) return null;
+  const trimmed = str.replace(/[\.;,\s]+$/, '').trim();
+  for (const item of COUNTRY_TOKENS) {
+    for (const name of item.names) {
+      if (new RegExp(`^${name}$`, 'i').test(trimmed)) {
+        return item;
+      }
+    }
+  }
+  return null;
+};
+
+/**
+ * Sanitizes authority field ensuring it strictly contains the issuing institution/prefecture
+ * and ONLY the single genuine country where the license originates.
+ */
+export const sanitizeAuthority = (authorityStr = '', countryHint = '') => {
+  if (!authorityStr || typeof authorityStr !== 'string') return authorityStr || '';
+  let str = authorityStr.trim();
+  if (str === '-' || str === '') return str;
+
+  let targetKey = getNormalizedCountryKey(countryHint);
+  const parts = str.split(',').map(p => p.trim()).filter(Boolean);
+
+  if (!targetKey) {
+    for (const part of parts) {
+      const tok = findCountryToken(part);
+      if (tok) {
+        targetKey = tok.key;
+        break;
+      }
+    }
+  }
+
+  const canonicalCountry = COUNTRY_CANONICAL_NAMES[targetKey] || (targetKey ? targetKey.charAt(0).toUpperCase() + targetKey.slice(1) : '');
+
+  const keptParts = [];
+  for (let i = 0; i < parts.length; i++) {
+    const part = parts[i];
+    const tok = findCountryToken(part);
+    if (tok) {
+      if (targetKey && tok.key === targetKey) {
+        if (!keptParts.some(kp => findCountryToken(kp)?.key === targetKey)) {
+          keptParts.push(canonicalCountry || part);
+        }
+      } else if (!targetKey && i === 0) {
+        keptParts.push(part);
+      }
+      // Foreign countries are deliberately dropped
+    } else {
+      keptParts.push(part);
+    }
+  }
+
+  if (keptParts.length === 0) {
+    return canonicalCountry ? canonicalCountry : str;
+  }
+
+  // China driver's license authorities do not append ", China"
+  if (targetKey === 'china') {
+    const filteredNoChina = keptParts.filter(p => !findCountryToken(p));
+    return filteredNoChina.join(', ');
+  }
+
+  // Append single target country if missing from the end
+  const lastPart = keptParts[keptParts.length - 1];
+  const lastTok = findCountryToken(lastPart);
+  if (canonicalCountry && (!lastTok || lastTok.key !== targetKey)) {
+    keptParts.push(canonicalCountry);
+  }
+
+  return keptParts.join(', ');
 };
 
 export const formatBrazilAuthority = (authStr = '') => {
@@ -478,12 +653,12 @@ export const extractLicenseData = async (apiKey, base64Images, country = '', onC
 
     // China document detection
     const isChinaDoc = matchedKey === 'china' ||
+                       matchedKey === 'chino' ||
                        getNormalizedCountryKey(extractedData.country || '') === 'china' ||
-                       /chin/i.test(extractedData.nationality || '') ||
-                       /chin/i.test(extractedData.authority || '') ||
-                       /chin/i.test(extractedData.licenseLanguage || '') ||
-                       Boolean(extractedData.barcodeNumber && extractedData.barcodeNumber !== '-') ||
-                       Boolean(extractedData.fileNumber && extractedData.fileNumber !== '-');
+                       /china|chinese|chino/i.test(country) ||
+                       (!matchedKey && !extractedData.country && /chin/i.test(extractedData.nationality || '')) ||
+                       (!matchedKey && !extractedData.country && /chin|车辆管理所|公安/i.test(extractedData.authority || '')) ||
+                       (!matchedKey && !extractedData.country && /chin/i.test(extractedData.licenseLanguage || ''));
 
     if (isChinaDoc) {
       if (!extractedData.nationality || extractedData.nationality === '-' || extractedData.nationality.trim() === '') {
@@ -548,18 +723,18 @@ export const extractLicenseData = async (apiKey, base64Images, country = '', onC
       extractedData.idDocument = String(rawIdDoc).trim();
     }
 
+    const rawPersonal = extractedData.personal || extractedData.sec4d || extractedData.point4d;
+    if (rawPersonal) {
+      extractedData.personal = String(rawPersonal).trim();
+      extractedData.point4d = extractedData.personal;
+    }
+
     const rawCpf = extractedData.cpf || 
                    extractedData.CPF || 
                    extractedData.individualTaxpayerNumber || 
-                   extractedData.taxpayerNumber || 
-                   extractedData.taxId || 
-                   extractedData.taxNumber || 
-                   extractedData.sec4d || 
-                   extractedData.point4d;
+                   extractedData.taxpayerNumber;
     if (rawCpf) {
       extractedData.cpf = String(rawCpf).trim();
-      extractedData.personal = extractedData.cpf;
-      extractedData.point4d = extractedData.cpf;
     }
 
     const rawParents = extractedData.parents || 
@@ -578,16 +753,18 @@ export const extractLicenseData = async (apiKey, base64Images, country = '', onC
     }
 
     const isBrazilDoc = matchedKey === 'brazil' ||
+                        matchedKey === 'brasil' ||
+                        matchedKey === 'cnh' ||
                         getNormalizedCountryKey(extractedData.country || '') === 'brazil' ||
-                        /brazil|brasil/i.test(extractedData.nationality || '') ||
+                        /brazil|brasil|brazilian/i.test(extractedData.nationality || '') ||
                         /brazil|brasil|detran|denatran|senatran/i.test(extractedData.authority || '') ||
-                        /carteira nacional de habilita|cnh/i.test(extractedData.licenseLanguage || '') ||
-                        Boolean(extractedData.cpf && extractedData.cpf !== '-') ||
-                        Boolean(extractedData.cardNumber && extractedData.cardNumber !== '-') ||
-                        Boolean(extractedData.idDocument && extractedData.idDocument !== '-') ||
-                        Boolean(extractedData.parents && extractedData.parents !== '-');
+                        /carteira nacional de habilita/i.test(extractedData.licenseLanguage || '') ||
+                        /brazil|brasil|cnh/i.test(country);
 
     if (isBrazilDoc) {
+      if (!extractedData.cpf && extractedData.personal) {
+        extractedData.cpf = extractedData.personal;
+      }
       if (extractedData.surname) extractedData.surname = extractedData.surname.toUpperCase().trim();
       if (extractedData.firstName) extractedData.firstName = extractedData.firstName.toUpperCase().trim();
       if (extractedData.parents) extractedData.parents = extractedData.parents.toUpperCase().trim();
@@ -658,9 +835,9 @@ export const extractLicenseData = async (apiKey, base64Images, country = '', onC
     const isJapanDoc = matchedKey === 'japan' ||
                        matchedKey === 'japon' ||
                        getNormalizedCountryKey(extractedData.country || '') === 'japan' ||
-                       /japan|japon/i.test(extractedData.nationality || '') ||
-                       /japan|japon|public safety commission/i.test(extractedData.authority || '') ||
-                       /japan|japon/i.test(extractedData.licenseLanguage || '');
+                       /japan|japon/i.test(country) ||
+                       (!matchedKey && !extractedData.country && /japan|japon/i.test(extractedData.nationality || '')) ||
+                       (!matchedKey && !extractedData.country && /japan|japon|public safety commission/i.test(extractedData.authority || ''));
 
     if (isJapanDoc) {
       if (!extractedData.nationality || extractedData.nationality === '-' || extractedData.nationality.trim() === '') {
@@ -691,9 +868,9 @@ export const extractLicenseData = async (apiKey, base64Images, country = '', onC
                         matchedKey === 'alemania' ||
                         matchedKey === 'deutschland' ||
                         getNormalizedCountryKey(extractedData.country || '') === 'german' ||
-                        /german|alemania|deutsch/i.test(extractedData.nationality || '') ||
-                        /germany|alemania|deutschland/i.test(extractedData.authority || '') ||
-                        /german|deutsch/i.test(extractedData.licenseLanguage || '');
+                        /alemania|germany|deutschland/i.test(country) ||
+                        (!matchedKey && !extractedData.country && /german|alemania|deutsch/i.test(extractedData.nationality || '')) ||
+                        (!matchedKey && !extractedData.country && /germany|alemania|deutschland/i.test(extractedData.authority || ''));
 
     if (isGermanDoc) {
       if (!extractedData.nationality || extractedData.nationality === '-' || extractedData.nationality.trim() === '') {
@@ -740,6 +917,17 @@ export const extractLicenseData = async (apiKey, base64Images, country = '', onC
       } else {
         extractedData.classDescriptions = filterClassDescriptionsByHeldClasses(extractedData.classDescriptions, extractedData.class, matchedKey);
       }
+    }
+
+    // Sanitize authority to ensure strictly the single genuine country is present
+    const docCountryHint = matchedKey || 
+                          getNormalizedCountryKey(extractedData.country || '') || 
+                          getNormalizedCountryKey(country || '') || 
+                          extractedData.country || 
+                          country || 
+                          extractedData.nationality || '';
+    if (extractedData.authority) {
+      extractedData.authority = sanitizeAuthority(extractedData.authority, docCountryHint);
     }
   }
 

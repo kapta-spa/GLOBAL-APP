@@ -4,7 +4,7 @@ import { saveAs } from "file-saver";
 import ImageModule from "docxtemplater-image-module-free";
 import { generateClassDescriptions, generateBrazilClassDescriptions, generateChinaClassDescriptions, generateItalyClassDescriptions, normalizeItalianAuthority, filterClassDescriptionsByHeldClasses, formatCategoriesDates, formatLicenseClasses, formatJapanLicenseClasses, getCleanJapanCondition, formatClassDescriptions, getCleanGermanCodes } from "./classDescriptions";
 import { COUNTRY_TEMPLATES } from "../config/countryPrompts";
-import { getNormalizedCountryKey, formatBrazilAuthority } from "./geminiApi";
+import { getNormalizedCountryKey, formatBrazilAuthority, sanitizeAuthority } from "./geminiApi";
 
 const TRANSPARENT_1X1_PNG = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=";
 
@@ -155,18 +155,12 @@ export const generateWordDocument = async (templateArrayBuffer, data, imagesBase
   const surname = val(data.surname);
   const fullName = val(data.fullName || data.fullname || [surname, firstNames].filter(p => p && p !== '-').join(' '));
 
-  const isChinaDoc = Boolean(data.barcodeNumber && data.barcodeNumber !== '-') || 
-                     Boolean(data.fileNumber && data.fileNumber !== '-') ||
-                     Boolean(data.templateName && data.templateName.includes('china')) ||
+  const isChinaDoc = Boolean(data.templateName && (data.templateName.includes('china') || data.templateName.includes('chino'))) ||
                      /chin/i.test(data.nationality || '') ||
                      /chin/i.test(data.country || '') ||
-                     /chin/i.test(data.authority || '') ||
+                     /chin|车辆管理所|公安/i.test(data.authority || '') ||
                      /china|chinese|chino/i.test(folderName);
-  const isBrazilDoc = Boolean(data.cpf && data.cpf !== '-') ||
-                      Boolean(data.cardNumber && data.cardNumber !== '-') ||
-                      Boolean(data.idDocument && data.idDocument !== '-') ||
-                      Boolean(data.parents && data.parents !== '-') ||
-                      Boolean(data.templateName && (data.templateName.includes('brazil') || data.templateName.includes('brasil'))) ||
+  const isBrazilDoc = Boolean(data.templateName && (data.templateName.includes('brazil') || data.templateName.includes('brasil') || data.templateName.includes('cnh'))) ||
                       /brazil|brasil|cnh/i.test(data.nationality || '') ||
                       /brazil|brasil/i.test(data.country || '') ||
                       /brazil|brasil|detran|denatran|senatran/i.test(data.authority || '') ||
@@ -180,8 +174,9 @@ export const generateWordDocument = async (templateArrayBuffer, data, imagesBase
   const isGermanDoc = Boolean(data.templateName && (data.templateName.includes('alemania') || data.templateName.includes('german'))) ||
                       /alemania|german|germany|deutsch/i.test(folderName) ||
                       /alemania|german|germany|deutsch/i.test(data.country || '') ||
-                      /german|alemania|deutsch/i.test(data.nationality || '') ||
-                      /germany|alemania|deutschland/i.test(data.authority || '');
+                      (!/denmark|dinamarca|danmark|france|francia|spain|espa|ital|japan|japon|china|czech|checa|brazil|brasil/i.test(folderName) &&
+                       !/denmark|dinamarca|danmark|france|francia|spain|espa|ital|japan|japon|china|czech|checa|brazil|brasil/i.test(data.country || '') &&
+                       (/german|alemania|deutsch/i.test(data.nationality || '') || /germany|alemania|deutschland/i.test(data.authority || '')));
 
   let authorityVal = val(data.authority);
   if (isItalyDoc && authorityVal && authorityVal !== '-') {
@@ -194,6 +189,12 @@ export const generateWordDocument = async (templateArrayBuffer, data, imagesBase
     }
   } else if (isBrazilDoc && authorityVal && authorityVal !== '-') {
     authorityVal = formatBrazilAuthority(authorityVal);
+  }
+
+  // Ensure issuing authority contains ONLY the genuine license country
+  const docCountry = data.country || folderName || data.nationality || data.templateName || '';
+  if (authorityVal && authorityVal !== '-') {
+    authorityVal = sanitizeAuthority(authorityVal, docCountry);
   }
 
   let classVal = val(data.class);

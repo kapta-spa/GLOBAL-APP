@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { X, Save, Download, ArrowRight, RefreshCw, FileText, CheckCircle2 } from 'lucide-react';
 import { generateClassDescriptions, generateBrazilClassDescriptions, generateChinaClassDescriptions, generateItalyClassDescriptions, normalizeItalianAuthority, filterClassDescriptionsByHeldClasses, formatCategoriesDates, formatLicenseClasses, formatJapanLicenseClasses, getCleanJapanCondition, formatClassDescriptions, getCleanGermanCodes } from './utils/classDescriptions';
 import { getAssignedNumber, loadCountryTemplate } from './utils/documentGenerator';
-import { getNormalizedCountryKey, formatBrazilAuthority } from './utils/geminiApi';
+import { getNormalizedCountryKey, formatBrazilAuthority, sanitizeAuthority } from './utils/geminiApi';
 import { COUNTRY_TEMPLATES } from './config/countryPrompts';
 
 export const AVAILABLE_TEMPLATES = [
@@ -93,33 +93,32 @@ export default function TranslationPreviewModal({
       }
 
       const folderLower = (folderName || '').toLowerCase();
-      const isChina = Boolean(normalized.barcodeNumber && normalized.barcodeNumber !== '-') ||
-                      Boolean(normalized.fileNumber && normalized.fileNumber !== '-') ||
-                      (normalized.nationality && /chin/i.test(normalized.nationality)) ||
-                      (normalized.authority && /chin/i.test(normalized.authority)) ||
+      const isChina = (normalized.nationality && /chin/i.test(normalized.nationality)) ||
+                      (normalized.authority && /chin|车辆管理所|公安/i.test(normalized.authority)) ||
+                      (normalized.country && /chin/i.test(normalized.country)) ||
                       /china|chinese|chino/i.test(folderLower);
 
-      const isBrazil = (normalized.nationality && /brazil|brasil/i.test(normalized.nationality)) ||
+      const isBrazil = (normalized.nationality && /brazil|brasil|brazilian/i.test(normalized.nationality)) ||
                        (normalized.authority && /brazil|brasil|detran|denatran|senatran/i.test(normalized.authority)) ||
                        (normalized.country && /brazil|brasil/i.test(normalized.country)) ||
-                       Boolean(normalized.cpf && normalized.cpf !== '-') ||
-                       Boolean(normalized.idDocument && normalized.idDocument !== '-') ||
-                       Boolean(normalized.cardNumber && normalized.cardNumber !== '-') ||
-                       Boolean(normalized.parents && normalized.parents !== '-') ||
                        /brazil|brasil|cnh/i.test(folderLower);
 
       const isItaly = (normalized.nationality && /ital/i.test(normalized.nationality)) ||
                       (normalized.authority && /ital|MC[-/\s]?[A-Z]{2}|MIT-UCO|UCO|MIT-DTT|DTT/i.test(normalized.authority)) ||
+                      (normalized.country && /ital/i.test(normalized.country)) ||
                       /italia|italy/i.test(folderLower);
 
       const isJapan = (normalized.nationality && /japan|japon/i.test(normalized.nationality)) ||
                       (normalized.authority && /japan|japon|public safety commission/i.test(normalized.authority)) ||
+                      (normalized.country && /japan|japon/i.test(normalized.country)) ||
                       /japan|japon/i.test(folderLower);
 
-      const isGerman = (normalized.nationality && /german|alemania|deutsch/i.test(normalized.nationality)) ||
-                       (normalized.authority && /germany|alemania|deutschland/i.test(normalized.authority)) ||
-                       (normalized.country && /germany|alemania|deutschland/i.test(normalized.country)) ||
-                       /german|aleman|alemania|deutsch/i.test(folderLower);
+      const isGerman = (normalized.country && /germany|alemania|deutschland/i.test(normalized.country)) ||
+                       /german|aleman|alemania|deutsch/i.test(folderLower) ||
+                       (!/denmark|dinamarca|danmark|france|francia|spain|espa|ital|japan|japon|china|czech|checa|brazil|brasil/i.test(folderLower) &&
+                        !/denmark|dinamarca|danmark|france|francia|spain|espa|ital|japan|japon|china|czech|checa|brazil|brasil/i.test(normalized.country || '') &&
+                        ((normalized.nationality && /german|alemania|deutsch/i.test(normalized.nationality)) ||
+                         (normalized.authority && /germany|alemania|deutschland/i.test(normalized.authority))));
 
       // Default Nationality
       if (!normalized.nationality || normalized.nationality.trim() === '' || normalized.nationality === '-') {
@@ -175,6 +174,12 @@ export default function TranslationPreviewModal({
           normalized.conditions = cleanGerman;
           normalized.explicacion = cleanGerman;
         }
+      }
+
+      // Sanitize authority so it strictly contains only the single country of the license
+      const effectiveCountry = normalized.country || folderName || normalized.nationality;
+      if (normalized.authority) {
+        normalized.authority = sanitizeAuthority(normalized.authority, effectiveCountry);
       }
 
       // Auto-detect best initial template
@@ -459,8 +464,10 @@ export default function TranslationPreviewModal({
       const isJapan = selectedTemplate === 'japon.docx' || (formData.nationality && /japan|japon/i.test(formData.nationality)) || (formData.authority && /japan|japon|public safety commission/i.test(formData.authority));
       const isGerman = selectedTemplate === 'alemania.docx' || (formData.nationality && /german|alemania|deutsch/i.test(formData.nationality)) || (formData.authority && /germany|alemania|deutschland/i.test(formData.authority));
       const cleanGermanCodes = isGerman ? getCleanGermanCodes(formData) : '';
+      const effectiveDocCountry = formData.country || folderName || formData.nationality || selectedTemplate;
       const cleanData = {
         ...formData,
+        authority: sanitizeAuthority(formData.authority, effectiveDocCountry),
         templateName: selectedTemplate,
         class: isJapan ? formatJapanLicenseClasses(formData.class) : formData.class,
         categoriesDates: formatCategoriesDates(formData.categoriesDates),
@@ -484,8 +491,10 @@ export default function TranslationPreviewModal({
       const isJapan = selectedTemplate === 'japon.docx' || (formData.nationality && /japan|japon/i.test(formData.nationality)) || (formData.authority && /japan|japon|public safety commission/i.test(formData.authority));
       const isGerman = selectedTemplate === 'alemania.docx' || (formData.nationality && /german|alemania|deutsch/i.test(formData.nationality)) || (formData.authority && /germany|alemania|deutschland/i.test(formData.authority));
       const cleanGermanCodes = isGerman ? getCleanGermanCodes(formData) : '';
+      const effectiveDocCountry = formData.country || folderName || formData.nationality || selectedTemplate;
       const cleanData = {
         ...formData,
+        authority: sanitizeAuthority(formData.authority, effectiveDocCountry),
         templateName: selectedTemplate,
         class: isJapan ? formatJapanLicenseClasses(formData.class) : formData.class,
         categoriesDates: formatCategoriesDates(formData.categoriesDates),

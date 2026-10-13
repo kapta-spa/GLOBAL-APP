@@ -87,7 +87,7 @@ GENERAL UNIVERSAL RULES:
    - "placeOfBirth": Place/City/Country of birth in English (strictly city name only, no prefixes or postal codes)
    - "issueDate": Date of issue in format "DD Month YYYY"
    - "expiryDate": Date of expiry in format "DD Month YYYY" (if indefinite, not stated, or permanent, output "Indefinite")
-   - "authority": Issuing authority translated into English, appending the country name at the end (e.g., "Prefecture of Police, France" or "Berlin City Council, Germany")
+   - "authority": Issuing authority translated into English, appending ONLY the single country name of the license at the end (e.g., "Police Department, Denmark" or "Prefecture of Police, France"). CRITICAL: NEVER include multiple countries, foreign countries, or languages in this field; only the issuing institution, department or prefecture, and the license's own country.
    - "class": Vehicle categories held (e.g. "AM, B1, B" or "C1")
    - "categoriesDates": Category dates from back table or front in format "Category: DD Month YYYY"
    - "classDescriptions": For each authorized category/class the driver holds (e.g. AM, B, L), output its official English description on a SEPARATE NEW LINE (using \n) formatted strictly as "CODE: Description" (e.g., "AM: Mopeds and light quadricycles not exceeding 45 km/h\nB: Passenger cars and motor vehicles up to 3,500 kg permissible maximum mass"). NEVER put multiple descriptions in the same line.
