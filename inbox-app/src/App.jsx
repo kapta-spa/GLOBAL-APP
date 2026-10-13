@@ -11,6 +11,7 @@ import AutoOrganizeTab from './AutoOrganizeTab';
 import { extractLicenseData, getNormalizedCountryKey } from './utils/geminiApi';
 import { generateWordDocument, getAssignedNumber } from './utils/documentGenerator';
 import { sendEmailWithPdf, isValidCustomerEmail, extractClientEmailFromMessage } from './utils/gmailService';
+import { ensureSheetRows } from './utils/sheetsService';
 
 
 
@@ -689,6 +690,10 @@ function App() {
         }
       }
 
+      // 1. Proactively ensure the sheet has enough rows for rowIdx + licenses
+      const maxTargetRow = (rowIdx || 1) + (licenses || 1);
+      await ensureSheetRows(spreadsheetId, tab, maxTargetRow, token);
+
       const updateRes = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values:batchUpdate`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
@@ -704,6 +709,28 @@ function App() {
         const errorData = await updateRes.json().catch(() => ({}));
         const detailedMsg = errorData?.error?.message || `HTTP ${updateRes.status} (${updateRes.statusText})`;
         console.error("Error detallado de Google Sheets batchUpdate:", errorData);
+
+        // If it failed due to grid limits, expand the sheet and retry once
+        if (/exceeds grid limits/i.test(detailedMsg)) {
+          console.log("[Google Sheets] Detectado error de límites de fila, forzando ampliación y reintentando...");
+          const expanded = await ensureSheetRows(spreadsheetId, tab, maxTargetRow + 50, token);
+          if (expanded) {
+            const retryRes = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values:batchUpdate`, {
+              method: 'POST',
+              headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+              body: JSON.stringify({ 
+                valueInputOption: 'USER_ENTERED',
+                data: sheetValues
+              })
+            });
+            if (retryRes.ok) {
+              await handleAssignTracking(trackingLabel, false);
+              setIsPreviewModalOpen(false);
+              return;
+            }
+          }
+        }
+
         throw new Error(`Google Sheets (${updateRes.status}): ${detailedMsg}`);
       }
 

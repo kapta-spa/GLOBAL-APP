@@ -5,6 +5,7 @@ import {
   ExternalLink, Layers, ShieldCheck, Play
 } from 'lucide-react';
 import { isValidCustomerEmail, extractClientEmailFromMessage } from './utils/gmailService';
+import { ensureSheetRows } from './utils/sheetsService';
 
 
 const TRANSLATION_MAP = {
@@ -631,6 +632,10 @@ export default function AutoOrganizeTab({ token, sheetName, onRefreshTrigger, ha
             }
           }
 
+          // Proactively ensure the sheet has enough rows
+          const maxTargetRow = (order.startRowIdx || 1) + (order.licensesCount || 1);
+          await ensureSheetRows(order.spreadsheetId, order.tab, maxTargetRow, token);
+
           const updateRes = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${order.spreadsheetId}/values:batchUpdate`, {
             method: 'POST',
             headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
@@ -643,7 +648,28 @@ export default function AutoOrganizeTab({ token, sheetName, onRefreshTrigger, ha
           if (!updateRes.ok) {
             const errData = await updateRes.json().catch(() => ({}));
             const detailedMsg = errData?.error?.message || `HTTP ${updateRes.status}`;
-            throw new Error(`Google Sheets (${updateRes.status}): ${detailedMsg}`);
+
+            if (/exceeds grid limits/i.test(detailedMsg)) {
+              console.log("[Google Sheets] AutoOrganize: Límites excedidos, ampliando y reintentando...");
+              const expanded = await ensureSheetRows(order.spreadsheetId, order.tab, maxTargetRow + 50, token);
+              if (expanded) {
+                const retryRes = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${order.spreadsheetId}/values:batchUpdate`, {
+                  method: 'POST',
+                  headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ 
+                    valueInputOption: 'USER_ENTERED',
+                    data: sheetUpdates
+                  })
+                });
+                if (!retryRes.ok) {
+                  throw new Error(`Google Sheets (${updateRes.status}): ${detailedMsg}`);
+                }
+              } else {
+                throw new Error(`Google Sheets (${updateRes.status}): ${detailedMsg}`);
+              }
+            } else {
+              throw new Error(`Google Sheets (${updateRes.status}): ${detailedMsg}`);
+            }
           }
         }
 
