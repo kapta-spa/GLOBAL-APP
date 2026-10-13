@@ -71,13 +71,23 @@ const isRowFilled = (row, tab) => {
   const ignoredValues = ['jc', 'alex', 'trans', 'traductor', 'none', '-', '--', 'n/a', 'nombre', 'client', 'cliente', 'name', 'customer', 'total', 'suma', 'resumen', 'notas', 'observaciones'];
   
   if (tab === '1HRGT') {
-    // 1HRGT: Column G (index 2) is Client Name
+    // 1HRGT: Column G (index 2) is Client Name, Column H (index 3) is Country, Column I (index 4) is Language
     const colG = String(row[2] || '').trim();
-    return colG !== '' && !ignoredValues.includes(colG.toLowerCase());
+    const colH = String(row[3] || '').trim();
+    const colI = String(row[4] || '').trim();
+    const isFilledG = colG !== '' && !ignoredValues.includes(colG.toLowerCase());
+    const isFilledH = colH !== '' && !ignoredValues.includes(colH.toLowerCase());
+    const isFilledI = colI !== '' && !ignoredValues.includes(colI.toLowerCase());
+    return isFilledG || isFilledH || isFilledI;
   } else {
-    // RVA: Column F (index 1) is Client Name
+    // RVA: Column F (index 1) is Client Name, Column G (index 2) is Country, Column H (index 3) is Language
     const colF = String(row[1] || '').trim();
-    return colF !== '' && !ignoredValues.includes(colF.toLowerCase());
+    const colG = String(row[2] || '').trim();
+    const colH = String(row[3] || '').trim();
+    const isFilledF = colF !== '' && !ignoredValues.includes(colF.toLowerCase());
+    const isFilledG = colG !== '' && !ignoredValues.includes(colG.toLowerCase());
+    const isFilledH = colH !== '' && !ignoredValues.includes(colH.toLowerCase());
+    return isFilledF || isFilledG || isFilledH;
   }
 };
 
@@ -310,30 +320,58 @@ export default function AutoOrganizeTab({ token, sheetName, onRefreshTrigger, ha
         }
       });
 
-      // Find last filled client row in 1HRGT and RVA
-      let lastFilled1HRIdx = -1;
-      for (let i = 0; i < sheet1HRValues.length; i++) {
-        if (isRowFilled(sheet1HRValues[i], '1HRGT')) {
-          lastFilled1HRIdx = i;
+      // Find FIRST available empty row in 1HRGT (where CLIENT, COUNTRY, and LANGUAGE are empty)
+      let dataStart1HRIdx = 1;
+      while (dataStart1HRIdx < sheet1HRValues.length && isHeaderRow(sheet1HRValues[dataStart1HRIdx], '1HRGT')) {
+        dataStart1HRIdx++;
+      }
+      let firstAvailable1HRIdx = -1;
+      for (let i = dataStart1HRIdx; i < sheet1HRValues.length; i++) {
+        if (!isHeaderRow(sheet1HRValues[i], '1HRGT') && !isRowFilled(sheet1HRValues[i], '1HRGT')) {
+          firstAvailable1HRIdx = i;
+          break;
         }
       }
-      const start1HRIdx = lastFilled1HRIdx >= 0 ? lastFilled1HRIdx + 1 : 1;
+      const start1HRIdx = firstAvailable1HRIdx >= 0 ? firstAvailable1HRIdx : Math.max(sheet1HRValues.length, dataStart1HRIdx);
 
-      let lastFilledRVAIdx = -1;
-      for (let i = 0; i < sheetRVAValues.length; i++) {
-        if (isRowFilled(sheetRVAValues[i], 'RVA')) {
-          lastFilledRVAIdx = i;
+      // Find FIRST available empty row in RVA (where CLIENT, COUNTRY, and LANGUAGE are empty)
+      let dataStartRVAIdx = 1;
+      while (dataStartRVAIdx < sheetRVAValues.length && isHeaderRow(sheetRVAValues[dataStartRVAIdx], 'RVA')) {
+        dataStartRVAIdx++;
+      }
+      let firstAvailableRVAIdx = -1;
+      for (let i = dataStartRVAIdx; i < sheetRVAValues.length; i++) {
+        if (!isHeaderRow(sheetRVAValues[i], 'RVA') && !isRowFilled(sheetRVAValues[i], 'RVA')) {
+          firstAvailableRVAIdx = i;
+          break;
         }
       }
-      const startRVAIdx = lastFilledRVAIdx >= 0 ? lastFilledRVAIdx + 1 : 1;
+      const startRVAIdx = firstAvailableRVAIdx >= 0 ? firstAvailableRVAIdx : Math.max(sheetRVAValues.length, dataStartRVAIdx);
 
-      // Find highest DL in both sheets
+      // Find highest DL in both sheets as fallback
       const { maxDL: maxDL1HR, prefix: prefix1HR } = getMaxDLNumber(sheet1HRValues);
       const { maxDL: maxDLRVA, prefix: prefixRVA } = getMaxDLNumber(sheetRVAValues);
 
+      // Determine DL preceding start1HRIdx
+      let lastDL1HRBeforeStart = 0;
+      let detectedPrefix1HR = prefix1HR || 'B';
+      for (let i = start1HRIdx - 1; i >= 0; i--) {
+        const r = sheet1HRValues[i];
+        if (r && r[0]) {
+          const m = String(r[0]).trim().match(/([A-Za-z]*)[\s-]*(\d+)/);
+          if (m) {
+            lastDL1HRBeforeStart = parseInt(m[2], 10);
+            if (m[1] && m[1].trim()) {
+              detectedPrefix1HR = m[1].toUpperCase().includes('B') ? 'B' : m[1].trim();
+            }
+            break;
+          }
+        }
+      }
+
       // Collect strictly consecutive rows pool for 1HRGT
       let pool1HR = [];
-      let currentDLNum1HR = maxDL1HR;
+      let currentDLNum1HR = lastDL1HRBeforeStart > 0 ? lastDL1HRBeforeStart : maxDL1HR;
       for (let i = start1HRIdx; pool1HR.length < 60; i++) {
         const row = sheet1HRValues[i];
         let dl = '';
@@ -342,18 +380,35 @@ export default function AutoOrganizeTab({ token, sheetName, onRefreshTrigger, ha
           const m = dl.match(/(\d+)/);
           if (m) {
             const num = parseInt(m[1], 10);
-            if (num > currentDLNum1HR) currentDLNum1HR = num;
+            currentDLNum1HR = num;
           }
         } else {
           currentDLNum1HR++;
-          dl = `${prefix1HR}${currentDLNum1HR}`;
+          dl = `${detectedPrefix1HR}${currentDLNum1HR}`;
         }
         pool1HR.push({ rowIdx: i + 1, dl });
       }
 
+      // Determine DL preceding startRVAIdx
+      let lastDLRVABeforeStart = 0;
+      let detectedPrefixRVA = prefixRVA || 'B';
+      for (let i = startRVAIdx - 1; i >= 0; i--) {
+        const r = sheetRVAValues[i];
+        if (r && r[0]) {
+          const m = String(r[0]).trim().match(/([A-Za-z]*)[\s-]*(\d+)/);
+          if (m) {
+            lastDLRVABeforeStart = parseInt(m[2], 10);
+            if (m[1] && m[1].trim()) {
+              detectedPrefixRVA = m[1].toUpperCase().includes('B') ? 'B' : m[1].trim();
+            }
+            break;
+          }
+        }
+      }
+
       // Collect strictly consecutive rows pool for RVA
       let poolRVA = [];
-      let currentDLNumRVA = maxDLRVA;
+      let currentDLNumRVA = lastDLRVABeforeStart > 0 ? lastDLRVABeforeStart : maxDLRVA;
       for (let i = startRVAIdx; poolRVA.length < 60; i++) {
         const row = sheetRVAValues[i];
         let dl = '';
@@ -362,11 +417,11 @@ export default function AutoOrganizeTab({ token, sheetName, onRefreshTrigger, ha
           const m = dl.match(/(\d+)/);
           if (m) {
             const num = parseInt(m[1], 10);
-            if (num > currentDLNumRVA) currentDLNumRVA = num;
+            currentDLNumRVA = num;
           }
         } else {
           currentDLNumRVA++;
-          dl = `${prefixRVA}${currentDLNumRVA}`;
+          dl = `${detectedPrefixRVA}${currentDLNumRVA}`;
         }
         poolRVA.push({ rowIdx: i + 1, dl });
       }

@@ -75,13 +75,23 @@ export const isRowFilled = (row, tab) => {
   const ignoredValues = ['jc', 'alex', 'trans', 'traductor', 'none', '-', '--', 'n/a', 'nombre', 'client', 'cliente', 'name', 'customer', 'total', 'suma', 'resumen', 'notas', 'observaciones'];
   
   if (tab === '1HRGT') {
-    // 1HRGT: Column G (index 2) is Client Name
+    // 1HRGT: Column G (index 2) is Client Name, Column H (index 3) is Country, Column I (index 4) is Language
     const colG = String(row[2] || '').trim();
-    return colG !== '' && !ignoredValues.includes(colG.toLowerCase());
+    const colH = String(row[3] || '').trim();
+    const colI = String(row[4] || '').trim();
+    const isFilledG = colG !== '' && !ignoredValues.includes(colG.toLowerCase());
+    const isFilledH = colH !== '' && !ignoredValues.includes(colH.toLowerCase());
+    const isFilledI = colI !== '' && !ignoredValues.includes(colI.toLowerCase());
+    return isFilledG || isFilledH || isFilledI;
   } else {
-    // RVA: Column F (index 1) is Client Name
+    // RVA: Column F (index 1) is Client Name, Column G (index 2) is Country, Column H (index 3) is Language
     const colF = String(row[1] || '').trim();
-    return colF !== '' && !ignoredValues.includes(colF.toLowerCase());
+    const colG = String(row[2] || '').trim();
+    const colH = String(row[3] || '').trim();
+    const isFilledF = colF !== '' && !ignoredValues.includes(colF.toLowerCase());
+    const isFilledG = colG !== '' && !ignoredValues.includes(colG.toLowerCase());
+    const isFilledH = colH !== '' && !ignoredValues.includes(colH.toLowerCase());
+    return isFilledF || isFilledG || isFilledH;
   }
 };
 
@@ -582,24 +592,52 @@ function App() {
       const sheetData = await sheetRes.json();
       const values = sheetData.values || [];
 
-      // Find highest DL number in sheet
+      // Find highest DL number in sheet as fallback
       const { maxDL, prefix } = getMaxDLNumber(values);
 
-      // Find last filled client row
-      let lastFilledClientIdx = -1;
-      for (let i = 0; i < values.length; i++) {
-        if (isRowFilled(values[i], tab)) {
-          lastFilledClientIdx = i;
+      // Find the FIRST available empty row (where CLIENT, COUNTRY, and LANGUAGE are empty)
+      let dataStartIdx = 1;
+      while (dataStartIdx < values.length && isHeaderRow(values[dataStartIdx], tab)) {
+        dataStartIdx++;
+      }
+
+      let firstAvailableIdx = -1;
+      for (let i = dataStartIdx; i < values.length; i++) {
+        const row = values[i];
+        if (!isHeaderRow(row, tab) && !isRowFilled(row, tab)) {
+          firstAvailableIdx = i;
+          break;
         }
       }
 
-      // The target row is immediately after the last filled client
-      const startIdx = lastFilledClientIdx >= 0 ? lastFilledClientIdx + 1 : 1;
+      // If no empty row found within existing values, append after the last row
+      if (firstAvailableIdx === -1) {
+        firstAvailableIdx = Math.max(values.length, dataStartIdx);
+      }
+
+      const startIdx = firstAvailableIdx;
       const targetRowIdx = startIdx + 1; // 1-indexed for Sheets
+
+      // Determine the DL number preceding startIdx (if any)
+      let lastDLBeforeStart = 0;
+      let detectedPrefix = prefix || 'B';
+      for (let i = startIdx - 1; i >= 0; i--) {
+        const r = values[i];
+        if (r && r[0]) {
+          const m = String(r[0]).trim().match(/([A-Za-z]*)[\s-]*(\d+)/);
+          if (m) {
+            lastDLBeforeStart = parseInt(m[2], 10);
+            if (m[1] && m[1].trim()) {
+              detectedPrefix = m[1].toUpperCase().includes('B') ? 'B' : m[1].trim();
+            }
+            break;
+          }
+        }
+      }
 
       // Collect available consecutive DLs (at least 6)
       let availableTrackings = [];
-      let currentDLNum = maxDL;
+      let currentDLNum = lastDLBeforeStart > 0 ? lastDLBeforeStart : maxDL;
       for (let i = startIdx; availableTrackings.length < 6; i++) {
         const row = values[i];
         let dl = '';
@@ -608,16 +646,16 @@ function App() {
           const m = dl.match(/(\d+)/);
           if (m) {
             const num = parseInt(m[1], 10);
-            if (num > currentDLNum) currentDLNum = num;
+            currentDLNum = num;
           }
         } else {
           currentDLNum++;
-          dl = `${prefix}${currentDLNum}`;
+          dl = `${detectedPrefix}${currentDLNum}`;
         }
         availableTrackings.push(dl);
       }
 
-      const trackingId = availableTrackings[0] || `${prefix}${maxDL + 1}`;
+      const trackingId = availableTrackings[0] || `${detectedPrefix}${currentDLNum}`;
 
       let licensesCount = 1;
       let finalTrackingLabel = `${trackingId} ${nombre}`.trim();
