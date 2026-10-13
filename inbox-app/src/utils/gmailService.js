@@ -114,8 +114,11 @@ export async function sendEmailWithPdf(token, toEmail, subject, htmlBody, pdfBlo
   });
 
   if (!response.ok) {
-    const err = await response.json();
-    throw new Error(err.error?.message || 'Failed to send email');
+    if (response.status === 401) {
+      throw new Error("Tu sesión de Google ha expirado. Por favor vuelve a iniciar sesión con un clic.");
+    }
+    const err = await response.json().catch(() => ({}));
+    throw new Error(err.error?.message || `Failed to send email (${response.status})`);
   }
   
   return response.json();

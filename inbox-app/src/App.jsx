@@ -1760,7 +1760,12 @@ const getCleanClientLabelName = (rawName) => {
       setIsTranslationModalOpen(false);
     } catch (err) {
       console.error(err);
-      alert("Error enviando correo: " + err.message);
+      if (err.message && (err.message.includes('expirado') || err.message.includes('authentication credentials') || err.message.includes('401') || err.message.includes('Unauthorized') || err.message.includes('invalid_token'))) {
+        handleAuthError(401);
+      } else {
+        alert("Error enviando correo: " + err.message);
+      }
+      throw err;
     } finally {
       setProcessing(false);
     }
