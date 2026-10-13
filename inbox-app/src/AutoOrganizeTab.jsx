@@ -615,17 +615,17 @@ export default function AutoOrganizeTab({ token, sheetName, onRefreshTrigger, ha
             if (order.tab === '1HRGT') {
               // 1HRGT: E=DL, F=TRANS ("JC"), G=Client, H=Country, I=Language, J=Payment, K=Price
               sheetUpdates.push({
-                range: `${order.tab}!E${currentRow}:K${currentRow}`,
+                range: `'${order.tab}'!E${currentRow}:K${currentRow}`,
                 values: [[currentDL, "JC", order.fullName, order.country, order.language, order.paymentMethod, currentPrice]]
               });
             } else {
               // RVA: E=DL, F=Client, G=Country, H=Language, I=Payment, J=Price, N=TRANS ("JC")
               sheetUpdates.push({
-                range: `${order.tab}!E${currentRow}:J${currentRow}`,
+                range: `'${order.tab}'!E${currentRow}:J${currentRow}`,
                 values: [[currentDL, order.fullName, order.country, order.language, order.paymentMethod, currentPrice]]
               });
               sheetUpdates.push({
-                range: `${order.tab}!N${currentRow}`,
+                range: `'${order.tab}'!N${currentRow}`,
                 values: [["JC"]]
               });
             }
@@ -641,7 +641,9 @@ export default function AutoOrganizeTab({ token, sheetName, onRefreshTrigger, ha
           });
 
           if (!updateRes.ok) {
-            throw new Error(`Error escribiendo en Sheets (${updateRes.status})`);
+            const errData = await updateRes.json().catch(() => ({}));
+            const detailedMsg = errData?.error?.message || `HTTP ${updateRes.status}`;
+            throw new Error(`Google Sheets (${updateRes.status}): ${detailedMsg}`);
           }
         }
 

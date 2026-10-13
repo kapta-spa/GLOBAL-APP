@@ -181,7 +181,8 @@ function App() {
   });
   
   const [sheetName, setSheetName] = useState(() => {
-    return localStorage.getItem('sheetName') || 'July 2026';
+    const defaultMonthYear = new Date().toLocaleString('en-US', { month: 'long', year: 'numeric' });
+    return localStorage.getItem('sheetName') || defaultMonthYear;
   });
 
   const [geminiApiKey, setGeminiApiKey] = useState(() => {
@@ -519,6 +520,7 @@ function App() {
       // 3. Find Spreadsheet ID
       const cleanSheetName = (sheetName || '').trim();
       let spreadsheetId = null;
+      let spreadsheetTitle = '';
 
       if (cleanSheetName) {
         const escapedName = cleanSheetName.replace(/'/g, "\\'");
@@ -530,7 +532,9 @@ function App() {
           const driveData = await driveRes.json();
           if (driveData.files && driveData.files.length > 0) {
             const exactMatch = driveData.files.find(f => f.name.trim().toLowerCase() === cleanSheetName.toLowerCase());
-            spreadsheetId = exactMatch ? exactMatch.id : driveData.files[0].id;
+            const pickedFile = exactMatch || driveData.files[0];
+            spreadsheetId = pickedFile.id;
+            spreadsheetTitle = pickedFile.name;
           }
         }
       }
@@ -554,6 +558,7 @@ function App() {
                 const titles = (metaData.sheets || []).map(s => s.properties?.title);
                 if (titles.includes('1HRGT') || titles.includes('RVA')) {
                   spreadsheetId = file.id;
+                  spreadsheetTitle = file.name;
                   break;
                 }
               }
@@ -569,7 +574,7 @@ function App() {
       }
 
       // 4. Fetch Sheet Data to find empty row
-      const sheetRes = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${tab}!E:K`, {
+      const sheetRes = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent("'" + tab + "'!E:K")}`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       if (sheetRes.status === 401) handleAuthError(sheetRes.status);
@@ -639,14 +644,15 @@ function App() {
         country,
         language,
         price,
-        spreadsheetId
+        spreadsheetId,
+        spreadsheetTitle: spreadsheetTitle || cleanSheetName
       });
       
       setIsPreviewModalOpen(true);
     } catch (err) {
-      console.error(err);
+      console.error("Error al registrar:", err);
       if (err.message !== "Unauthorized") {
-        alert(`Error al registrar: ${err.message}`);
+        alert(`Error al preparar registro:\n\n${err.message}`);
       }
     } finally {
       setProcessing(false);
@@ -667,17 +673,17 @@ function App() {
         if (tab === '1HRGT') {
           // 1HRGT: E=DL, F=TRANS ("JC"), G=Client, H=Country, I=Language, J=Payment, K=Price
           sheetValues.push({
-            range: `${tab}!E${rowIdx + i}:K${rowIdx + i}`,
+            range: `'${tab}'!E${rowIdx + i}:K${rowIdx + i}`,
             values: [[currentDL, "JC", client, country, language, "Stripe", currentPrice]]
           });
         } else {
           // RVA: E=DL, F=Client, G=Country, H=Language, I=Payment, J=Price, N=TRANS ("JC")
           sheetValues.push({
-            range: `${tab}!E${rowIdx + i}:J${rowIdx + i}`,
+            range: `'${tab}'!E${rowIdx + i}:J${rowIdx + i}`,
             values: [[currentDL, client, country, language, "Stripe", currentPrice]]
           });
           sheetValues.push({
-            range: `${tab}!N${rowIdx + i}`,
+            range: `'${tab}'!N${rowIdx + i}`,
             values: [["JC"]]
           });
         }
@@ -695,7 +701,10 @@ function App() {
       handleAuthError(updateRes.status);
 
       if (!updateRes.ok) {
-        throw new Error("Fallo al actualizar Google Sheets");
+        const errorData = await updateRes.json().catch(() => ({}));
+        const detailedMsg = errorData?.error?.message || `HTTP ${updateRes.status} (${updateRes.statusText})`;
+        console.error("Error detallado de Google Sheets batchUpdate:", errorData);
+        throw new Error(`Google Sheets (${updateRes.status}): ${detailedMsg}`);
       }
 
       // After updating Sheets, assign the label and move the email
@@ -703,9 +712,9 @@ function App() {
       setIsPreviewModalOpen(false);
 
     } catch (err) {
-      console.error(err);
+      console.error("Error al confirmar el registro:", err);
       if (err.message !== "Unauthorized") {
-        alert("Error al confirmar el registro.");
+        alert(`Error al confirmar el registro:\n\n${err.message}`);
       }
     } finally {
       setProcessing(false);
@@ -1640,14 +1649,14 @@ const getCleanClientLabelName = (rawName) => {
                      (cleanDlVal && cleanTdl && cleanDlVal.includes(cleanTdl));
             });
 
-            if (dlMatch) {
-              const rowNum = r + 1; // 1-indexed for Google Sheets
-              updateRanges.push({
-                range: `${tab}!${statusColLetter}${rowNum}`,
-                values: [["Completed"]] // Exact match for Google Sheet green dropdown option "Completed"
-              });
-              updatedInfo.push(`${tab} (fila ${rowNum}, ${dlVal || targetDLs.join(', ')})`);
-            }
+              if (dlMatch) {
+                const rowNum = r + 1; // 1-indexed for Google Sheets
+                updateRanges.push({
+                  range: `'${tab}'!${statusColLetter}${rowNum}`,
+                  values: [["Completed"]] // Exact match for Google Sheet green dropdown option "Completed"
+                });
+                updatedInfo.push(`${tab} (fila ${rowNum}, ${dlVal || targetDLs.join(', ')})`);
+              }
           }
         } catch (tabErr) {
           console.warn(`Error al revisar pestaña ${tab}:`, tabErr);
@@ -2094,6 +2103,14 @@ const getCleanClientLabelName = (rawName) => {
           </div>
           
           <div style={{ flex: 1, overflowY: 'auto' }}>
+             <div className="input-group" style={{ marginBottom: '14px' }}>
+                <label className="input-label">Archivo de Google Sheets</label>
+                <div style={{ padding: '8px 12px', background: 'var(--surface-color)', border: '1px solid var(--border-color)', borderRadius: '6px', fontSize: '0.88rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <span style={{ fontWeight: '600', color: 'var(--text-primary)' }}>📊 {previewData.spreadsheetTitle || sheetName}</span>
+                  <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Fila: {previewData.rowIdx}</span>
+                </div>
+             </div>
+
              <div className="input-group">
                 <label className="input-label">Pestaña Detectada</label>
                 <select 
