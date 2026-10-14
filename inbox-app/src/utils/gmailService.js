@@ -62,8 +62,24 @@ export function extractClientEmailFromMessage(msgData, emailText = '') {
   return '';
 }
 
+const blobToBase64 = (blob) => {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      const dataUrl = reader.result;
+      if (typeof dataUrl === 'string' && dataUrl.includes(',')) {
+        resolve(dataUrl.split(',')[1]);
+      } else {
+        resolve('');
+      }
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
+};
+
 export async function sendEmailWithPdf(token, toEmail, subject, htmlBody, pdfBlobsArray) {
-  const boundary = 'foo_bar_baz_boundary';
+  const boundary = 'foo_bar_baz_boundary_' + Date.now();
   
   // Encode headers properly for UTF-8 Subject
   const utf8Subject = `=?utf-8?B?${btoa(unescape(encodeURIComponent(subject)))}?=`;
@@ -79,20 +95,14 @@ export async function sendEmailWithPdf(token, toEmail, subject, htmlBody, pdfBlo
   emailContent += `${htmlBody}\r\n\r\n`;
   
   for (const pdfItem of pdfBlobsArray) {
-    const arrayBuffer = await pdfItem.blob.arrayBuffer();
-    const bytes = new Uint8Array(arrayBuffer);
-    let binary = '';
-    for (let i = 0; i < bytes.byteLength; i++) {
-      binary += String.fromCharCode(bytes[i]);
-    }
-    const base64Attachment = btoa(binary);
+    const base64Attachment = await blobToBase64(pdfItem.blob);
     
     emailContent += `--${boundary}\r\n`;
     emailContent += `Content-Type: application/pdf; name="${pdfItem.name}.pdf"\r\n`;
     emailContent += `Content-Disposition: attachment; filename="${pdfItem.name}.pdf"\r\n`;
     emailContent += `Content-Transfer-Encoding: base64\r\n\r\n`;
     
-    const chunkedBase64 = base64Attachment.match(/.{1,76}/g).join('\r\n');
+    const chunkedBase64 = base64Attachment ? (base64Attachment.match(/.{1,76}/g)?.join('\r\n') || base64Attachment) : '';
     emailContent += `${chunkedBase64}\r\n\r\n`;
   }
   
@@ -104,23 +114,36 @@ export async function sendEmailWithPdf(token, toEmail, subject, htmlBody, pdfBlo
     .replace(/\//g, '_')
     .replace(/=+$/, '');
 
-  const response = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages/send', {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({ raw: encodedEmail })
-  });
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 45000); // 45s safety timeout
 
-  if (!response.ok) {
-    if (response.status === 401) {
-      throw new Error("Tu sesión de Google ha expirado. Por favor vuelve a iniciar sesión con un clic.");
+  try {
+    const response = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages/send', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ raw: encodedEmail }),
+      signal: controller.signal
+    });
+
+    if (!response.ok) {
+      if (response.status === 401) {
+        throw new Error("Tu sesión de Google ha expirado. Por favor vuelve a iniciar sesión con un clic.");
+      }
+      const err = await response.json().catch(() => ({}));
+      throw new Error(err.error?.message || `Failed to send email (${response.status})`);
     }
-    const err = await response.json().catch(() => ({}));
-    throw new Error(err.error?.message || `Failed to send email (${response.status})`);
+    
+    return await response.json();
+  } catch (fetchErr) {
+    if (fetchErr.name === 'AbortError') {
+      throw new Error("El envío de correo tardó más de 45 segundos y se detuvo. Por favor verifica tu conexión e intenta de nuevo.");
+    }
+    throw fetchErr;
+  } finally {
+    clearTimeout(timeoutId);
   }
-  
-  return response.json();
 }
 

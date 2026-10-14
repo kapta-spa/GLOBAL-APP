@@ -1601,6 +1601,17 @@ const getCleanClientLabelName = (rawName) => {
   };
 
   const updateSheetStatusCompleted = async (token, folderName, docs, currentSheetName) => {
+    const fetchWithTimeout = async (url, options = {}, timeoutMs = 20000) => {
+      const controller = new AbortController();
+      const id = setTimeout(() => controller.abort(), timeoutMs);
+      try {
+        const res = await fetch(url, { ...options, signal: controller.signal });
+        return res;
+      } finally {
+        clearTimeout(id);
+      }
+    };
+
     try {
       const targetDLs = extractDLNumbers(folderName, docs);
       console.log("Actualizando Status a COMPLETED para DLs:", targetDLs, "en carpeta:", folderName);
@@ -1613,8 +1624,8 @@ const getCleanClientLabelName = (rawName) => {
       const driveQuery = `(name = '${escapedName}' or name contains '${escapedName}') and mimeType = 'application/vnd.google-apps.spreadsheet' and trashed = false`;
       const driveUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(driveQuery)}&supportsAllDrives=true&includeItemsFromAllDrives=true&fields=files(id,name)`;
       
-      const driveRes = await fetch(driveUrl, { headers: { Authorization: `Bearer ${token}` } });
-      if (driveRes.ok) {
+      const driveRes = await fetchWithTimeout(driveUrl, { headers: { Authorization: `Bearer ${token}` } }).catch(() => null);
+      if (driveRes && driveRes.ok) {
         const driveData = await driveRes.json();
         if (driveData.files && driveData.files.length > 0) {
           const exactMatch = driveData.files.find(f => f.name.trim().toLowerCase() === cleanSheetName.toLowerCase());
@@ -1624,17 +1635,17 @@ const getCleanClientLabelName = (rawName) => {
 
       // 2. If not found by name, discover recent spreadsheets containing 1HRGT or RVA tabs
       if (!spreadsheetId) {
-        const recentRes = await fetch(
+        const recentRes = await fetchWithTimeout(
           `https://www.googleapis.com/drive/v3/files?q=mimeType%3D'application%2Fvnd.google-apps.spreadsheet'%20and%20trashed%3Dfalse&orderBy=modifiedTime%20desc&pageSize=10&supportsAllDrives=true&includeItemsFromAllDrives=true&fields=files(id,name)`,
           { headers: { Authorization: `Bearer ${token}` } }
-        );
-        if (recentRes.ok) {
+        ).catch(() => null);
+        if (recentRes && recentRes.ok) {
           const recentData = await recentRes.json();
           for (const file of (recentData.files || [])) {
             try {
-              const metaRes = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${file.id}?fields=sheets.properties.title`, {
+              const metaRes = await fetchWithTimeout(`https://sheets.googleapis.com/v4/spreadsheets/${file.id}?fields=sheets.properties.title`, {
                 headers: { Authorization: `Bearer ${token}` }
-              });
+              }, 10000);
               if (metaRes.ok) {
                 const metaData = await metaRes.json();
                 const titles = (metaData.sheets || []).map(s => s.properties?.title);
@@ -1643,7 +1654,7 @@ const getCleanClientLabelName = (rawName) => {
                   break;
                 }
               }
-            } catch (e) {
+            } catch {
               // ignore
             }
           }
@@ -1662,10 +1673,10 @@ const getCleanClientLabelName = (rawName) => {
 
       for (const tab of tabsToCheck) {
         try {
-          const sheetRes = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${tab}!A1:Z1000`, {
+          const sheetRes = await fetchWithTimeout(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${tab}!A1:Z1000`, {
             headers: { Authorization: `Bearer ${token}` }
-          });
-          if (!sheetRes.ok) continue;
+          }, 15000).catch(() => null);
+          if (!sheetRes || !sheetRes.ok) continue;
           
           const sheetData = await sheetRes.json();
           const rows = sheetData.values || [];
@@ -1730,14 +1741,14 @@ const getCleanClientLabelName = (rawName) => {
 
       if (updateRanges.length > 0) {
         console.log("Enviando actualización de Status a Completed:", updateRanges);
-        const updateRes = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values:batchUpdate`, {
+        const updateRes = await fetchWithTimeout(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values:batchUpdate`, {
           method: 'POST',
           headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
           body: JSON.stringify({
             valueInputOption: 'USER_ENTERED',
             data: updateRanges
           })
-        });
+        }, 15000);
         
         if (!updateRes.ok) {
           const errDetail = await updateRes.text();
@@ -1781,48 +1792,68 @@ const getCleanClientLabelName = (rawName) => {
           <a href="https://wa.me/64220962125">WhatsApp Chat</a>
         </div>
         <div style="text-align: center; margin-top: 20px; font-size: 11px; color: #64748b; font-style: italic;">
-          Ngā Mihi. शुक्रिया. Thank you. 谢谢. Gracias. ありがとう. Danke. شكra. Obrigado.<br />
+          Ngā Mihi. शुक्रिया. Thank you. 谢谢. Gracias. ありがとう. Danke. شكرا. Obrigado.<br />
           “The World is but one country, and mankind its citizens.” Bahá’u’lláh
         </div>
       `;
       
+      const currentFolder = editorFolder;
+      const currentDocs = [...processedDocs];
+      const itemToMove = activeEmailItem;
+
+      // 1. Send the email with PDFs attached
       await sendEmailWithPdf(token, finalEmailTo, subject, htmlBody, pdfBlobsArray);
       
-      const sheetResult = await updateSheetStatusCompleted(token, editorFolder, processedDocs, sheetName);
-      
-      if (sheetResult && sheetResult.success) {
-        alert(`✅ Correo enviado exitosamente a ${finalEmailTo}\n📊 Estado actualizado a 'Completed' en Google Sheets: ${sheetResult.details}`);
-      } else {
-        alert(`✅ Correo enviado exitosamente a ${finalEmailTo}\n⚠️ Nota: No se pudo actualizar el Status en el Sheet (${sheetResult?.reason || 'Revisar configuración de hoja'}).`);
-      }
+      // 2. Update status to 'Completed' in Google Sheets
+      const sheetResult = await updateSheetStatusCompleted(token, currentFolder, currentDocs, sheetName);
 
-      
-      if (activeEmailItem) {
+      // 3. IMMEDIATELY close modals and reset state so the interface NEVER gets stuck spinning
+      setIsEmailPreviewOpen(false);
+      setIsTranslationModalOpen(false);
+      setProcessedDocs([]);
+      setLicenseQueue([]);
+      setCroppedImages([]);
+      setExtractedData(null);
+      setEditorUrls([]);
+      setEditorFolder('');
+      setActiveCustomerEmail('');
+      setActiveEmailItem(null);
+
+      // 4. Move finished label to Month archive folder in the background
+      if (itemToMove) {
         try {
           const monthFolder = await getMonthFolderLabel(token);
           if (monthFolder && monthFolder.name) {
-            const cleanChildName = getCleanClientLabelName(activeEmailItem.displayName || activeEmailItem.name);
+            const cleanChildName = getCleanClientLabelName(itemToMove.displayName || itemToMove.name);
             const newName = `${monthFolder.name}/${cleanChildName}`;
             console.log(`Moviendo etiqueta finalizada a: ${newName}`);
-            const patchRes = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/labels/${activeEmailItem.id}`, {
+            const patchRes = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/labels/${itemToMove.id}`, {
               method: 'PATCH',
               headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
               body: JSON.stringify({ name: newName })
             });
             if (patchRes.ok) {
               console.log("Etiqueta movida con éxito a carpeta del mes:", newName);
-              setActiveLabels(prev => prev.filter(l => l.id !== activeEmailItem.id));
+              setActiveLabels(prev => prev.filter(l => l.id !== itemToMove.id));
             } else {
-              setActiveLabels(prev => prev.map(l => l.id === activeEmailItem.id ? { ...l, sent: true, completed: true } : l));
+              setActiveLabels(prev => prev.map(l => l.id === itemToMove.id ? { ...l, sent: true, completed: true } : l));
             }
           }
         } catch (labelErr) {
           console.warn("No se pudo mover la etiqueta automáticamente:", labelErr);
-          setActiveLabels(prev => prev.map(l => l.id === activeEmailItem.id ? { ...l, sent: true, completed: true } : l));
+          setActiveLabels(prev => prev.map(l => l.id === itemToMove.id ? { ...l, sent: true, completed: true } : l));
         }
       }
-      setIsEmailPreviewOpen(false);
-      setIsTranslationModalOpen(false);
+
+      // 5. Notify user of success after modals have been closed
+      setTimeout(() => {
+        if (sheetResult && sheetResult.success) {
+          alert(`✅ Correo enviado exitosamente a ${finalEmailTo}\n📊 Estado actualizado a 'Completed' en Google Sheets: ${sheetResult.details}`);
+        } else {
+          alert(`✅ Correo enviado exitosamente a ${finalEmailTo}\n⚠️ Nota: No se pudo actualizar el Status en el Sheet (${sheetResult?.reason || 'Revisar configuración de hoja'}).`);
+        }
+      }, 100);
+
     } catch (err) {
       console.error(err);
       if (err.message && (err.message.includes('expirado') || err.message.includes('authentication credentials') || err.message.includes('401') || err.message.includes('Unauthorized') || err.message.includes('invalid_token'))) {
@@ -2364,19 +2395,22 @@ const getCleanClientLabelName = (rawName) => {
         />
       </ErrorBoundary>
 
-      <EmailPreviewModal
-        isOpen={isEmailPreviewOpen}
-        onClose={() => setIsEmailPreviewOpen(false)}
-        processedDocs={processedDocs}
-        folderName={editorFolder}
-        customerEmail={activeCustomerEmail}
-        token={token}
-        onSendEmail={handleSendEmailFinal}
-        onBack={() => {
-          setIsEmailPreviewOpen(false);
-          setIsTranslationModalOpen(true);
-        }}
-      />
+      {isEmailPreviewOpen && (
+        <EmailPreviewModal
+          key={`${editorFolder || 'modal'}_${processedDocs.map(d => d.name).join('_')}_${activeCustomerEmail || ''}`}
+          isOpen={isEmailPreviewOpen}
+          onClose={() => setIsEmailPreviewOpen(false)}
+          processedDocs={processedDocs}
+          folderName={editorFolder}
+          customerEmail={activeCustomerEmail}
+          token={token}
+          onSendEmail={handleSendEmailFinal}
+          onBack={() => {
+            setIsEmailPreviewOpen(false);
+            setIsTranslationModalOpen(true);
+          }}
+        />
+      )}
 
       <EmailDetailModal
         email={viewingEmail}

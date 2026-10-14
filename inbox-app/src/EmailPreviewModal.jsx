@@ -21,15 +21,35 @@ export default function EmailPreviewModal({
 
   useEffect(() => {
     if (isOpen) {
+      setIsSending(false);
+      setIsConverting(false);
+      setError('');
+      setPdfBlobs([]);
       if (isValidCustomerEmail(customerEmail)) {
         setEmailTo(customerEmail);
       } else {
         setEmailTo('');
       }
     }
-  }, [isOpen, customerEmail]);
+  }, [isOpen, customerEmail, folderName]);
 
   if (!isOpen) return null;
+
+  const handleClose = () => {
+    setIsSending(false);
+    setIsConverting(false);
+    setPdfBlobs([]);
+    setError('');
+    onClose();
+  };
+
+  const handleBack = () => {
+    setIsSending(false);
+    setIsConverting(false);
+    setPdfBlobs([]);
+    setError('');
+    onBack();
+  };
 
   const handleConvertToPdf = async () => {
     setIsConverting(true);
@@ -86,9 +106,21 @@ export default function EmailPreviewModal({
       return;
     }
     setIsSending(true);
+    setError('');
+
+    // Safety timeout: Never stay stuck for more than 50 seconds
+    const timeoutId = setTimeout(() => {
+      setIsSending(false);
+      setError("El proceso de envío tardó demasiado. Por favor verifica si el correo llegó al cliente o intenta de nuevo.");
+    }, 50000);
+
     try {
       await onSendEmail(pdfBlobs, cleanEmail);
     } catch (err) {
+      console.error("Error enviando correo:", err);
+      setError(`Error al enviar: ${err.message || 'Error desconocido'}`);
+    } finally {
+      clearTimeout(timeoutId);
       setIsSending(false);
     }
   };
@@ -104,7 +136,7 @@ export default function EmailPreviewModal({
             left: 0,
             right: 0,
             bottom: 0,
-            backgroundColor: 'rgba(15, 23, 42, 0.85)',
+            backgroundColor: 'rgba(15, 23, 42, 0.90)',
             backdropFilter: 'blur(4px)',
             borderRadius: '12px',
             display: 'flex',
@@ -125,6 +157,23 @@ export default function EmailPreviewModal({
             <p style={{ margin: 0, fontSize: '0.95rem', color: '#94a3b8', maxWidth: '420px', lineHeight: '1.5' }}>
               Enviando correo al cliente con los PDFs adjuntos y actualizando Google Sheets. Por favor espera un momento...
             </p>
+            <button
+              type="button"
+              onClick={() => setIsSending(false)}
+              style={{
+                marginTop: '20px',
+                padding: '8px 18px',
+                backgroundColor: 'rgba(239, 68, 68, 0.2)',
+                border: '1px solid #ef4444',
+                color: '#fca5a5',
+                borderRadius: '6px',
+                fontSize: '0.85rem',
+                cursor: 'pointer',
+                fontWeight: '600'
+              }}
+            >
+              Cancelar / Desbloquear
+            </button>
           </div>
         )}
 
@@ -148,7 +197,7 @@ export default function EmailPreviewModal({
             )}
             <span style={{ fontSize: '13px', color: '#6b7280' }}>({folderName})</span>
           </div>
-          <button className="icon-btn" onClick={onClose} disabled={isSending}>
+          <button className="icon-btn" onClick={handleClose} disabled={isSending}>
             <X size={24} />
           </button>
         </div>
@@ -361,10 +410,10 @@ export default function EmailPreviewModal({
         </div>
 
         <div className="modal-footer" style={{ marginTop: '20px', display: 'flex', flexWrap: 'wrap', justifyContent: 'flex-end', gap: '10px' }}>
-          <button className="btn-secondary" onClick={onBack} disabled={isSending} style={{ marginRight: 'auto', display: 'flex', alignItems: 'center' }}>
+          <button className="btn-secondary" onClick={handleBack} disabled={isSending} style={{ marginRight: 'auto', display: 'flex', alignItems: 'center' }}>
             <ArrowLeft size={18} style={{ marginRight: '8px' }} /> Volver
           </button>
-          <button className="btn-secondary" onClick={onClose} disabled={isSending}>Cancelar</button>
+          <button className="btn-secondary" onClick={handleClose} disabled={isSending}>Cancelar</button>
           <button 
             className="btn-primary" 
             onClick={handleSend} 
