@@ -1,0 +1,8 @@
+{
+  "name": "GERMAN FULL",
+  "description": "Driver license OCR, translation and docx generation",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

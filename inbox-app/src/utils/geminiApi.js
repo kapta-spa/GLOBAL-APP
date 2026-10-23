@@ -723,10 +723,63 @@ export const extractLicenseData = async (apiKey, base64Images, country = '', onC
       extractedData.idDocument = String(rawIdDoc).trim();
     }
 
-    const rawPersonal = extractedData.personal || extractedData.sec4d || extractedData.point4d;
+    const rawPersonal = extractedData.personal || 
+                        extractedData.point4d || 
+                        extractedData.sec4d || 
+                        extractedData.personalNumber || 
+                        extractedData.personal_number || 
+                        extractedData.personalId || 
+                        extractedData.personalCode || 
+                        extractedData.cpr || 
+                        extractedData.cprNumber || 
+                        extractedData.cpr_nummer || 
+                        extractedData.idNumber;
     if (rawPersonal) {
       extractedData.personal = String(rawPersonal).trim();
       extractedData.point4d = extractedData.personal;
+    }
+
+    const rawBlood = extractedData.blood || 
+                     extractedData.Blood || 
+                     extractedData.bloodType || 
+                     extractedData.blood_type || 
+                     extractedData.golDarah || 
+                     extractedData.gol_darah || 
+                     extractedData.golonganDarah ||
+                     extractedData.bloodGroup;
+    if (rawBlood && String(rawBlood).trim() !== '' && rawBlood !== '-') {
+      extractedData.blood = String(rawBlood).trim();
+      extractedData.Blood = extractedData.blood;
+    }
+
+    const rawCode = extractedData.code || 
+                    extractedData.reverseCode || 
+                    extractedData.securityCode;
+    if (rawCode && String(rawCode).trim() !== '' && rawCode !== '-') {
+      extractedData.code = String(rawCode).trim();
+      if (!extractedData.codes || extractedData.codes === '-') {
+        extractedData.codes = extractedData.code;
+      }
+    } else if (extractedData.codes && extractedData.codes !== '-') {
+      extractedData.code = String(extractedData.codes).trim();
+    }
+
+    const rawAddress = extractedData.address || extractedData.alamat || extractedData.fullAddress;
+    if (rawAddress && String(rawAddress).trim() !== '') {
+      extractedData.address = String(rawAddress).trim();
+    }
+
+    const rawCitizen = extractedData.citizen || 
+                       extractedData.bsn || 
+                       extractedData.rsn || 
+                       extractedData.citizenNumber || 
+                       extractedData.citizen_number || 
+                       extractedData.burgerservicenummer ||
+                       extractedData.bsnNumber ||
+                       extractedData.bsn_number ||
+                       extractedData.citizenNo;
+    if (rawCitizen) {
+      extractedData.citizen = String(rawCitizen).trim();
     }
 
     const rawCpf = extractedData.cpf || 
@@ -890,6 +943,172 @@ export const extractLicenseData = async (apiKey, base64Images, country = '', onC
     const isItalyDoc = matchedKey === 'italia' || /MC[-/\s]?[A-Z]{2}|MIT-UCO|UCO|MIT-DTT|DTT/i.test(extractedData.authority || '') || /ital/i.test(country);
     if (isItalyDoc && extractedData.authority) {
       extractedData.authority = normalizeItalianAuthority(extractedData.authority);
+    }
+
+    // Netherlands document detection & citizen synchronization
+    const isNetherlandsDoc = matchedKey === 'netherlands' ||
+                             matchedKey === 'holanda' ||
+                             getNormalizedCountryKey(extractedData.country || '') === 'netherlands' ||
+                             /netherland|holand|pa[íi]ses bajos|dutch/i.test(extractedData.nationality || '') ||
+                             /netherland|holand|rijbewijs|rdw/i.test(extractedData.authority || '') ||
+                             /netherland|holand|pa[íi]ses bajos/i.test(country);
+
+    if (isNetherlandsDoc) {
+      if (!extractedData.nationality || extractedData.nationality === '-' || extractedData.nationality.trim() === '') {
+        extractedData.nationality = 'Dutch';
+      }
+      if (extractedData.authority && !/netherlands/i.test(extractedData.authority)) {
+        extractedData.authority = `${extractedData.authority.trim().replace(/,\s*$/, '')}, Netherlands`;
+      }
+      // Synchronize citizen from all possible fields (BSN, RSN, citizenNumber, etc.)
+      const rawNlCitizen = extractedData.citizen ||
+                           extractedData.bsn ||
+                           extractedData.rsn ||
+                           extractedData.citizenNumber ||
+                           extractedData.citizen_number ||
+                           extractedData.burgerservicenummer ||
+                           extractedData.bsnNumber ||
+                           extractedData.bsn_number ||
+                           extractedData.citizenNo;
+      if (rawNlCitizen && rawNlCitizen !== '-' && String(rawNlCitizen).trim() !== '') {
+        extractedData.citizen = String(rawNlCitizen).trim();
+      } else if ((!extractedData.citizen || extractedData.citizen === '-' || extractedData.citizen.trim() === '') && extractedData.codes) {
+        // Fallback: check if codes contains the top-left numbers (e.g. "206307779 / 5353983213" or "RSN 206307779 / 5353983213")
+        const codeStr = String(extractedData.codes).trim();
+        const digitGroups = codeStr.match(/\d{6,12}/g);
+        if (digitGroups && digitGroups.length >= 2) {
+          extractedData.citizen = `${digitGroups[0]} / ${digitGroups[1]}`;
+          extractedData.codes = '-';
+        } else if (/\d{6,12}/.test(codeStr)) {
+          extractedData.citizen = codeStr;
+          extractedData.codes = '-';
+        }
+      }
+
+      // Clean citizen field if it has RSN or BSN text prefix
+      if (extractedData.citizen && extractedData.citizen !== '-') {
+        const cStr = String(extractedData.citizen).trim();
+        const matches = cStr.match(/\d+/g);
+        if (matches && matches.length >= 2 && /RSN|BSN/i.test(cStr)) {
+          extractedData.citizen = `${matches[0]} / ${matches[1]}`;
+        }
+      }
+    }
+
+    // Norway document detection & personal (Point 4d) synchronization
+    const isNorwayDoc = matchedKey === 'norway' ||
+                        matchedKey === 'noruega' ||
+                        getNormalizedCountryKey(extractedData.country || '') === 'norway' ||
+                        /norway|noruega|norge|norwegian|norsk/i.test(extractedData.nationality || '') ||
+                        /norway|noruega|statens vegvesen|vegvesen/i.test(extractedData.authority || '') ||
+                        /norway|noruega/i.test(country);
+
+    if (isNorwayDoc) {
+      if (!extractedData.nationality || extractedData.nationality === '-' || extractedData.nationality.trim() === '') {
+        extractedData.nationality = 'Norwegian';
+      }
+      if (extractedData.authority && !/norway/i.test(extractedData.authority)) {
+        extractedData.authority = `${extractedData.authority.trim().replace(/,\s*$/, '')}, Norway`;
+      }
+      // Synchronize personal (section 4d)
+      const rawNorwayPersonal = extractedData.personal ||
+                                extractedData.point4d ||
+                                extractedData.sec4d ||
+                                extractedData.personalNumber ||
+                                extractedData.personal_number ||
+                                extractedData.personalId ||
+                                extractedData.idNumber;
+      if (rawNorwayPersonal && rawNorwayPersonal !== '-' && String(rawNorwayPersonal).trim() !== '') {
+        extractedData.personal = String(rawNorwayPersonal).trim();
+        extractedData.point4d = extractedData.personal;
+      } else if ((!extractedData.personal || extractedData.personal === '-' || extractedData.personal.trim() === '') && extractedData.assignedNumber) {
+        // Fallback: if Gemini stored 4d in assignedNumber (e.g. "090700 85051" or 11 digits)
+        const assignedStr = String(extractedData.assignedNumber).trim();
+        if (/\d{6}[\s-]?\d{5}/.test(assignedStr) || /^\d{11}$/.test(assignedStr.replace(/\s+/g, ''))) {
+          extractedData.personal = assignedStr;
+          extractedData.point4d = assignedStr;
+          extractedData.assignedNumber = '-';
+        }
+      }
+      if (extractedData.personal) {
+        extractedData.point4d = extractedData.personal;
+      }
+    }
+
+    // Indonesia document detection & synchronization
+    const isIndonesiaDoc = matchedKey === 'indonesia' ||
+                           matchedKey === 'indonesian' ||
+                           getNormalizedCountryKey(extractedData.country || '') === 'indonesia' ||
+                           /indonesia|indonesian/i.test(extractedData.nationality || '') ||
+                           /korlantas|polri|surat izin mengemudi|polda|polres/i.test(extractedData.authority || '') ||
+                           /indonesia/i.test(country);
+
+    if (isIndonesiaDoc) {
+      if (!extractedData.nationality || extractedData.nationality === '-' || extractedData.nationality.trim() === '') {
+        extractedData.nationality = 'Indonesian';
+      }
+      if (extractedData.authority && !/indonesia/i.test(extractedData.authority)) {
+        extractedData.authority = `${extractedData.authority.trim().replace(/,\s*$/, '')}, Indonesia`;
+      }
+      // Clean address prefix if Gemini extracted "ALAMAT:"
+      if (extractedData.address && typeof extractedData.address === 'string') {
+        extractedData.address = extractedData.address.replace(/^alamat\s*[:\-–—]?\s*/i, '').trim();
+      }
+      // Ensure code and codes
+      if (extractedData.code && (!extractedData.codes || extractedData.codes === '-')) {
+        extractedData.codes = extractedData.code;
+      } else if (extractedData.codes && (!extractedData.code || extractedData.code === '-')) {
+        extractedData.code = extractedData.codes;
+      }
+      // Ensure blood and Blood
+      if (extractedData.blood && (!extractedData.Blood || extractedData.Blood === '-')) {
+        extractedData.Blood = extractedData.blood;
+      } else if (extractedData.Blood && (!extractedData.blood || extractedData.blood === '-')) {
+        extractedData.blood = extractedData.Blood;
+      }
+    }
+
+    // Denmark document detection & personal (Point 4d / CPR) synchronization
+    const isDenmarkDoc = matchedKey === 'denmark' ||
+                         matchedKey === 'dinamarca' ||
+                         matchedKey === 'danmark' ||
+                         getNormalizedCountryKey(extractedData.country || '') === 'denmark' ||
+                         /danish|dansk/i.test(extractedData.nationality || '') ||
+                         /denmark|dinamarca|danmark|rigspolitiet/i.test(extractedData.authority || '') ||
+                         /denmark|dinamarca|danmark/i.test(country);
+
+    if (isDenmarkDoc) {
+      if (!extractedData.nationality || extractedData.nationality === '-' || extractedData.nationality.trim() === '') {
+        extractedData.nationality = 'Danish';
+      }
+      if (extractedData.authority && !/denmark/i.test(extractedData.authority)) {
+        extractedData.authority = `${extractedData.authority.trim().replace(/,\s*$/, '')}, Denmark`;
+      }
+      // Synchronize personal (section 4d / CPR number)
+      const rawDkPersonal = extractedData.personal ||
+                            extractedData.point4d ||
+                            extractedData.sec4d ||
+                            extractedData.cpr ||
+                            extractedData.cprNumber ||
+                            extractedData.cpr_nummer ||
+                            extractedData.personalNumber ||
+                            extractedData.personal_number ||
+                            extractedData.personalId;
+      if (rawDkPersonal && rawDkPersonal !== '-' && String(rawDkPersonal).trim() !== '') {
+        extractedData.personal = String(rawDkPersonal).trim();
+        extractedData.point4d = extractedData.personal;
+      } else if ((!extractedData.personal || extractedData.personal === '-' || extractedData.personal.trim() === '') && extractedData.assignedNumber) {
+        // Fallback: if Gemini stored 4d in assignedNumber (e.g. "140406-5021" or 10 digits DDMMYY-XXXX)
+        const assignedStr = String(extractedData.assignedNumber).trim();
+        if (/\d{6}[\s-]?\d{4}/.test(assignedStr)) {
+          extractedData.personal = assignedStr;
+          extractedData.point4d = assignedStr;
+          extractedData.assignedNumber = '-';
+        }
+      }
+      if (extractedData.personal) {
+        extractedData.point4d = extractedData.personal;
+      }
     }
 
     // Format license classes

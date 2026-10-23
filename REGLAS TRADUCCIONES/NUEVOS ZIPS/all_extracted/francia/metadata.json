@@ -1,0 +1,10 @@
+{
+  "name": "FRANCIA TEST COMPLETO",
+  "description": "Automate Word document filling using AI-powered OCR from driver\u0027s license images with automatic translation and image optimization.",
+  "requestFramePermissions": [
+    "camera"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

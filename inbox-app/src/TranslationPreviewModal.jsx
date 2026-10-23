@@ -120,6 +120,26 @@ export default function TranslationPreviewModal({
                         ((normalized.nationality && /german|alemania|deutsch/i.test(normalized.nationality)) ||
                          (normalized.authority && /germany|alemania|deutschland/i.test(normalized.authority))));
 
+      const isNetherlands = (normalized.nationality && /dutch|netherland/i.test(normalized.nationality)) ||
+                            (normalized.authority && /netherland|holand|rijbewijs|rdw/i.test(normalized.authority)) ||
+                            (normalized.country && /netherland|holand|pa[íi]ses bajos/i.test(normalized.country)) ||
+                            /netherland|holand|pa[íi]ses bajos|dutch/i.test(folderLower);
+
+      const isNorway = (normalized.nationality && /norway|norwegian|norge|norsk/i.test(normalized.nationality)) ||
+                       (normalized.authority && /norway|noruega|statens vegvesen|vegvesen/i.test(normalized.authority)) ||
+                       (normalized.country && /norway|noruega|norge/i.test(normalized.country)) ||
+                       /norway|noruega|norge/i.test(folderLower);
+
+      const isDenmark = (normalized.nationality && /denmark|danish|danmark/i.test(normalized.nationality)) ||
+                        (normalized.authority && /færdselsstyrelsen|danmark|rigspolitichefen|politi|kørekort/i.test(normalized.authority)) ||
+                        (normalized.country && /denmark|dinamarca|danmark/i.test(normalized.country)) ||
+                        /denmark|dinamarca|danmark/i.test(folderLower);
+
+      const isIndonesia = (normalized.nationality && /indonesia|indonesian/i.test(normalized.nationality)) ||
+                          (normalized.authority && /indonesia|korlantas|polri/i.test(normalized.authority)) ||
+                          (normalized.country && /indonesia/i.test(normalized.country)) ||
+                          /indonesia|indonesian/i.test(folderLower);
+
       // Default Nationality
       if (!normalized.nationality || normalized.nationality.trim() === '' || normalized.nationality === '-') {
         if (isChina) normalized.nationality = 'Chinese';
@@ -129,12 +149,13 @@ export default function TranslationPreviewModal({
         else if (isGerman || /germany|deutschland|berlin|munich|münchen|köln/i.test(normalized.authority || '') || /germany|deutschland/i.test(normalized.placeOfBirth || '')) normalized.nationality = 'German';
         else if (/franc/i.test(folderLower)) normalized.nationality = 'French';
         else if (/taiwan/i.test(folderLower)) normalized.nationality = 'Taiwanese';
-        else if (/denmark|dinamarca|danmark/i.test(folderLower)) normalized.nationality = 'Danish';
+        else if (isDenmark || /denmark|dinamarca|danmark/i.test(folderLower)) normalized.nationality = 'Danish';
         else if (/netherland|holand|dutch/i.test(folderLower)) normalized.nationality = 'Dutch';
         else if (/swiss|suiz/i.test(folderLower)) normalized.nationality = 'Swiss';
         else if (/canada/i.test(folderLower)) normalized.nationality = 'Canadian';
         else if (/vietnam/i.test(folderLower)) normalized.nationality = 'Vietnamese';
         else if (/hungar|hungri/i.test(folderLower)) normalized.nationality = 'Hungarian';
+        else if (isIndonesia || /indonesia/i.test(folderLower)) normalized.nationality = 'Indonesian';
       }
 
       // Italian authority normalization
@@ -205,6 +226,10 @@ export default function TranslationPreviewModal({
         else if (isBrazil) autoTemplate = 'brazil.docx';
         else if (isItaly) autoTemplate = 'italia.docx';
         else if (isJapan) autoTemplate = 'japon.docx';
+        else if (isNetherlands) autoTemplate = 'netherlands.docx';
+        else if (isNorway) autoTemplate = 'norway.docx';
+        else if (isDenmark) autoTemplate = 'denmark.docx';
+        else if (isIndonesia) autoTemplate = 'indonesia.docx';
         else autoTemplate = 'alemania.docx';
       }
       setSelectedTemplate(autoTemplate);
@@ -218,10 +243,28 @@ export default function TranslationPreviewModal({
       }
 
       // Sync citizen
-      const defaultCitizen = (normalized.citizen && normalized.citizen.trim() !== '') 
+      let defaultCitizen = (normalized.citizen && normalized.citizen.trim() !== '' && normalized.citizen !== '-') 
         ? normalized.citizen 
-        : ((normalized.bsn && normalized.bsn.trim() !== '') ? normalized.bsn : '');
+        : (normalized.bsn || normalized.rsn || normalized.citizenNumber || normalized.citizen_number || normalized.burgerservicenummer || '');
+
+      if (!defaultCitizen && isNetherlands) {
+        if (normalized.codes && /\d{6,12}/.test(normalized.codes)) {
+          const digitGroups = String(normalized.codes).match(/\d{6,12}/g);
+          if (digitGroups && digitGroups.length >= 2) {
+            defaultCitizen = `${digitGroups[0]} / ${digitGroups[1]}`;
+          } else {
+            defaultCitizen = String(normalized.codes).trim();
+          }
+        }
+      }
+
       if (defaultCitizen) {
+        if (/RSN|BSN/i.test(defaultCitizen)) {
+          const matches = defaultCitizen.match(/\d+/g);
+          if (matches && matches.length >= 2) {
+            defaultCitizen = `${matches[0]} / ${matches[1]}`;
+          }
+        }
         normalized.citizen = defaultCitizen;
       }
 
@@ -321,23 +364,63 @@ export default function TranslationPreviewModal({
         normalized.firstName = normalized.firstNames;
       }
 
-      if (normalized.code !== undefined) {
+      // Sync code, codes, and reverse
+      const rawInitCode = normalized.code || normalized.codes || normalized.reverse;
+      if (rawInitCode && String(rawInitCode).trim() !== '' && rawInitCode !== '-') {
+        normalized.code = String(rawInitCode).trim();
+        normalized.codes = normalized.code;
         normalized.reverse = normalized.code;
-      } else if (normalized.reverse !== undefined) {
-        normalized.code = normalized.reverse;
+      } else {
+        if (normalized.code !== undefined) {
+          normalized.codes = normalized.code;
+          normalized.reverse = normalized.code;
+        } else if (normalized.codes !== undefined) {
+          normalized.code = normalized.codes;
+          normalized.reverse = normalized.codes;
+        }
       }
       
-      if (normalized.Blood !== undefined) {
+      // Sync Blood and blood
+      const rawInitBlood = normalized.Blood || normalized.blood || normalized.bloodType || normalized.golDarah || normalized.gol_darah;
+      if (rawInitBlood && String(rawInitBlood).trim() !== '' && rawInitBlood !== '-') {
+        normalized.blood = String(rawInitBlood).trim();
+        normalized.Blood = normalized.blood;
+      } else if (normalized.Blood !== undefined) {
         normalized.blood = normalized.Blood;
       } else if (normalized.blood !== undefined) {
         normalized.Blood = normalized.blood;
       }
 
-      const sec4d = (normalized.personal && normalized.personal.trim() !== '') 
+      // Sync address and alamat
+      const rawInitAddress = normalized.address || normalized.alamat || normalized.fullAddress;
+      if (rawInitAddress && String(rawInitAddress).trim() !== '') {
+        normalized.address = String(rawInitAddress).trim();
+      }
+
+      let sec4d = (normalized.personal && normalized.personal.trim() !== '' && normalized.personal !== '-') 
         ? normalized.personal 
-        : ((normalized.point4d && normalized.point4d.trim() !== '') ? normalized.point4d : (normalized.cpf || '-'));
-      normalized.personal = sec4d;
-      normalized.point4d = sec4d;
+        : ((normalized.point4d && normalized.point4d.trim() !== '' && normalized.point4d !== '-') 
+          ? normalized.point4d 
+          : (normalized.cpr || normalized.cprNumber || normalized.cpr_nummer || normalized.personalNumber || normalized.personalId || normalized.sec4d || (normalized.cpf && normalized.cpf !== '-' ? normalized.cpf : '')));
+
+      if ((!sec4d || sec4d === '-') && isNorway && normalized.assignedNumber && /\d{6}[\s-]?\d{5}/.test(normalized.assignedNumber)) {
+        sec4d = normalized.assignedNumber.trim();
+        if (folderName) {
+          normalized.assignedNumber = getAssignedNumber(folderName);
+        } else {
+          normalized.assignedNumber = '-';
+        }
+      } else if ((!sec4d || sec4d === '-') && isDenmark && normalized.assignedNumber && /\d{6}[\s-]?\d{4}/.test(normalized.assignedNumber)) {
+        sec4d = normalized.assignedNumber.trim();
+        if (folderName) {
+          normalized.assignedNumber = getAssignedNumber(folderName);
+        } else {
+          normalized.assignedNumber = '-';
+        }
+      }
+
+      normalized.personal = sec4d || '-';
+      normalized.point4d = sec4d || '-';
 
       // Sync eye & eyeColor
       const finalEye = (normalized.eye && normalized.eye.trim() !== '') 
@@ -390,11 +473,16 @@ export default function TranslationPreviewModal({
         }
       }
       if (name === 'codes') {
+        updated.code = value;
         if (selectedTemplate === 'japon.docx' || prev.nationality === 'Japanese' || selectedTemplate === 'alemania.docx' || prev.nationality === 'German') {
           updated.explicacionCodigos = value;
           updated.conditions = value;
           updated.explicacion = value;
         }
+      }
+      if (name === 'code') {
+        updated.codes = value;
+        updated.reverse = value;
       }
       if (name === 'barcodeNumber') updated.barcode = value;
       if (name === 'barcode') updated.barcodeNumber = value;
@@ -405,10 +493,21 @@ export default function TranslationPreviewModal({
       if (name === 'file' || name === 'fileNo') {
         updated.fileNumber = value;
       }
-      if (name === 'reverse') updated.code = value;
-      if (name === 'code') updated.reverse = value;
-      if (name === 'blood') updated.Blood = value;
-      if (name === 'Blood') updated.blood = value;
+      if (name === 'reverse') {
+        updated.code = value;
+        updated.codes = value;
+      }
+      if (name === 'blood') {
+        updated.Blood = value;
+        updated.bloodType = value;
+      }
+      if (name === 'Blood') {
+        updated.blood = value;
+        updated.bloodType = value;
+      }
+      if (name === 'address') {
+        updated.alamat = value;
+      }
       if (name === 'personal') updated.point4d = value;
       if (name === 'point4d') updated.personal = value;
       if (name === 'assignedNumber') updated.reference = value;
@@ -471,7 +570,13 @@ export default function TranslationPreviewModal({
         templateName: selectedTemplate,
         class: isJapan ? formatJapanLicenseClasses(formData.class) : formData.class,
         categoriesDates: formatCategoriesDates(formData.categoriesDates),
-        codes: isGerman ? (cleanGermanCodes !== '-' ? cleanGermanCodes : formData.codes) : (isJapan ? getCleanJapanCondition(formData) : formData.codes),
+        codes: isGerman ? (cleanGermanCodes !== '-' ? cleanGermanCodes : formData.codes) : (isJapan ? getCleanJapanCondition(formData) : (formData.codes || formData.code)),
+        code: formData.code || formData.codes,
+        blood: formData.blood || formData.Blood,
+        Blood: formData.Blood || formData.blood,
+        address: formData.address || formData.alamat || '',
+        personal: formData.personal || formData.point4d || '-',
+        point4d: formData.point4d || formData.personal || '-',
         explicacionCodigos: isGerman ? (cleanGermanCodes !== '-' ? cleanGermanCodes : formData.explicacionCodigos) : (isJapan ? getCleanJapanCondition(formData) : formData.explicacionCodigos),
         conditions: isGerman ? (cleanGermanCodes !== '-' ? cleanGermanCodes : formData.conditions) : (isJapan ? getCleanJapanCondition(formData) : formData.conditions)
       };
@@ -498,7 +603,13 @@ export default function TranslationPreviewModal({
         templateName: selectedTemplate,
         class: isJapan ? formatJapanLicenseClasses(formData.class) : formData.class,
         categoriesDates: formatCategoriesDates(formData.categoriesDates),
-        codes: isGerman ? (cleanGermanCodes !== '-' ? cleanGermanCodes : formData.codes) : (isJapan ? getCleanJapanCondition(formData) : formData.codes),
+        codes: isGerman ? (cleanGermanCodes !== '-' ? cleanGermanCodes : formData.codes) : (isJapan ? getCleanJapanCondition(formData) : (formData.codes || formData.code)),
+        code: formData.code || formData.codes,
+        blood: formData.blood || formData.Blood,
+        Blood: formData.Blood || formData.blood,
+        address: formData.address || formData.alamat || '',
+        personal: formData.personal || formData.point4d || '-',
+        point4d: formData.point4d || formData.personal || '-',
         explicacionCodigos: isGerman ? (cleanGermanCodes !== '-' ? cleanGermanCodes : formData.explicacionCodigos) : (isJapan ? getCleanJapanCondition(formData) : formData.explicacionCodigos),
         conditions: isGerman ? (cleanGermanCodes !== '-' ? cleanGermanCodes : formData.conditions) : (isJapan ? getCleanJapanCondition(formData) : formData.conditions)
       };
@@ -646,7 +757,7 @@ export default function TranslationPreviewModal({
             </div>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '16px', marginBottom: '24px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '16px', marginBottom: '24px' }}>
             <div>
               <label style={{ display: 'block', fontSize: '14px', fontWeight: 'bold', marginBottom: '4px', color: '#374151' }}>Height ({"{{height}}"})</label>
               <input type="text" name="height" value={formData.height || ''} onChange={handleChange} style={inputStyle} placeholder="-" />
@@ -658,6 +769,10 @@ export default function TranslationPreviewModal({
             <div>
               <label style={{ display: 'block', fontSize: '14px', fontWeight: 'bold', marginBottom: '4px', color: '#374151' }}>Sex / Gender ({"{{sex}}"} / {"{{gender}}"})</label>
               <input type="text" name="sex" value={formData.sex || formData.gender || ''} onChange={handleChange} style={inputStyle} placeholder="-" />
+            </div>
+            <div>
+              <label style={{ display: 'block', fontSize: '14px', fontWeight: 'bold', marginBottom: '4px', color: '#374151' }}>Blood Type ({"{{Blood}}"} / {"{{blood}}"})</label>
+              <input type="text" name="blood" value={formData.Blood || formData.blood || ''} onChange={handleChange} style={inputStyle} placeholder="ej. O, A, B, AB, -" />
             </div>
           </div>
 
@@ -814,15 +929,15 @@ export default function TranslationPreviewModal({
 
           <div style={{ marginBottom: '24px' }}>
             <label style={{ display: 'block', fontSize: '14px', fontWeight: 'bold', marginBottom: '4px', color: '#374151' }}>
-              Series / Códigos Reverso Sup. Izq ({"{{codes}}"})
+              Series / Códigos Reverso / Code ({"{{code}}"} / {"{{codes}}"})
             </label>
             <input 
               type="text" 
               name="codes" 
-              value={formData.codes || ''} 
+              value={formData.codes || formData.code || ''} 
               onChange={handleChange} 
               style={inputStyle} 
-              placeholder="ej. 14091., 30602, 182302007045" 
+              placeholder="Códigos reverso (ej. Sup. Izq en Francia/Holanda, Sup. Der en Indonesia)" 
             />
           </div>
 

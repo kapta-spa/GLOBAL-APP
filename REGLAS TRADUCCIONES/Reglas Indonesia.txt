@@ -1,123 +1,113 @@
-# DOCUMENTACIÓN DE REGLAS DE EXTRACCIÓN Y TRADUCCIÓN DE LICENCIAS DE CONDUCIR (FRANCIA -> UK / INGLÉS)
+# DOCUMENTACIÓN DE REGLAS DE EXTRACCIÓN Y TRADUCCIÓN DE LICENCIAS DE CONDUCIR (INDONESIA -> UK / INGLÉS)
 
 ## 1. CONTEXTO
-- **País de Origen:** Francia (Permis de Conduire - Formato Unión Europea).
-- **Idioma de Origen:** Francés.
-- **Idioma de Destino (Traducción):** Inglés (Formato oficial/traducción jurada UK).
+- **País de Origen:** Indonesia (Surat Izin Mengemudi - SIM / Kepolisian Negara Republik Indonesia - POLRI).
+- **Idioma de Origen:** Indonesio (Bahasa Indonesia).
+- **Idioma de Destino (Traducción):** Inglés (Formato oficial/traducción certificada).
+- **Plantilla Word Asociada:** `indonesia.docx`.
 - **Motor de IA Recomendado:** Gemini API (`@google/genai` SDK - modelo `gemini-3-flash-preview` / `gemini-2.5-flash`).
 
 ---
 
-## 2. CAMPOS EXACTOS (ESTRUCTURA DE DATOS)
+## 2. CAMPOS EXACTOS (ESTRUCTURA DE DATOS Y ETIQUETAS WORD)
 
-| Campo JSON | Etiqueta / Punto Licencia | Descripción / Contenido |
-| :--- | :--- | :--- |
-| `assignedNumber` | N/A | Número asignado / expediente manual para nombrar el archivo `.docx` final. |
-| `surname` | Punto 1 (Nom) | Apellidos de la persona. |
-| `firstName` | Punto 2 (Prénoms) | Primer nombre propio únicamente (extraído sin truncar). |
-| `middleName` | Punto 2 (Prénoms) | Todos los nombres adicionales/secundarios después del primer nombre. |
-| `firstNames` | Punto 2 (Prénoms) | Todos los nombres de la casilla 2 combinados tal como aparecen. |
-| `fullName` | Calculado | Concatenación completa (`surname` + `firstName` + `middleName`). |
-| `licenseNumber` | Punto 5 | Número de licencia (únicamente caracteres alfanuméricos). |
-| `dateOfBirth` | Punto 3 | Fecha de nacimiento. |
-| `placeOfBirth` | Punto 3 | Lugar/Comuna de nacimiento (Traducido al Inglés). |
-| `issueDate` | Punto 4a | Fecha de emisión de la licencia. |
-| `expiryDate` | Punto 4b | Fecha de expiración de la licencia. |
-| `authority` | Punto 4c | Autoridad emisora (Traducido al Inglés y con el país "France"). |
-| `address` | Reverso / Frente | Dirección completa (Calle, código postal, ciudad). |
-| `gender` | Calculado/Inferido | Género. Debe devolver estrictamente `"Male"` o `"Female"`. |
-| `blood` | Frente/Reverso | Grupo sanguíneo si consta en la tarjeta (ej. `A+`, `O-`). |
-| `class` | Punto 9 (Frente) | Categorías autorizadas en el frente separadas por comas (ej. `A, B, BE`). |
-| `codes` | Reverso Sup. Der. | Códigos alfanuméricos situados en la esquina superior derecha del reverso. |
-| `categoriesDates` | Tabla Col. 10 (Reverso) | Fechas de validez agrupadas por categoría (Columna 10). |
-| `explicacionCodigos` | Tabla Col. 12 (Reverso) | Traducción y desglose estructurado de restricciones/códigos. |
+| Campo JSON | Etiqueta Plantilla Word | Etiqueta / Sección en Licencia SIM | Descripción / Contenido |
+| :--- | :--- | :--- | :--- |
+| `assignedNumber` | `{{assignedNumber}}` | N/A | Translation Reference Number / Número asignado del pedido. |
+| `licenseNumber` | `{{licenseNumber}}` | "NO. SIM" (Superior derecha o cabecera) | Número de licencia de conducir (12 a 16 dígitos). |
+| `class` | `{{class}}` | Letra destacada en el frente (A, C, B I, B II, D) | Categoría de la licencia autorizada. |
+| `surname` | `{{surname}}` | Línea 1 ("1. NAMA") | Apellido / Último nombre de la persona. |
+| `firstName` | `{{firstName}}` | Línea 1 ("1. NAMA") | Primer nombre propio. |
+| `middleName` | `{{middleName}}` | Línea 1 ("1. NAMA") | Nombres intermedios (si no existen, "-"). |
+| `placeOfBirth` | `{{placeOfBirth}}` | Línea 2 ("2. TEMPAT, TGL. LAHIR") | Ciudad o municipio de nacimiento (ej. "JAKARTA", "BANDUNG"). |
+| `dateOfBirth` | `{{dateOfBirth}}` | Línea 2 ("2. TEMPAT, TGL. LAHIR") | Fecha de nacimiento en formato `DD Month YYYY` (ej. "15 May 1990"). |
+| `gender` | `{{gender}}` | "JENIS KELAMIN" o "PRIA" / "WANITA" | Género. Devuelve estrictamente `"Male"` o `"Female"`. |
+| `address` | `{{address}}` | Línea 3 o 4 ("ALAMAT") | **Dirección completa**. Incluye calle (JL./JALAN), RT/RW, Kelurahan/Desa (KEL.), Kecamatan (KEC.), Kota/Kabupaten (KOTA/KAB.) y provincia. |
+| `code` / `codes` | `{{code}}` | Reverso - Esquina Superior Derecha | **Código del reverso**. Número o código alfanumérico de seguridad/control impreso en la esquina superior derecha del reverso. |
+| `Blood` / `blood` | `{{Blood}}` | Frente ("GOL. DARAH" / "GOLONGAN DARAH") | **Grupo sanguíneo**. Tipo de sangre (ej. "A", "B", "AB", "O", "O+"). Si está marcado con "-" o no aparece, colocar "-". |
+| `expiryDate` | `{{expiryDate}}` | "BERLAKU S/D" (Fecha de vencimiento) | Fecha de expiración formateada como `DD Month YYYY`. |
+| `authority` | `{{authority}}` | Cabecera / Firma / Sello policial | Autoridad emisora policial traducida al inglés + ", Indonesia" (ej. "National Police Traffic Corps, Indonesia" o "Regional Police of [Región], Indonesia"). |
+| `today` / `fechaHoy`| `{{today}}` | Calculado | Fecha actual de traducción en formato `DD Month YYYY`. |
+| `foto_frente` | `{{%license_front}}` | Imagen Frente | Fotografía o escaneo frontal de la licencia. |
+| `foto_reverso` | `{{%license_back}}` | Imagen Reverso | Fotografía o escaneo del reverso de la licencia. |
 
 ---
 
-## 3. REGLAS DE TRADUCCIÓN Y FORMATO ESPECÍFICAS
+## 3. REGLAS DE EXTRACCIÓN ESPECÍFICAS PARA INDONESIA
 
-1. **Formatos de Fecha:**
-   - **Regla Estricta:** Todas las fechas (`dateOfBirth`, `issueDate`, `expiryDate`, fechas en `categoriesDates` y `explicacionCodigos`) DEBEN formatearse obligatoriamente al estándar en inglés: `DD Month YYYY` (Ejemplo: `15 January 1985`, `04 March 2024`).
+1. **`address` (Dirección Completa - Etiqueta `{{address}}`):**
+   - Buscar la línea identificada con **"ALAMAT"** en el frente de la licencia.
+   - Extraer todos los componentes de la dirección sin truncar ni omitir:
+     - Calle y número: `JL.` / `JALAN` / `DUSUN` / `KP.`
+     - Números de vecindario: `RT` y `RW` (ejemplo: `RT 002/005` o `02/05`).
+     - Subdistrito / Villa: `KEL.` (Kelurahan) o `DESA`.
+     - Distrito: `KEC.` (Kecamatan).
+     - Ciudad o Regencia: `KOTA` o `KAB.` (Kabupaten).
+     - Provincia (si figura visible).
+   - Eliminar el prefijo "ALAMAT:" si aparece repetido en el texto resultante.
 
-2. **`surname`:**
-   - Extraer exactamente como figura en el Punto 1 (Nom). Conservar mayúsculas y acentos.
+2. **`code` (Código de Seguridad del Reverso - Etiqueta `{{code}}`):**
+   - Mirar en el **reverso** (BACK) de la tarjeta, en la **esquina superior derecha** (TOP RIGHT corner).
+   - Extraer la serie numérica o alfanumérica impresa en esa posición.
+   - Debe alimentar tanto `code` como `codes` para compatibilidad con la plantilla Word (`{{code}}`).
 
-3. **`firstName` y `middleName` (Desglose de Nombres Múltiples):**
-   - **`firstName`**: Contiene ÚNICAMENTE el primer nombre propio del Punto 2.
-   - **`middleName`**: Contiene TODOS los demás nombres dados que sigan al primero. Si hay 3 o más nombres (ej. *"Jean Paul Marc"*), `firstName` es *"Jean"* y `middleName` es *"Paul Marc"*. **No se debe omitir ningún nombre.**
-   - **`firstNames`**: Todos los nombres del Punto 2 concatenados.
+3. **`Blood` (Grupo Sanguíneo - Etiqueta `{{Blood}}`):**
+   - Buscar en el frente la indicación **"GOL. DARAH"** o **"GOLONGAN DARAH"** (normalmente ubicada junto a la fecha de nacimiento, sexo o fotografía).
+   - Extraer el valor del tipo de sangre (ejemplo: `A`, `B`, `AB`, `O`, `O+`).
+   - Si no está disponible o tiene un guión ("-"), asignar `"-"`.
+   - La plantilla de Word utiliza `{{Blood}}` (con B mayúscula); el sistema sincroniza automáticamente `blood` y `Blood`.
 
-4. **`licenseNumber`:**
-   - Punto 5. Filtrar y extraer únicamente caracteres alfanuméricos eliminando guiones o espacios irrelevantes.
+4. **`gender`:**
+   - Si indica `PRIA`, traducir a `"Male"`.
+   - Si indica `WANITA`, traducir a `"Female"`.
 
-5. **`placeOfBirth`:**
-   - Traducir el nombre de la ciudad/región al inglés si tiene denominación internacional (ej. *"Pau, Francia"* -> *"Pau, France"*).
+5. **`authority`:**
+   - Identificar la entidad policial emisora (ej. `KORLANTAS POLRI`, `POLDA METRO JAYA`, `POLRES`).
+   - Traducir al inglés y terminar siempre con `, Indonesia` (ejemplo: `National Police Traffic Corps, Indonesia`).
 
-6. **`authority`:**
-   - Punto 4c (ej. *"PREFECTURE DE POLICE DE PARIS"* o *"ANTS"*).
-   - Traducir la institución al inglés y asegurar que contenga el país (ej. *"Paris Police Prefecture, France"* o *"National Agency for Secure Titles (ANTS), France"*).
-
-7. **`gender`:**
-   - El resultado DEBE ser exactamente `"Male"` o `"Female"`.
-
-8. **`class`:**
-   - Extraer todas las categorías del Punto 9 del frente separadas por comas (ej. `A1, A, B, BE`).
-
-9. **`categoriesDates`:**
-   - Analizar la tabla del reverso (Columna 10 - "Du / Valid from").
-   - Agrupar categorías que compartan la misma fecha de inicio y presentarlas claramente en formato `DD Month YYYY`.
-
-10. **`explicacionCodigos` (Traducción de Códigos del Reverso - Columna 12):**
-    - Identificar y traducir los códigos europeos y específicos de Francia:
-      - **Código "70"**: `"70. Exchange of driver's license number [número_extraído]"`
-      - **Código "01"**: `"01- Vision correction and/or protection"`
-      - **Código "01.06"**: `"01.06- Prescribed spectacles or contact lenses"`
-      - **Código "106"**: `"106- Subject to the application of article R. 413-5 from [FechaDesde] to [FechaHasta]"` (Licencia de conductor novel/artículo R. 413-5 del código de circulación francés).
+6. **Formatos de Fecha:**
+   - Todas las fechas (`dateOfBirth`, `issueDate`, `expiryDate`, `today`) deben tener el formato `DD Month YYYY` (ejemplo: `15 August 2028`).
 
 ---
 
-## 4. CASOS ESPECIALES Y EXCEPCIONES
-
-1. **Integridad de Nombres (Nombres Múltiples):**
-   - Nunca truncar o dejar fuera el segundo o tercer nombre.
-2. **Campos Ilegibles o Ausentes:**
-   - Si un campo no es visible o falta en el documento, retornar cadena vacía `""` sin inventar información.
-3. **Formato JSON Estricto:**
-   - La respuesta enviada por Gemini debe ser un JSON válido que cumpla con el esquema definido.
-
----
-
-## 5. SYSTEM PROMPT SUGERIDO PARA GEMINI API
+## 4. SYSTEM PROMPT SUGERIDO PARA GEMINI API
 
 ```text
-You are an expert AI document translator and OCR specialist specializing in official French driver's licenses (Permis de Conduire) and converting them for certified UK English translations.
+Analyze these two images (Front and Back of an Indonesian Driver's License / Surat Izin Mengemudi - SIM).
 
-Analyze the two provided images: Image 1 is the FRONT side and Image 2 is the BACK side of a French Driver's License.
+IMPORTANT: ALL TEXT OUTPUT VALUES MUST BE IN ENGLISH EXCEPT FOR PROPER NAMES OF PERSONS, STREETS, AND GEOGRAPHIC LOCATIONS.
 
-CRITICAL INSTRUCTION: ALL OUTPUT VALUES IN THE GENERATED JSON MUST BE IN ENGLISH.
+CRITICAL RULE FOR MISSING DATA:
+If any field does not have data, is missing, unreadable, or marked with "-", assign a single hyphen "-". NEVER output null or undefined.
 
-EXTRACT AND TRANSLATE DATA ACCORDING TO THESE STRICT RULES:
-1. "surname": Family name found in Label 1 (Nom). Preserve exact capitalization.
-2. "firstName": The FIRST given name from Label 2 (Prénoms). Do not truncate.
-3. "middleName": ALL remaining given names that follow the first name in Label 2. Include all additional middle names without omitting any.
-4. "firstNames": ALL given names from Label 2 combined exactly as written.
-5. "licenseNumber": Main identification number from Label 5. Extract ONLY alphanumeric characters.
-6. "dateOfBirth": Date found at Label 3. Format as "DD Month YYYY" (e.g. 12 May 1990).
-7. "placeOfBirth": Location at Label 3. Translate city/department to English format if applicable.
-8. "issueDate": General issue date at Label 4a. Format as "DD Month YYYY".
-9. "expiryDate": General expiry date at Label 4b. Format as "DD Month YYYY".
-10. "authority": Issuing authority from Label 4c (e.g., Prefecture). Translate to English and append "France" if not present.
-11. "address": Full address if visible on the license.
-12. "gender": Output MUST be exactly "Male" or "Female".
-13. "blood": Blood type if indicated (e.g. A+, O+).
-14. "codes": Look at the REVERSE (BACK) side, TOP RIGHT corner. Extract any numeric/alphanumeric code strings.
-15. "class": Extract ALL categories listed in Point 9 on FRONT (e.g. A, B, BE) separated by commas.
-16. "categoriesDates": From the BACK table, analyze Column 10 (valid from dates) for each category and list them clearly in English format "DD Month YYYY".
-17. "explicacionCodigos": Analyze Column 12 on the BACK for restriction codes and translate them to official English definitions:
-    - Code "70": "70. Exchange of driver's license number [number]"
-    - Code "01": "01- Vision correction and/or protection"
-    - Code "01.06": "01.06- Prescribed spectacles or contact lenses"
-    - Code "106": "106- Subject to the application of article R. 413-5 from [DateFrom] to [DateTo]"
-18. Formats: ALL dates MUST be formatted as "DD Month YYYY" (e.g. 05 October 2025). Never truncate names.
+SPECIFIC EXTRACTION RULES:
+1. "surname": Family name / Last name. On Indonesian licenses, if only a single full name is shown on line 1 ("1. NAMA"), use the last word as surname (or if single word, use it as surname and firstName).
+2. "firstName": The FIRST given name from line 1 ("1. NAMA").
+3. "middleName": Remaining given names between first name and surname. If none, output "-".
+4. "firstNames": Combined given names ("firstName" + "middleName").
+5. "fullName": Full legal name as printed on line 1 ("1. NAMA").
+6. "licenseNumber": The driving license number ("NO. SIM" or number at top right, usually 12-16 digits). Extract numbers cleanly.
+7. "dateOfBirth": Date of birth from line 2 ("2. TEMPAT, TGL. LAHIR"). Format as "DD Month YYYY" (e.g., "15 May 1990").
+8. "placeOfBirth": Place/City of birth from line 2 ("2. TEMPAT, TGL. LAHIR"). Extract only the city/regency name (e.g., "Jakarta", "Bandung", "Surabaya").
+9. "gender": From "JENIS KELAMIN" or "PRIA" / "WANITA". Output strictly "Male" or "Female".
+10. "blood": MANDATORY & CRITICAL - Look for "GOL. DARAH" or "GOLONGAN DARAH" on the FRONT (usually near date of birth or photo). Extract the blood type (e.g. "A", "B", "AB", "O", "O+", etc.). If indicated as "-" or not found, output "-". Also populate "Blood" with this exact value.
+11. "Blood": Same value as "blood".
+12. "address": MANDATORY & CRITICAL - Look for line 3 or 4 labeled "ALAMAT" on the FRONT. Extract the COMPLETE address exactly as printed, including:
+    - Street: "JL." / "JALAN" / "DUSUN" / "KP." and street name/number
+    - RT / RW: Neighborhood numbers (e.g., "RT 002/005" or "02/05")
+    - Village / Subdistrict: "KEL." / "DESA"
+    - District: "KEC."
+    - Regency / City: "KAB." / "KOTA"
+    - Province if visible
+    Do NOT abbreviate or truncate the address. Ensure all components of "ALAMAT" are captured in English Latin characters.
+13. "code": MANDATORY & CRITICAL - Look at the REVERSE (BACK) side of the license, in the TOP RIGHT corner (esquina superior derecha del reverso). Extract any numeric or alphanumeric serial/security code printed there. Also populate "codes" with this exact value.
+14. "codes": Same value as "code".
+15. "class": Vehicle category held (large letter printed prominently, e.g. "A", "C", "B I", "B II", "D").
+16. "issueDate": Issue date if visible on front or bottom. Format as "DD Month YYYY". If not explicitly stated, output "-".
+17. "expiryDate": Expiration date from "BERLAKU S/D". Format as "DD Month YYYY".
+18. "authority": Issuing authority (e.g., "Korlantas Polri", "Polda", "Polres", "Kepolisian Negara Republik Indonesia"). Translate to English and append ", Indonesia" (e.g., "National Police Traffic Corps, Indonesia" or "Metro Jaya Regional Police, Indonesia").
+19. "nationality": "Indonesian".
+20. "licenseLanguage": "Indonesian".
 
 Return strictly valid JSON.
+```

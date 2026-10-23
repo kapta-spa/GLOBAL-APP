@@ -177,6 +177,26 @@ export const generateWordDocument = async (templateArrayBuffer, data, imagesBase
                       (!/denmark|dinamarca|danmark|france|francia|spain|espa|ital|japan|japon|china|czech|checa|brazil|brasil/i.test(folderName) &&
                        !/denmark|dinamarca|danmark|france|francia|spain|espa|ital|japan|japon|china|czech|checa|brazil|brasil/i.test(data.country || '') &&
                        (/german|alemania|deutsch/i.test(data.nationality || '') || /germany|alemania|deutschland/i.test(data.authority || '')));
+  const isNetherlandsDoc = Boolean(data.templateName && (data.templateName.includes('netherlands') || data.templateName.includes('holanda'))) ||
+                           /netherland|holand|pa[íi]ses bajos|dutch/i.test(folderName) ||
+                           /netherland|holand|pa[íi]ses bajos|dutch/i.test(data.country || '') ||
+                           /dutch|netherlands/i.test(data.nationality || '') ||
+                           /netherlands|rijbewijs/i.test(data.authority || '');
+  const isNorwayDoc = Boolean(data.templateName && (data.templateName.includes('norway') || data.templateName.includes('noruega'))) ||
+                      /norway|noruega|norge/i.test(folderName) ||
+                      /norway|noruega|norge/i.test(data.country || '') ||
+                      /norwegian|norsk/i.test(data.nationality || '') ||
+                      /norway|statens vegvesen/i.test(data.authority || '');
+  const isDenmarkDoc = Boolean(data.templateName && (data.templateName.includes('denmark') || data.templateName.includes('dinamarca') || data.templateName.includes('danmark'))) ||
+                       /denmark|dinamarca|danmark|danish/i.test(folderName) ||
+                       /denmark|dinamarca|danmark/i.test(data.country || '') ||
+                       /danish|dansk/i.test(data.nationality || '') ||
+                       /færdselsstyrelsen|danmark|rigspolitichefen|politi|kørekort/i.test(data.authority || '');
+  const isIndonesiaDoc = Boolean(data.templateName && data.templateName.includes('indonesia')) ||
+                         /indonesia|indonesian/i.test(folderName) ||
+                         /indonesia/i.test(data.country || '') ||
+                         /indonesian/i.test(data.nationality || '') ||
+                         /indonesia|korlantas|polri/i.test(data.authority || '');
 
   let authorityVal = val(data.authority);
   if (isItalyDoc && authorityVal && authorityVal !== '-') {
@@ -279,7 +299,12 @@ export const generateWordDocument = async (templateArrayBuffer, data, imagesBase
   const renderData = {
     ...data,
     // Identification
-    assignedNumber: val(data.assignedNumber !== '-' && data.assignedNumber ? data.assignedNumber : (assignedNumber || '-')),
+    assignedNumber: val(
+      ((isNorwayDoc && data.assignedNumber && /\d{6}[\s-]?\d{5}/.test(data.assignedNumber)) ||
+       (isDenmarkDoc && data.assignedNumber && /\d{6}[\s-]?\d{4}/.test(data.assignedNumber)))
+        ? (assignedNumber || '-')
+        : (data.assignedNumber !== '-' && data.assignedNumber ? data.assignedNumber : (assignedNumber || '-'))
+    ),
     licenseNumber: val(data.licenseNumber),
     barcodeNumber: barcodeNumberVal,
     barcode: barcodeNumberVal,
@@ -289,9 +314,43 @@ export const generateWordDocument = async (templateArrayBuffer, data, imagesBase
     cardNumber: val(data.cardNumber || data.card_number || data.cardNumberVertical || data.numeroEspelho || data.numero_espelho || data.espelho || data.nEspelho || data.serialNumber || data.serial),
     idDocument: val(data.idDocument || data.id_document || data.docIdentidade || data.doc_identidade || data.identityDocument || data.rg || data.identidade),
     cpf: val(data.cpf || data.CPF || data.individualTaxpayerNumber || data.taxpayerNumber || data.taxId),
-    personal: val(data.personal || data.point4d || data.cpf),
-    point4d: val(data.point4d || data.personal || data.cpf),
-    citizen: val(data.citizen || data.bsn),
+    personal: val(
+      data.personal || 
+      data.point4d || 
+      data.sec4d || 
+      data.cpr ||
+      data.cprNumber ||
+      data.cpr_nummer ||
+      data.personalNumber || 
+      data.personalId || 
+      data.cpf || 
+      (isNorwayDoc && data.assignedNumber && /\d{6}[\s-]?\d{5}/.test(data.assignedNumber) ? data.assignedNumber : null) ||
+      (isDenmarkDoc && data.assignedNumber && /\d{6}[\s-]?\d{4}/.test(data.assignedNumber) ? data.assignedNumber : null)
+    ),
+    point4d: val(
+      data.point4d || 
+      data.personal || 
+      data.sec4d || 
+      data.cpr ||
+      data.cprNumber ||
+      data.cpr_nummer ||
+      data.personalNumber || 
+      data.personalId || 
+      data.cpf || 
+      (isNorwayDoc && data.assignedNumber && /\d{6}[\s-]?\d{5}/.test(data.assignedNumber) ? data.assignedNumber : null) ||
+      (isDenmarkDoc && data.assignedNumber && /\d{6}[\s-]?\d{4}/.test(data.assignedNumber) ? data.assignedNumber : null)
+    ),
+    citizen: val(
+      data.citizen || 
+      data.bsn || 
+      data.rsn || 
+      data.citizenNumber || 
+      data.citizen_number || 
+      data.burgerservicenummer || 
+      data.bsnNumber || 
+      data.bsn_number || 
+      (isNetherlandsDoc && data.codes && /\d{6,12}/.test(data.codes) ? (data.codes.match(/\d+/g)?.length >= 2 ? `${data.codes.match(/\d+/g)[0]} / ${data.codes.match(/\d+/g)[1]}` : data.codes) : null)
+    ),
     reference: val(data.reference),
 
     // Names
@@ -317,6 +376,7 @@ export const generateWordDocument = async (templateArrayBuffer, data, imagesBase
     class: classVal,
     Class: classVal,
     classDescriptions: val(classDesc),
+    code: val(data.code || data.codes || codesVal),
     codes: codesVal,
     explicacionCodigos: explicacionCodigosVal,
     explicacion: explicacionCodigosVal,
@@ -325,14 +385,17 @@ export const generateWordDocument = async (templateArrayBuffer, data, imagesBase
     // Attributes & Location
     authority: authorityVal,
     placeOfBirth: val(data.placeOfBirth),
-    address: val(data.address),
+    address: val(data.address || data.alamat || data.fullAddress),
+    blood: val(data.blood || data.Blood || data.bloodType || data.golDarah),
+    Blood: val(data.Blood || data.blood || data.bloodType || data.golDarah),
+    bloodType: val(data.Blood || data.blood || data.bloodType || data.golDarah),
     nationality: val(data.nationality),
     gender: isBrazilDoc ? 'Not stated' : val(data.gender || data.sex),
     sex: isBrazilDoc ? 'Not stated' : val(data.sex || data.gender),
     height: val(data.height),
     eye: val(data.eye || data.eyeColor),
     eyeColor: val(data.eyeColor || data.eye),
-    reverse: val(data.reverse || data.explicacionCodigos || data.codes),
+    reverse: val(data.reverse || data.code || data.codes || data.explicacionCodigos),
 
     // Image tags mapping for all templates
     foto_1: img1,

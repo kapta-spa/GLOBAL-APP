@@ -1,0 +1,8 @@
+{
+  "name": "INDONESIA",
+  "description": "Automatización inteligente de procesamiento de documentos y traducción de licencias de conducir Francia-UK utilizando Gemini AI.",
+  "requestFramePermissions": [
+    "camera"
+  ],
+  "majorCapabilities": []
+}

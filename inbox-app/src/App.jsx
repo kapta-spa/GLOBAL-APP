@@ -146,6 +146,9 @@ function App() {
   
   // Data states
   const [emails, setEmails] = useState([]);
+  const [inboxNextPageToken, setInboxNextPageToken] = useState(null);
+  const [loadingMoreEmails, setLoadingMoreEmails] = useState(false);
+  const [inboxLimit, setInboxLimit] = useState(() => localStorage.getItem('inboxFetchLimit') || '100');
   const [activeLabels, setActiveLabels] = useState([]); 
   const [monthLabels, setMonthLabels] = useState([]); 
   
@@ -184,6 +187,16 @@ function App() {
   const [dxSubLabels, setDxSubLabels] = useState([]);
   const [labelSearchQuery, setLabelSearchQuery] = useState('');
   const [loadingLabels, setLoadingLabels] = useState(false);
+  
+  // Delete Child Labels states
+  const [isDeleteLabelsModalOpen, setIsDeleteLabelsModalOpen] = useState(false);
+  const [parentLabelInput, setParentLabelInput] = useState('');
+  const [foundChildLabels, setFoundChildLabels] = useState(null);
+  const [isSearchingLabels, setIsSearchingLabels] = useState(false);
+  const [isDeletingLabels, setIsDeletingLabels] = useState(false);
+  const [deleteProgress, setDeleteProgress] = useState({ current: 0, total: 0, currentName: '' });
+  const [deleteStatusMessage, setDeleteStatusMessage] = useState('');
+  const [allUserLabels, setAllUserLabels] = useState([]);
   
   // Settings & Persisted
   const [targetMonthFolder, setTargetMonthFolder] = useState(() => {
@@ -276,74 +289,124 @@ function App() {
     }
   };
 
-  const fetchInbox = async (accessToken) => {
-    setLoading(true);
-    try {
-      const res = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages?q=in:inbox&maxResults=20', {
-        headers: { Authorization: `Bearer ${accessToken}` },
-      });
-      handleAuthError(res.status);
-      const data = await res.json();
-      
-      if (data.messages && data.messages.length > 0) {
-        const messageDetails = await Promise.all(
-          data.messages.map(async (msg) => {
+  const parseGmailMessage = (msg) => {
+    if (!msg || !msg.payload) return null;
+    const headers = msg.payload.headers || [];
+    const subject = headers.find(h => h.name?.toLowerCase() === 'subject')?.value || 'No Subject';
+    const from = headers.find(h => h.name?.toLowerCase() === 'from')?.value || 'Unknown';
+    const date = headers.find(h => h.name?.toLowerCase() === 'date')?.value || '';
+    
+    const senderMatch = from.match(/^(.*?)\s*</);
+    const senderName = senderMatch ? senderMatch[1].replace(/"/g, '') : from;
+
+    let bodyData = '';
+    if (msg.payload.parts) {
+      for (let part of msg.payload.parts) {
+        if (part.mimeType === 'text/plain' && part.body?.data) {
+          bodyData = part.body.data;
+          break;
+        } else if (part.mimeType === 'text/html' && part.body?.data) {
+          bodyData = part.body.data;
+        } else if (part.parts) {
+          for (let subPart of part.parts) {
+             if (subPart.mimeType === 'text/plain' && subPart.body?.data) {
+                bodyData = subPart.body.data; break;
+             }
+          }
+        }
+      }
+    } else if (msg.payload.body && msg.payload.body.data) {
+      bodyData = msg.payload.body.data;
+    }
+    
+    let fullBody = msg.snippet || '';
+    if (bodyData) {
+      try {
+        fullBody = decodeURIComponent(escape(atob(bodyData.replace(/-/g, '+').replace(/_/g, '/'))));
+        fullBody = fullBody.replace(/<[^>]+>/g, '\n').replace(/&nbsp;/g, ' ').replace(/\n\s*\n/g, '\n\n').trim();
+      } catch(e) {}
+    }
+
+    return {
+      id: msg.id,
+      threadId: msg.threadId,
+      snippet: msg.snippet,
+      fullBody: fullBody,
+      subject,
+      sender: senderName,
+      fromRaw: from,
+      rawDate: date ? new Date(date).toLocaleString() : '',
+      date: date ? new Date(date).toLocaleDateString([], { month: 'short', day: 'numeric' }) : ''
+    };
+  };
+
+  const fetchMessagesInBatches = async (messageList, accessToken, batchSize = 25) => {
+    const results = [];
+    for (let i = 0; i < messageList.length; i += batchSize) {
+      const chunk = messageList.slice(i, i + batchSize);
+      const chunkResults = await Promise.all(
+        chunk.map(async (msg) => {
+          try {
             const msgRes = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages/${msg.id}`, {
               headers: { Authorization: `Bearer ${accessToken}` },
             });
-            return msgRes.json();
-          })
-        );
-        
-        const formattedEmails = messageDetails.map(msg => {
-          const headers = msg.payload.headers;
-          const subject = headers.find(h => h.name === 'Subject')?.value || 'No Subject';
-          const from = headers.find(h => h.name === 'From')?.value || 'Unknown';
-          const date = headers.find(h => h.name === 'Date')?.value || '';
-          
-          const senderMatch = from.match(/^(.*?)\s*</);
-          const senderName = senderMatch ? senderMatch[1].replace(/"/g, '') : from;
-
-          let bodyData = '';
-          if (msg.payload.parts) {
-            for (let part of msg.payload.parts) {
-              if (part.mimeType === 'text/plain' && part.body.data) {
-                bodyData = part.body.data;
-                break;
-              } else if (part.mimeType === 'text/html' && part.body.data) {
-                bodyData = part.body.data;
-              } else if (part.parts) {
-                for (let subPart of part.parts) {
-                   if (subPart.mimeType === 'text/plain' && subPart.body.data) {
-                      bodyData = subPart.body.data; break;
-                   }
-                }
-              }
-            }
-          } else if (msg.payload.body && msg.payload.body.data) {
-            bodyData = msg.payload.body.data;
+            if (msgRes.status === 401) handleAuthError(msgRes.status);
+            if (!msgRes.ok) return null;
+            return await msgRes.json();
+          } catch (err) {
+            console.error(`Failed to fetch message ${msg.id}`, err);
+            return null;
           }
-          
-          let fullBody = msg.snippet;
-          if (bodyData) {
-            try {
-              fullBody = decodeURIComponent(escape(atob(bodyData.replace(/-/g, '+').replace(/_/g, '/'))));
-              fullBody = fullBody.replace(/<[^>]+>/g, '\n').replace(/&nbsp;/g, ' ').replace(/\n\s*\n/g, '\n\n').trim();
-            } catch(e) {}
-          }
+        })
+      );
+      results.push(...chunkResults.filter(Boolean));
+    }
+    return results;
+  };
 
-          return {
-            id: msg.id,
-            threadId: msg.threadId,
-            snippet: msg.snippet,
-            fullBody: fullBody,
-            subject,
-            sender: senderName,
-            fromRaw: from,
-            rawDate: date ? new Date(date).toLocaleString() : '',
-            date: date ? new Date(date).toLocaleDateString([], { month: 'short', day: 'numeric' }) : ''
-          };
+  const fetchInbox = async (accessToken = token, fetchAll = false) => {
+    if (!accessToken) return;
+    setLoading(true);
+    setInboxNextPageToken(null);
+    try {
+      const activeLimit = fetchAll ? 'all' : inboxLimit;
+      let allMessageStubs = [];
+      let pageToken = '';
+      let hasMore = true;
+      let pagesFetched = 0;
+      // If 'all', load up to 500 messages (5 pages of 100) to cover the entire inbox safely
+      const maxPages = activeLimit === 'all' ? 5 : 1;
+      const pageSize = activeLimit === 'all' || activeLimit === '100' || activeLimit === '200' ? 100 : (parseInt(activeLimit, 10) || 100);
+      const targetCount = activeLimit === 'all' ? 500 : (parseInt(activeLimit, 10) || 100);
+
+      while (hasMore && allMessageStubs.length < targetCount && pagesFetched < maxPages) {
+        const pageQuery = pageToken ? `&pageToken=${pageToken}` : '';
+        const limitParam = Math.min(pageSize, targetCount - allMessageStubs.length);
+        const res = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages?q=in:inbox&maxResults=${limitParam}${pageQuery}`, {
+          headers: { Authorization: `Bearer ${accessToken}` },
         });
+        handleAuthError(res.status);
+        if (!res.ok) break;
+        const data = await res.json();
+        pagesFetched++;
+        
+        if (data.messages && data.messages.length > 0) {
+          allMessageStubs.push(...data.messages);
+        }
+        
+        if (data.nextPageToken && allMessageStubs.length < targetCount && pagesFetched < maxPages) {
+          pageToken = data.nextPageToken;
+        } else {
+          pageToken = data.nextPageToken || '';
+          hasMore = false;
+        }
+      }
+
+      setInboxNextPageToken(pageToken || null);
+
+      if (allMessageStubs.length > 0) {
+        const rawMessages = await fetchMessagesInBatches(allMessageStubs, accessToken);
+        const formattedEmails = rawMessages.map(parseGmailMessage).filter(Boolean);
         setEmails(formattedEmails);
       } else {
         setEmails([]);
@@ -355,10 +418,61 @@ function App() {
     }
   };
 
+  const handleLoadMoreEmails = async () => {
+    if (!inboxNextPageToken || loadingMoreEmails || !token) return;
+    setLoadingMoreEmails(true);
+    try {
+      const res = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages?q=in:inbox&maxResults=50&pageToken=${inboxNextPageToken}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      handleAuthError(res.status);
+      if (!res.ok) return;
+      const data = await res.json();
+      
+      setInboxNextPageToken(data.nextPageToken || null);
+      
+      if (data.messages && data.messages.length > 0) {
+        const rawMessages = await fetchMessagesInBatches(data.messages, token);
+        const formatted = rawMessages.map(parseGmailMessage).filter(Boolean);
+        setEmails(prev => {
+          const existingIds = new Set(prev.map(e => e.id));
+          const onlyNew = formatted.filter(e => !existingIds.has(e.id));
+          return [...prev, ...onlyNew];
+        });
+      }
+    } catch (err) {
+      console.error('Failed to load more emails', err);
+    } finally {
+      setLoadingMoreEmails(false);
+    }
+  };
+
+  const handleLoadAllEmails = async () => {
+    await fetchInbox(token, true);
+  };
+
+  const handleToggleSelectAll = () => {
+    if (activeTab === 'inbox') {
+      if (selectedIds.size === emails.length && emails.length > 0) {
+        setSelectedIds(new Set());
+      } else {
+        setSelectedIds(new Set(emails.map(e => e.id)));
+      }
+    } else if (activeTab === 'progress') {
+      if (selectedIds.size === activeLabels.length && activeLabels.length > 0) {
+        setSelectedIds(new Set());
+      } else {
+        setSelectedIds(new Set(activeLabels.map(l => l.id)));
+      }
+    }
+  };
+
   const saveSettings = () => {
     localStorage.setItem('sheetName', sheetName);
     localStorage.setItem('geminiApiKey', geminiApiKey);
+    localStorage.setItem('inboxFetchLimit', inboxLimit);
     setIsSettingsModalOpen(false);
+    refreshData(token, 'inbox');
   };
 
   const handleAssignTracking = async (passedTrackingNumber = trackingNumber, closeModals = true) => {
@@ -1209,6 +1323,117 @@ const getCleanClientLabelName = (rawName) => {
     }
   };
 
+  const handleOpenDeleteLabelsModal = async () => {
+    setIsDeleteLabelsModalOpen(true);
+    setParentLabelInput('');
+    setFoundChildLabels(null);
+    setDeleteStatusMessage('');
+    setDeleteProgress({ current: 0, total: 0, currentName: '' });
+    try {
+      const res = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/labels', {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const userLabels = (data.labels || []).filter(l => l.type === 'user');
+        setAllUserLabels(userLabels);
+      }
+    } catch (e) {
+      console.warn("Could not fetch user labels for suggestions", e);
+    }
+  };
+
+  const handleSearchChildLabels = async () => {
+    const rawInput = parentLabelInput.trim();
+    if (!rawInput) {
+      alert('Por favor ingresa el nombre del label.');
+      return;
+    }
+    const cleanParent = rawInput.replace(/\/+$/, '').trim();
+    
+    setIsSearchingLabels(true);
+    setFoundChildLabels(null);
+    setDeleteStatusMessage('');
+
+    try {
+      const res = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/labels', {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      handleAuthError(res.status);
+      const data = await res.json();
+      const labels = data.labels || [];
+      
+      const prefix = cleanParent.toLowerCase() + '/';
+      const children = labels.filter(l => 
+        l.type === 'user' && 
+        l.name.toLowerCase().startsWith(prefix)
+      ).map(l => ({
+        id: l.id,
+        name: l.name,
+        childPart: l.name.substring(cleanParent.length + 1)
+      }));
+
+      setFoundChildLabels(children);
+      if (children.length === 0) {
+        setDeleteStatusMessage(`No se encontraron labels hijos bajo "${cleanParent}".`);
+      } else {
+        setDeleteStatusMessage(`Se encontraron ${children.length} label(s) hijo(s) de "${cleanParent}".`);
+      }
+    } catch (err) {
+      console.error(err);
+      if (err.message !== "Unauthorized") {
+        alert('Error al buscar labels: ' + err.message);
+      }
+    } finally {
+      setIsSearchingLabels(false);
+    }
+  };
+
+  const handleConfirmDeleteChildLabels = async () => {
+    if (!foundChildLabels || foundChildLabels.length === 0) return;
+    
+    setIsDeletingLabels(true);
+    setDeleteProgress({ current: 0, total: foundChildLabels.length, currentName: '' });
+    let deletedCount = 0;
+    let failedCount = 0;
+
+    try {
+      for (let i = 0; i < foundChildLabels.length; i++) {
+        const child = foundChildLabels[i];
+        setDeleteProgress({ current: i + 1, total: foundChildLabels.length, currentName: child.name });
+        
+        try {
+          const res = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/labels/${child.id}`, {
+            method: 'DELETE',
+            headers: { Authorization: `Bearer ${token}` }
+          });
+          if (res.status === 401) {
+            handleAuthError(res.status);
+          }
+          if (res.ok || res.status === 204) {
+            deletedCount++;
+          } else {
+            failedCount++;
+          }
+        } catch (delErr) {
+          console.error(`Error borrando label ${child.name}:`, delErr);
+          failedCount++;
+        }
+      }
+
+      setDeleteStatusMessage(`✅ Se borraron ${deletedCount} label(s) hijo(s) exitosamente.${failedCount > 0 ? ` (${failedCount} fallaron)` : ''}`);
+      setFoundChildLabels([]);
+      refreshData(token);
+    } catch (err) {
+      console.error(err);
+      if (err.message !== "Unauthorized") {
+        alert('Error durante la eliminación: ' + err.message);
+      }
+    } finally {
+      setIsDeletingLabels(false);
+    }
+  };
+
   const fetchGmailImageAttachments = async (msgData, accessToken) => {
     const attachmentUrls = [];
     const searchParts = async (parts) => {
@@ -1900,7 +2125,29 @@ const getCleanClientLabelName = (rawName) => {
     <div>
       <header className="app-header">
         <div className="app-title">Global Automatization</div>
-        <div style={{display: 'flex', gap: '10px'}}>
+        <div style={{display: 'flex', gap: '10px', alignItems: 'center'}}>
+          <button 
+            className="btn-delete-labels"
+            onClick={handleOpenDeleteLabelsModal} 
+            title="Eliminar labels hijos"
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+              padding: '6px 12px',
+              fontSize: '0.85rem',
+              fontWeight: '600',
+              backgroundColor: 'rgba(239, 68, 68, 0.12)',
+              color: '#ef4444',
+              border: '1px solid rgba(239, 68, 68, 0.35)',
+              borderRadius: '8px',
+              cursor: 'pointer',
+              transition: 'all 0.2s'
+            }}
+          >
+            <Trash2 size={16} />
+            <span>Eliminar labels</span>
+          </button>
           <button className={`btn-icon ${loading ? 'spinning' : ''}`} onClick={() => refreshData()} title="Refresh">
             <RefreshCw size={20} />
           </button>
@@ -1919,7 +2166,7 @@ const getCleanClientLabelName = (rawName) => {
           className={`tab ${activeTab === 'inbox' ? 'active' : ''}`}
           onClick={() => handleTabSwitch('inbox')}
         >
-          Inbox
+          Inbox{emails.length > 0 && <span style={{ marginLeft: 6, fontSize: '0.75rem', background: 'var(--accent-color)', color: 'white', padding: '1px 6px', borderRadius: '10px' }}>{emails.length}</span>}
         </button>
         <button 
           className={`tab ${activeTab === 'progress' ? 'active' : ''}`}
@@ -1950,6 +2197,63 @@ const getCleanClientLabelName = (rawName) => {
         />
       )}
       
+      {/* Inbox Control Bar */}
+      {activeTab === 'inbox' && (
+        <div style={{ padding: '10px 16px', backgroundColor: 'var(--surface-color)', borderBottom: '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <button
+              onClick={handleToggleSelectAll}
+              style={{
+                background: 'var(--surface-hover)',
+                border: '1px solid var(--border-color)',
+                borderRadius: '6px',
+                color: 'var(--text-primary)',
+                padding: '5px 10px',
+                fontSize: '0.8rem',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px'
+              }}
+              title="Seleccionar o deseleccionar todos los correos visibles"
+            >
+              <div style={{
+                width: 14,
+                height: 14,
+                borderRadius: 3,
+                border: '1.5px solid ' + (selectedIds.size > 0 ? 'var(--accent-color)' : 'var(--text-secondary)'),
+                background: selectedIds.size > 0 && selectedIds.size === emails.length ? 'var(--accent-color)' : 'transparent',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center'
+              }}>
+                {selectedIds.size > 0 && <Check size={11} color="white" />}
+              </div>
+              <span>
+                {emails.length > 0 && selectedIds.size === emails.length ? 'Deseleccionar todos' : 'Seleccionar todos'}
+              </span>
+            </button>
+            <span style={{ fontSize: '0.82rem', color: 'var(--text-secondary)' }}>
+              {emails.length} {emails.length === 1 ? 'correo' : 'correos'} {inboxNextPageToken ? '(hay más en Gmail)' : ''}
+            </span>
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            {inboxNextPageToken && (
+              <button
+                className="btn-primary"
+                onClick={handleLoadAllEmails}
+                disabled={loading || loadingMoreEmails}
+                style={{ padding: '4px 10px', fontSize: '0.78rem' }}
+                title="Cargar todos los correos restantes de tu Inbox"
+              >
+                Cargar todos
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Target Folder Selector */}
       {activeTab === 'progress' && (
         <div style={{ padding: '12px 16px', backgroundColor: 'var(--surface-color)', borderBottom: '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -2011,6 +2315,50 @@ const getCleanClientLabelName = (rawName) => {
                 );
               })
             )
+          )}
+
+                    {/* Footer when more emails are in Inbox */}
+          {activeTab === 'inbox' && inboxNextPageToken && (
+            <div style={{
+              padding: '16px',
+              margin: '12px 0 24px',
+              background: 'var(--surface-color)',
+              borderRadius: '10px',
+              border: '1px dashed var(--border-color)',
+              textAlign: 'center',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              gap: '10px'
+            }}>
+              <div>
+                <div style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-primary)' }}>
+                  Mostrando {emails.length} correos
+                </div>
+                <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+                  Aún hay más correos en tu Inbox de Gmail.
+                </div>
+              </div>
+              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', justifyContent: 'center' }}>
+                <button
+                  className="btn-secondary"
+                  onClick={handleLoadMoreEmails}
+                  disabled={loadingMoreEmails}
+                  style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 12px', fontSize: '0.82rem' }}
+                >
+                  {loadingMoreEmails ? <RefreshCw size={14} className="spinning" /> : <RefreshCw size={14} />}
+                  Cargar siguientes 50
+                </button>
+                <button
+                  className="btn-primary"
+                  onClick={handleLoadAllEmails}
+                  disabled={loadingMoreEmails}
+                  style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 12px', fontSize: '0.82rem' }}
+                >
+                  Cargar todos los de Inbox
+                </button>
+              </div>
+            </div>
           )}
 
           {activeTab === 'progress' && (
@@ -2185,6 +2533,23 @@ const getCleanClientLabelName = (rawName) => {
             />
             <p style={{fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: 8}}>
               Esta clave es necesaria para traducir y extraer datos de las fotos.
+            </p>
+          </div>
+          <div className="input-group" style={{marginTop: '16px'}}>
+            <label className="input-label">Cantidad de correos a cargar en Inbox</label>
+            <select 
+              className="text-input" 
+              value={inboxLimit}
+              onChange={(e) => setInboxLimit(e.target.value)}
+              style={{ width: '100%', padding: '10px', background: 'var(--bg-color)', color: 'var(--text-primary)', border: '1px solid var(--border-color)', borderRadius: '8px' }}
+            >
+              <option value="50">50 correos</option>
+              <option value="100">100 correos (Predeterminado)</option>
+              <option value="200">200 correos</option>
+              <option value="all">Cargar todos los correos del Inbox</option>
+            </select>
+            <p style={{fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: 8}}>
+              Configura cuántos correos se cargan al abrir el Inbox. Puedes elegir 100 o 'Cargar todos' para ver siempre todos los mails que llegaron.
             </p>
           </div>
           <button className="btn-primary btn-block" onClick={saveSettings}>
@@ -2506,6 +2871,193 @@ const getCleanClientLabelName = (rawName) => {
                 ))
             )}
           </div>
+        </div>
+      </div>
+
+      {/* Modal para Eliminar Labels Hijos */}
+      <div className={`modal-overlay ${isDeleteLabelsModalOpen ? 'open' : ''}`} onClick={() => !isDeletingLabels && setIsDeleteLabelsModalOpen(false)}>
+        <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: '620px', width: '92%', maxHeight: '85vh', display: 'flex', flexDirection: 'column' }}>
+          
+          <div className="modal-header" style={{ marginBottom: 16 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+              <div style={{ padding: '8px', backgroundColor: 'rgba(239, 68, 68, 0.15)', borderRadius: '8px', color: '#ef4444', display: 'flex' }}>
+                <Trash2 size={22} />
+              </div>
+              <div>
+                <h2 className="modal-title" style={{ margin: 0, fontSize: '1.2rem' }}>Eliminar Labels Hijos</h2>
+                <p style={{ margin: '2px 0 0', fontSize: '0.82rem', color: 'var(--text-secondary)' }}>
+                  Ingresa el nombre del label padre para buscar y eliminar todas sus subetiquetas.
+                </p>
+              </div>
+            </div>
+            <button className="btn-icon" onClick={() => !isDeletingLabels && setIsDeleteLabelsModalOpen(false)} disabled={isDeletingLabels}>
+              <X size={20} />
+            </button>
+          </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', flex: 1, overflowY: 'auto' }}>
+            
+            {/* Campo de texto para el label padre */}
+            <div>
+              <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '6px', color: 'var(--text-primary)' }}>
+                Nombre del label padre:
+              </label>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <input 
+                  type="text" 
+                  className="text-input" 
+                  placeholder="Ej: 0. Work/0. 1 HOUR/0. DL IN PROGRESS"
+                  value={parentLabelInput}
+                  onChange={(e) => {
+                    setParentLabelInput(e.target.value);
+                    setFoundChildLabels(null);
+                    setDeleteStatusMessage('');
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') handleSearchChildLabels();
+                  }}
+                  disabled={isSearchingLabels || isDeletingLabels}
+                  style={{ flex: 1 }}
+                  list="available-labels-datalist"
+                />
+                <datalist id="available-labels-datalist">
+                  {allUserLabels.map(l => (
+                    <option key={l.id} value={l.name} />
+                  ))}
+                </datalist>
+
+                <button 
+                  className="btn-primary" 
+                  onClick={handleSearchChildLabels}
+                  disabled={isSearchingLabels || isDeletingLabels || !parentLabelInput.trim()}
+                  style={{ whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: '6px' }}
+                >
+                  {isSearchingLabels ? (
+                    <>
+                      <RefreshCw size={16} className="spinning" />
+                      <span>Buscando...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Search size={16} />
+                      <span>Buscar labels</span>
+                    </>
+                  )}
+                </button>
+              </div>
+              <small style={{ color: 'var(--text-secondary)', fontSize: '0.75rem', marginTop: '5px', display: 'block' }}>
+                Se buscarán todos los labels cuyo nombre comience con <code>{parentLabelInput.trim() ? parentLabelInput.trim() + '/' : 'NombreDelPadre/'}</code>
+              </small>
+            </div>
+
+            {/* Mensaje de estado */}
+            {deleteStatusMessage && (
+              <div style={{
+                padding: '10px 14px',
+                borderRadius: '8px',
+                backgroundColor: foundChildLabels && foundChildLabels.length > 0 ? 'rgba(239, 68, 68, 0.12)' : 'var(--surface-color)',
+                border: `1px solid ${foundChildLabels && foundChildLabels.length > 0 ? 'rgba(239, 68, 68, 0.35)' : 'var(--border-color)'}`,
+                color: foundChildLabels && foundChildLabels.length > 0 ? '#ef4444' : 'var(--text-primary)',
+                fontSize: '0.9rem',
+                fontWeight: 600
+              }}>
+                {deleteStatusMessage}
+              </div>
+            )}
+
+            {/* Progreso de eliminación en tiempo real */}
+            {isDeletingLabels && (
+              <div style={{ padding: '12px', backgroundColor: 'var(--surface-color)', borderRadius: '8px', border: '1px solid var(--border-color)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', marginBottom: '6px' }}>
+                  <span>Eliminando labels de Gmail...</span>
+                  <span style={{ fontWeight: 'bold' }}>{deleteProgress.current} de {deleteProgress.total}</span>
+                </div>
+                <div style={{ height: '8px', backgroundColor: 'rgba(255,255,255,0.1)', borderRadius: '4px', overflow: 'hidden' }}>
+                  <div style={{
+                    height: '100%',
+                    width: `${deleteProgress.total > 0 ? (deleteProgress.current / deleteProgress.total) * 100 : 0}%`,
+                    backgroundColor: '#ef4444',
+                    transition: 'width 0.2s ease-in-out'
+                  }}></div>
+                </div>
+                {deleteProgress.currentName && (
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '6px', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>
+                    Borrando: {deleteProgress.currentName}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Lista visual de labels hijos encontrados */}
+            {foundChildLabels && foundChildLabels.length > 0 && !isDeletingLabels && (
+              <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+                <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: '6px', fontWeight: 600, display: 'flex', justifyContent: 'space-between' }}>
+                  <span>Subetiquetas encontradas ({foundChildLabels.length}):</span>
+                  <span style={{ color: '#ef4444' }}>Se eliminarán al confirmar</span>
+                </div>
+                <div style={{
+                  maxHeight: '220px',
+                  overflowY: 'auto',
+                  border: '1px solid var(--border-color)',
+                  borderRadius: '8px',
+                  backgroundColor: 'rgba(0,0,0,0.15)',
+                  padding: '6px'
+                }}>
+                  {foundChildLabels.map(child => (
+                    <div 
+                      key={child.id}
+                      style={{
+                        padding: '6px 10px',
+                        fontSize: '0.82rem',
+                        borderBottom: '1px solid rgba(255,255,255,0.05)',
+                        color: 'var(--text-primary)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px'
+                      }}
+                    >
+                      <Tag size={13} style={{ color: '#ef4444', flexShrink: 0 }} />
+                      <span style={{ wordBreak: 'break-all' }}>{child.name}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+          </div>
+
+          {/* Botones de acción / Confirmar */}
+          {foundChildLabels && foundChildLabels.length > 0 && (
+            <div style={{ marginTop: '16px', paddingTop: '14px', borderTop: '1px solid var(--border-color)', display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+              <button 
+                className="btn-secondary" 
+                onClick={() => setIsDeleteLabelsModalOpen(false)}
+                disabled={isDeletingLabels}
+                style={{ padding: '8px 16px', fontSize: '0.9rem' }}
+              >
+                Cancelar
+              </button>
+              <button 
+                className="btn-primary" 
+                onClick={handleConfirmDeleteChildLabels}
+                disabled={isDeletingLabels}
+                style={{
+                  backgroundColor: '#dc2626',
+                  color: 'white',
+                  padding: '8px 18px',
+                  fontSize: '0.9rem',
+                  fontWeight: 700,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px'
+                }}
+              >
+                <Trash2 size={16} />
+                <span>Confirmar y eliminar ({foundChildLabels.length})</span>
+              </button>
+            </div>
+          )}
+
         </div>
       </div>
 

@@ -1,0 +1,7 @@
+{
+  "name": "CHINA OK",
+  "description": "Automate Word document filling using AI-powered OCR from driver's license images with automatic translation and image optimization.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}

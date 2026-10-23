@@ -1,0 +1,8 @@
+{
+  "name": "SWEDISH FULL",
+  "description": "Professional AI-powered document automation for driver's license translation and data extraction. Features automatic Word template filling, image optimization, and real-time OCR.",
+  "requestFramePermissions": [
+    "camera"
+  ],
+  "majorCapabilities": []
+}

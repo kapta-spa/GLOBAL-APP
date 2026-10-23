@@ -1,0 +1,123 @@
+# DOCUMENTACION DE REGLAS Y LOGICAS DE EXTRACCION / TRADUCCION DE LICENCIAS DE CONDUCIR (SWEDISH FULL)
+
+================================================================================
+1. CONTEXTO
+================================================================================
+- Pais y Tipo de Licencias: Licencias de conducir europeas / suecas y multilingues (formato de la UE con puntos numerados 1 al 12).
+- Idioma de Origen: Sueco / Frances / Aleman / Espanol / Multilingue.
+- Idioma Destino de Extraccion: INGLÉS (todos los valores de texto traducidos deben estar en ingles, a excepcion del campo "language" que especifica los idiomas originales del documento).
+
+================================================================================
+2. CAMPOS EXACTOS (ESTRUCTURA DE DATOS JSON)
+================================================================================
+- surname: Apellidos (Punto 1 del anverso).
+- firstName: Unicamente el primer nombre del titular (extraido del Punto 2).
+- middleName: Todos los nombres secundarios restantes (Punto 2).
+- firstNames: Todos los nombres de pila unidos.
+- fullName: Nombre completo concatenado (surname + firstName + middleName).
+- licenseNumber: Numero principal de licencia (Punto 5). Solo caracteres alfanumericos.
+- assignedNumber: Numero correlativo interno/referencia de expediente asignado por el usuario (ej. B1758).
+- dateOfBirth: Fecha de nacimiento (Punto 3). Formato: DD Month YYYY.
+- placeOfBirth: Lugar de nacimiento (Punto 3). Traducido al ingles.
+- issueDate: Fecha de expedicion (Punto 4a). Formato: DD Month YYYY.
+- expiryDate: Fecha de caducidad/expiracion (Punto 4b). Formato: DD Month YYYY.
+- authority: Autoridad emisora (Punto 4c). Traducido al ingles + Nombre del pais de origen en ingles al final.
+- class: Lista de categorias de vehiculos autorizadas (Punto 9 del anverso), separadas por comas.
+- classDescriptions: Mapeo detallado de descripciones oficiales en ingles para cada categoria autorizada.
+- categoriesDates: Matriz de fechas de validez por categoria (Tabla del reverso, Columna 10). Agrupado por fecha identica.
+- codes: Codigo administrativo de referencia (Punto 4d del anverso). Solo valor alfanumerico.
+- explicacionCodigos: Explicacion formal de restricciones y codigos de observacion (Columna 12 del reverso / anverso).
+- code106From: Fecha de inicio para la restriccion/codigo 106 (si aplica).
+- code106To: Fecha de fin/caducidad para la restriccion/codigo 106 (si aplica).
+- language: Idioma(s) original(es) identificado(s) en la licencia (ej. "Swedish", "French").
+
+================================================================================
+3. REGLAS DE TRADUCCION Y FORMATO
+================================================================================
+1. Formato de Fechas:
+   Todas las fechas (dateOfBirth, issueDate, expiryDate, code106From, code106To) DEBEN ser transformadas al formato exacto: "DD Month YYYY" (ejemplo: 01 January 2000, 15 August 2025).
+
+2. Division de Nombres:
+   - firstName: Contiene exclusivamente la primera palabra del listado de nombres (Punto 2).
+   - middleName: Contiene el resto de los nombres dados. Si solo hay un nombre, permanecerá vacio.
+
+3. Traduccion de Ubicacion y Autoridad:
+   - placeOfBirth: Se extrae del Punto 3 y se traduce su denominacion oficial al ingles.
+   - authority: Se extrae la entidad emisora del Punto 4c, se traduce al ingles y SIEMPRE se concatena el pais de origen en ingles al final (ej. "Transport Agency, Sweden").
+
+4. Traduccion de Categorias (classDescriptions):
+   Cada categoria de la lista "class" se mapea contra el siguiente catalogo estandarizado en ingles:
+   - AM: AM - 2-wheel, 3-wheel vehicles and light quadricycles with a maximum design speed of not more than 45 km/h.
+   - A1: A1 - light motorcycles with a cylinder capacity not more than 125 cubic centimetres and a power rating less than 11 kW.
+   - A2: A2 - motorcycles with a power rating under 35 kW.
+   - A: A - heavy motorcycles without power restrictions.
+   - B: B - passenger vehicles weighing up to 3,500 kg and seating not more than eight passengers.
+   - BE: BE - vehicle of category B towing a heavy trailer of under 3,500 kg.
+   - B1: B1- quadricycles.
+   - C1: C1 - goods vehicles between 3,500 kg and 7,500 kg and for up to eight passengers-
+   - C1E: C1E - vehicle of category C1 or B towing a heavy trailer; with a combined mass of up to 12,000 kg.
+   - C: C - goods vehicles weighing more than 3,500 kg and seating not more than eight passengers.
+   - CE: CE - vehicle of category C towing a heavy trailer.
+   - D1: D1 - passenger vehicles built for fewer than 16 passengers and that is no longer than 8 m.
+   - D1E: D1E - vehicle of category D1 towing a heavy trailer.
+   - D: D - passenger vehicles for more than eight passengers.
+   - DE: DE - vehicle of category D towing a heavy trailer.
+   - T: T-Tractor
+
+5. Estructura de Fechas de Categorias (categoriesDates):
+   - Se analiza la tabla del reverso (Columna 10).
+   - Se agrupan las categorias que comparten la misma fecha exacta usando el formato: "Classes: Date".
+   - REGLA CRITICA: Cada grupo DEBE ir obligatoriamente en su propia linea mediante un salto de linea (\n).
+   Ejemplo:
+   AM: 01 January 2000
+   B1, B: 03 February 2001
+   C1, C: 01 March 2002
+
+6. Codigos de Observacion / Restricciones (explicacionCodigos):
+   Se busca en la Columna 12 (Reverso) y restricciones del anverso. Se genera la redaccion oficial en ingles:
+   - Codigo "70": "70. Exchange of driver's license number"
+   - Codigo "01": "01- Correction of vision and/or eye protection"
+   - Restriccion A1: "Class A1- limited to 45 km/h"
+   - Codigo "106": "106- Operation of motor vehicles for the transport of passengers, with a maximum weight of 3,500 kilograms and more than 17 seats (including the driver’s seat)"
+
+================================================================================
+4. CASOS ESPECIALES Y EXCEPCIONES
+================================================================================
+- Ilegibilidad / Datos Faltantes: Si un campo opcional no esta presente, se asigna una cadena vacia "".
+- Caracteres Limpios: En licenseNumber y codes (Punto 4d) se eliminan guiones o espacios innecesarios, conservando solo caracteres alfanumericos.
+- Multiples Idiomas: El campo "language" registrara todos los idiomas presentes (ej. "Swedish and English").
+
+================================================================================
+5. SYSTEM PROMPT SUGERIDO PARA GEMINI API
+================================================================================
+You are an expert OCR and document translation system specialized in European driver's licenses (including Swedish and multilingual EU standards). Analyze the provided Front and Back images of the license.
+
+IMPORTANT CONSTRAINTS:
+1. ALL extracted values MUST be translated into English, EXCEPT for the "language" field, which specifies the original source language(s) on the card.
+2. All dates MUST be formatted strictly as "DD Month YYYY" (e.g., "14 May 2018").
+3. Return ONLY a valid JSON object strictly matching the provided JSON Schema.
+
+EXTRACTION INSTRUCTIONS:
+- "surname": Family name (Section 1).
+- "firstName": Extract ONLY the very first given name (Section 2).
+- "middleName": Extract ALL remaining given names after the first given name. Leave empty if none.
+- "firstNames": All given names joined together.
+- "licenseNumber": Main driver's license number (Section 5). Extract alphanumeric characters only.
+- "dateOfBirth": Date of birth (Section 3).
+- "placeOfBirth": Location of birth (Section 3), translated to English.
+- "issueDate": Issue date (Section 4a).
+- "expiryDate": Expiration date (Section 4b).
+- "authority": Issuing authority (Section 4c), translated to English AND always append the country name in English at the end (e.g. "Transport Agency, Sweden").
+- "class": All vehicle categories listed on the front (Section 9), separated by commas (e.g. "AM, B1, B").
+- "categoriesDates": Analyze Column 10 of the table on the BACK. Group categories sharing the same issue date using the format "Classes: Date". Each group MUST be on its own line using a newline character (\n). Example:
+  AM: 01 January 2000
+  B1, B: 03 February 2001
+- "codes": Administrative reference number from Section 4d on the front.
+- "explicacionCodigos": Search Column 12 on the BACK and front restrictions. If matched, output the EXACT English text:
+  * Code 70: "70. Exchange of driver's license number"
+  * Code 01: "01- Correction of vision and/or eye protection"
+  * Class A1 restriction: "Class A1- limited to 45 km/h"
+  * Code 106: "106- Operation of motor vehicles for the transport of passengers, with a maximum weight of 3,500 kilograms and more than 17 seats (including the driver’s seat)"
+  Combine multiple matches into a single paragraph. If none match, leave empty.
+- "code106From" & "code106To": Extract validity start and end dates for code 106 if present.
+- "language": Identify the original language(s) present on the document (e.g. "Swedish", "French").

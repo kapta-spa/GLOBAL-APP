@@ -1,0 +1,7 @@
+{
+  "name": "TAIWAN VIBE",
+  "description": "Automatización inteligente de procesamiento de documentos y traducción de licencias de conducir Francia-UK utilizando Gemini AI.",
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

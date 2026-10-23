@@ -1,0 +1,138 @@
+# REGLAS Y LÓGICA DE EXTRACCIÓN Y TRADUCCIÓN DE LICENCIAS DE CONDUCIR (FRANCIA -> UK / INGLES)
+
+## 1. CONTEXTO Y LENGUAJE ORIGEN / DESTINO
+- **País de Origen:** Francia (Permis de Conduire - Unión Europea).
+- **Idioma de Origen:** Francés.
+- **Idioma de Destino (Traducción):** Inglés (UK Standard / Sworn Translation format).
+- **Motor de IA utilizado:** API de Gemini (Google GenAI SDK - `gemini-3-flash-preview` / `gemini-2.5-flash`).
+
+---
+
+## 2. ESTRUCTURA DE DATOS (CAMPOS EXACTOS DE EXTRACCIÓN)
+
+| Campo JSON | Etiqueta / Punto Licencia | Descripción / Contenido Exacto |
+| :--- | :--- | :--- |
+| `assignedNumber` | N/A | Número asignado o expediente manual para el archivo final |
+| `surname` | Punto 1 | Apellidos de la persona (Family Name / Nom) |
+| `firstName` | Punto 2 | PRIMER nombre propio extraído de la lista de nombres |
+| `middleName` | Punto 2 | TODOS los nombres adicionales/secundarios después del primer nombre |
+| `firstNames` | Punto 2 | Todos los nombres dados combinados exactamente como aparecen |
+| `fullName` | Calculado | Nombre completo concatenado (`surname` + `firstName` + `middleName`) |
+| `licenseNumber` | Punto 5 | Número de licencia principal (solo caracteres alfanuméricos) |
+| `dateOfBirth` | Punto 3 | Fecha de nacimiento |
+| `placeOfBirth` | Punto 3 | Lugar/Ciudad/Comuna de nacimiento (Traducido al Inglés) |
+| `issueDate` | Punto 4a | Fecha de emisión general de la licencia |
+| `expiryDate` | Punto 4b | Fecha de vencimiento general de la licencia |
+| `authority` | Punto 4c | Autoridad emisora (Traducido al Inglés + "France") |
+| `address` | Reverso / Frente | Dirección de residencia completa (Calle, Código Postal, Ciudad) |
+| `gender` | Identificado | Género de la persona (Valor exacto: "Male" o "Female") |
+| `blood` | Identificado | Grupo sanguíneo si consta (ej. A+, O-, B+, etc.) |
+| `class` | Punto 9 (Frente) | Categorías autorizadas en el frente separadas por comas (ej. A, B, BE) |
+| `codes` | Reverso Sup. Der. | Códigos alfanuméricos situados en la esquina superior derecha del reverso |
+| `categoriesDates` | Tabla Col. 10 (Reverso) | Fechas de validez agrupadas por categorías (Columna 10) |
+| `explicacionCodigos` | Tabla Col. 12 (Reverso) | Traducción y desglose estructurado de códigos y restricciones |
+
+---
+
+## 3. REGLAS DE TRADUCCIÓN Y FORMATO ESPECÍFICAS POR CAMPO
+
+1. **`surname`**:
+   - Extraer exactamente como aparece en la casilla 1 (Nom). Conservar mayúsculas y acentos.
+
+2. **`firstName`**:
+   - Extraer ÚNICAMENTE el primer nombre propio de la casilla 2 (Prénoms). No truncar.
+
+3. **`middleName`**:
+   - Extraer TODOS los nombres restantes que sigan al primer nombre de la casilla 2. Si hay múltiples nombres (ej. "Jean Paul Marc"), "Jean" es `firstName` y "Paul Marc" es `middleName`.
+
+4. **`firstNames`**:
+   - Concatenación de todos los nombres dados de la casilla 2.
+
+5. **`licenseNumber`**:
+   - Casilla 5. Extraer únicamente caracteres alfanuméricos eliminando espacios o guiones irrelevantes.
+
+6. **`dateOfBirth` & `placeOfBirth`**:
+   - Casilla 3. La fecha debe formatearse en inglés: `DD Month YYYY` (ej. "15 January 1985").
+   - El lugar de nacimiento se traduce si aplica (ej. "Paris, France").
+
+7. **`issueDate` & `expiryDate`**:
+   - Casillas 4a y 4b respectivamente.
+   - Formato estricto: `DD Month YYYY` (ej. "04 March 2022").
+
+8. **`authority`**:
+   - Casilla 4c (ej. "PREFECTURE DE POLICE DE PARIS" o "ANTS").
+   - Regla de traducción: Traducir la autoridad al inglés y añadir el país si no figura (ej. "Paris Police Prefecture, France" o "National Agency for Secure Titles (ANTS), France").
+
+9. **`address`**:
+   - Extraer dirección completa visible en la licencia (calle, código postal, ciudad).
+
+10. **`gender`**:
+    - Mapear a `"Male"` o `"Female"` en inglés.
+
+11. **`class`**:
+    - Extraer todas las categorías listadas en el punto 9 del frente separadas por comas (ej. "A1, A, B, BE").
+
+12. **`categoriesDates`**:
+    - Analizar la tabla del reverso, Columna 10 ("Valid from" / "Du").
+    - Agrupar categorías que compartan la misma fecha de emisión inicial. Formatear fechas como `DD Month YYYY`.
+
+13. **`explicacionCodigos` (Códigos de Restricción / Condición - Columna 12):**
+    - Mapear y traducir estrictamente los códigos franceses/europeos al estándar en inglés:
+      - **Código "70"**: `"70. Exchange of driver's license number [número_extraído]"`
+      - **Código "01"**: `"01- Vision correction and/or protection"`
+      - **Código "01.06"**: `"01.06- Prescribed spectacles or contact lenses"`
+      - **Código "106"**: `"106- Subject to the application of article R. 413-5 from [FechaDesde] to [FechaHasta]"` (Licencia novata/joven conductor en Francia).
+
+---
+
+## 4. CASOS ESPECIALES Y EXCEPCIONES DE PROCESAMIENTO
+
+1. **Nombres Múltiples o Compuestos:**
+   - Asegurar que ningún nombre sea omitido o cortado. Si la casilla 2 tiene 3 o más nombres, el primero va a `firstName` y el resto íntegros a `middleName`.
+
+2. **Texto Ilegible o Borroso:**
+   - Si un dato no es visible o está cubierto por reflejo, devolver cadena vacía `""` sin inventar información.
+
+3. **Formato de Fechas Unificado:**
+   - Todas las fechas del JSON resultante DEBEN seguir obligatoriamente la convención de inglés británico: `DD Month YYYY` (ej. `28 November 2030`).
+
+4. **Traducción del Reverso (Columna 12 - Códigos comunitarios y nacionales):**
+   - Interpretación de códigos nacionales franceses (ej. 106 es restricción de velocidad para conductores noveles). Debe explicarse con texto legal en inglés claro.
+
+---
+
+## 5. SYSTEM PROMPT SUGERIDO PARA LA API DE GEMINI
+
+```text
+You are an expert AI document translator and OCR specialist specializing in official French driver's licenses (Permis de Conduire) and converting them for certified UK English translations.
+
+Analyze the two provided images: Image 1 is the FRONT side and Image 2 is the BACK side of a French Driver's License.
+
+CRITICAL INSTRUCTION: ALL OUTPUT VALUES IN THE GENERATED JSON MUST BE IN ENGLISH.
+
+EXTRACT AND TRANSLATE DATA ACCORDING TO THESE STRICT RULES:
+1. "surname": Family name found in Label 1 (Nom). Preserve exact accents/capitalization.
+2. "firstName": The FIRST given name from Label 2 (Prénoms). Do not truncate.
+3. "middleName": ALL remaining given names that follow the first name in Label 2. Include all additional middle names without omitting any.
+4. "firstNames": ALL given names from Label 2 combined exactly as written.
+5. "licenseNumber": Main identification number from Label 5. Extract ONLY alphanumeric characters.
+6. "dateOfBirth": Date found at Label 3. Format as "DD Month YYYY" (e.g. 12 May 1990).
+7. "placeOfBirth": Location at Label 3. Translate city/department to English format if applicable.
+8. "issueDate": General issue date at Label 4a. Format as "DD Month YYYY".
+9. "expiryDate": General expiry date at Label 4b. Format as "DD Month YYYY".
+10. "authority": Issuing authority from Label 4c (e.g., Prefecture). Translate to English and append "France" if not present.
+11. "address": Full address if visible on the license.
+12. "gender": Output MUST be exactly "Male" or "Female".
+13. "blood": Blood type if indicated (e.g. A+, O+).
+14. "codes": Look at the REVERSE (BACK) side, TOP RIGHT corner. Extract any numeric/alphanumeric code strings.
+15. "class": Extract ALL categories listed in Point 9 on FRONT (e.g. A, B, BE) separated by commas.
+16. "categoriesDates": From the BACK table, analyze Column 10 (valid from dates) for each category and list them clearly in English format "DD Month YYYY".
+17. "explicacionCodigos": Analyze Column 12 on the BACK for restriction codes and translate them to official English definitions:
+    - Code "70": "70. Exchange of driver's license number [number]"
+    - Code "01": "01- Vision correction and/or protection"
+    - Code "01.06": "01.06- Prescribed spectacles or contact lenses"
+    - Code "106": "106- Subject to the application of article R. 413-5 from [DateFrom] to [DateTo]"
+18. Formats: ALL dates MUST be formatted as "DD Month YYYY" (e.g. 05 October 2025). Never truncate names.
+
+Return strictly valid JSON conforming to the schema.
+```

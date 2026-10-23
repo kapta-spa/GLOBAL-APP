@@ -19,7 +19,7 @@
 | `firstNames` | Anverso - Punto 2 | Concatenación de todos los nombres de pila (`firstName` + `middleName`). |
 | `fullName` | Anverso - Puntos 1 y 2 | Nombre completo unificado (`surname` + `firstName` + `middleName`). |
 | `licenseNumber` | Anverso - Punto 5 | Número identificador de la tarjeta de licencia de conducir. |
-| `citizen` | Reverso - Superior Izq. | BSN (Burgerservicenummer) y número de serie unidos por barra diagonal con espacios (`"BSN / SERIAL"`). Ej: `"150348563 / 1234567851"`. |
+| `citizen` | Reverso - Superior Izq. | Números al lado de las letras RSN o BSN unidos por barra diagonal con espacios (`"NUMERO1 / NUMERO2"`). Ej: `"206307779 / 5353983213"` o `"150348563 / 1234567851"`. |
 | `dateOfBirth` | Anverso - Punto 3.1 | Fecha de nacimiento formateada. |
 | `placeOfBirth` | Anverso - Punto 3.2 | Ciudad/Lugar de nacimiento traducido al inglés. |
 | `issueDate` | Anverso - Punto 4a | Fecha de expedición del documento. |
@@ -46,8 +46,9 @@
    - Siempre debe terminar agregando `", Netherlands"`.
 5. **Formato del Campo `citizen` (Reverso):**
    - Ubicado en la esquina superior izquierda del reverso de la tarjeta.
-   - Identificar los dos números impresos (BSN y número de serie numérico).
-   - Unirlos con un espacio, barra y espacio: `"BSN_NUMERO / NUMERO_SERIE"`.
+   - Identificar los números impresos al lado o debajo de las letras "RSN" o "BSN" (ejemplo: 206307779 / 5353983213).
+   - Unirlos con un espacio, barra y espacio: `"NUMERO1 / NUMERO2"` (ej. `"206307779 / 5353983213"` o `"150348563 / 1234567851"`).
+   - No incluir las letras RSN o BSN en el valor final, solo los números.
 
 ---
 
@@ -76,10 +77,11 @@ CRITICAL INSTRUCTIONS:
    - "firstName": Extract ONLY the single first given name.
    - "middleName": Extract all remaining given names. If none exist, return an empty string "".
    - "surname": Extract family name from Point 1.
-4. CITIZEN / BSN FIELD (Back Top-Left):
+4. CITIZEN / RSN / BSN FIELD (Back Top-Left):
    - Locate the top-left area on the BACK of the card.
-   - Extract the two numeric series (BSN and serial number).
-   - Join them with a slash: "BSN_NUMBER / SERIAL_NUMBER" (e.g., "150348563 / 1234567851").
+   - Look for the numbers printed next to or under the letters "RSN" or "BSN" (e.g., 206307779 / 5353983213).
+   - Extract the numeric series and join them with a slash: "NUMBER1 / NUMBER2" (e.g., "206307779 / 5353983213").
+   - Do NOT include letters "RSN" or "BSN" in the field value. Never place this in "codes".
 5. ISSUING AUTHORITY (Point 4c):
    - Translate terms like "Burgemeester van [City]" to "Mayor and Aldermen of [City], Netherlands". Always end with ", Netherlands".
 6. CATEGORIES & DATES (Back Table):

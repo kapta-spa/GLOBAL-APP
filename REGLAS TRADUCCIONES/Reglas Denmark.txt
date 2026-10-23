@@ -11,8 +11,8 @@
 
 | Campo | Tipo | Descripción y Origen |
 |---|---|---|
-| `personal` | String | Número personal / CPR / número de referencia ubicado en la casilla 4d del anverso/frente. |
-| `point4d` | String | Mismo número de referencia de la casilla 4d del anverso/frente (duplicado de `personal`). |
+| `personal` | String | Número personal CPR (identitetsnummer) ubicado en la casilla 4d del anverso/frente (ej. `140406-5021`). NO confundir con el número de orden de traducción (`assignedNumber`). |
+| `point4d` | String | Mismo número de referencia CPR de la casilla 4d del anverso/frente (duplicado de `personal`, ej. `140406-5021`). |
 | `surname` | String | Apellido(s) del titular (Punto 1 del anverso). |
 | `firstName` | String | Únicamente el primer nombre de pila (Punto 2 del anverso). |
 | `middleName` | String | Todos los demás nombres de pila restantes tras el primero. |
@@ -37,7 +37,7 @@
 1. **Idioma de Salida Obligatorio:** Todos los textos generados y traducidos deben entregarse estrictamente en **INGLÉS (UK)**.
 2. **Formato de Fechas:** Estricto formato `"DD Month YYYY"` (ej. `14 April 2022`, `03 November 1988`).
 3. **Número Personal (`personal` / `point4d`):**
-   - Extraer el número ubicado en la casilla **4d** del frente/anverso de la licencia de Dinamarca. Ponerlo tanto en `personal` como en `point4d`.
+   - Extraer el número CPR (personal identity number) ubicado en la casilla **4d** del frente/anverso de la licencia de Dinamarca (ejemplo: `140406-5021`). Ponerlo tanto en `personal` como en `point4d`. No colocarlo en `assignedNumber`.
 4. **Categorías y Descripciones (`classDescriptions`):**
    - Para CADA categoría listada en `class`, incluir su descripción correspondiente en una NUEVA LÍNEA.
    - Usar ESTRICTAMENTE este listado de descripciones permitidas:

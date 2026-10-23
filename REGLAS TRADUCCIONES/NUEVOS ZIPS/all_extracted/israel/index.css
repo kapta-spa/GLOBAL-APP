@@ -1,0 +1,28 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-brand-black text-white antialiased selection:bg-brand-cyan/30 selection:text-white;
+    background: radial-gradient(circle at 80% 20%, #004d4d, #010d0e 55%), #010d0e;
+    min-height: 100vh;
+  }
+}
+
+@layer components {
+  .glow-teal {
+    box-shadow: 0 0 25px rgba(0, 229, 229, 0.25);
+  }
+
+  .glow-emerald {
+    box-shadow: 0 0 25px rgba(16, 185, 129, 0.25);
+  }
+
+  .card-surface {
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.05) 0%, rgba(2, 27, 29, 0.8) 100%);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    backdrop-filter: blur(16px);
+  }
+}
+

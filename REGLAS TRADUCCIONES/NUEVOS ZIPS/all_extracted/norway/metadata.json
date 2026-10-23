@@ -1,0 +1,8 @@
+{
+  "name": "NORWAY FULL",
+  "description": "Automatización premium de traducción y llenado de documentos Word (.docx) mediante OCR inteligente con Gemini AI para licencias de conducir Francia → UK.",
+  "requestFramePermissions": [
+    "camera"
+  ],
+  "majorCapabilities": []
+}

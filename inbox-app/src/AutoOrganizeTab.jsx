@@ -167,17 +167,17 @@ export default function AutoOrganizeTab({ token, sheetName, onRefreshTrigger, ha
     setLoading(true);
     setStatusMessage(null);
     try {
-      // 1. Fetch Order messages in Inbox
+      // 1. Fetch Order messages in Inbox (increased to 100 to catch all orders)
       const orderQuery = 'in:inbox ("Online order form NEW" OR "RVA TRANSLATIONS" OR "1 HOUR GLOBAL TRANSLATIONS" OR "1 HOUR GLOBALTRANS" OR "ONLINE ORDER FORM" OR from:wixforms.com OR from:wix.com OR "FOTO 1")';
-      const orderRes = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages?q=${encodeURIComponent(orderQuery)}&maxResults=30`, {
+      const orderRes = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages?q=${encodeURIComponent(orderQuery)}&maxResults=100`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       if (orderRes.status === 401) handleAuthError(orderRes.status);
       const orderData = await orderRes.json();
 
-      // 2. Fetch recent payment messages in Inbox or recent timeframe
+      // 2. Fetch recent payment messages in Inbox or recent timeframe (increased to 100)
       const paymentQuery = 'in:inbox (from:stripe.com OR from:paypal.com OR "Stripe" OR "PayPal" OR "receipt" OR "recibo")';
-      const paymentRes = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages?q=${encodeURIComponent(paymentQuery)}&maxResults=40`, {
+      const paymentRes = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages?q=${encodeURIComponent(paymentQuery)}&maxResults=100`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       const paymentData = await paymentRes.json();
@@ -185,20 +185,32 @@ export default function AutoOrganizeTab({ token, sheetName, onRefreshTrigger, ha
       const rawOrders = orderData.messages || [];
       const rawPayments = paymentData.messages || [];
 
-      // Download message details
+      // Download message details in batches of 25 to avoid rate limits
+      const fetchInChunks = async (list) => {
+        const out = [];
+        for (let i = 0; i < list.length; i += 25) {
+          const chunk = list.slice(i, i + 25);
+          const chunkRes = await Promise.all(
+            chunk.map(async (m) => {
+              try {
+                const res = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages/${m.id}`, {
+                  headers: { Authorization: `Bearer ${token}` }
+                });
+                if (!res.ok) return null;
+                return await res.json();
+              } catch (e) {
+                return null;
+              }
+            })
+          );
+          out.push(...chunkRes.filter(Boolean));
+        }
+        return out;
+      };
+
       const [orderMessages, paymentMessages] = await Promise.all([
-        Promise.all(rawOrders.map(async (m) => {
-          const res = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages/${m.id}`, {
-            headers: { Authorization: `Bearer ${token}` }
-          });
-          return res.json();
-        })),
-        Promise.all(rawPayments.map(async (m) => {
-          const res = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages/${m.id}`, {
-            headers: { Authorization: `Bearer ${token}` }
-          });
-          return res.json();
-        }))
+        fetchInChunks(rawOrders),
+        fetchInChunks(rawPayments)
       ]);
 
       // Parse payment messages

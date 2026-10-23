@@ -18,7 +18,9 @@
 | `firstNames` | String | Todos los nombres propios juntos. |
 | `fullName` | String | Nombre completo concatenado: `Surname + First Name + Middle Name`. |
 | `licenseNumber` | String | Número principal de la licencia [Punto 5]. Extraer ÚNICAMENTE caracteres alfanuméricos. |
-| `assignedNumber` | String | Número de control/referencia personal [Punto 4d]. |
+| `personal` | String | Número personal de identidad [Punto 4d del frente], ej: 090700 85051. Rellena la etiqueta `{{personal}}`. |
+| `point4d` | String | Mismo valor que `personal`. |
+| `assignedNumber` | String | Número interno de control asignado al documento. |
 | `dateOfBirth` | String | Fecha de nacimiento [Punto 3]. Formato `DD Month YYYY`. |
 | `placeOfBirth` | String | Lugar de nacimiento [Punto 3]. TRADUCIR AL INGLÉS. |
 | `issueDate` | String | Fecha de expedición/emisión [Punto 4a]. Formato `DD Month YYYY`. |
@@ -97,7 +99,8 @@ EXTRACTION RULES:
 - firstName: ONLY the first given name (Point 2).
 - middleName: ALL remaining given names after the first (Point 2). Leave empty if only one name.
 - licenseNumber: Point 5 identification number (alphanumeric only).
-- assignedNumber: Point 4d personal reference number.
+- personal: Point 4d personal identity number on the front (e.g. "090700 85051"). Also set "point4d" to the exact same value.
+- assignedNumber: Internal document control number if provided, otherwise "-". Do NOT put the Point 4d personal number here.
 - dateOfBirth: Point 3 date.
 - placeOfBirth: Point 3 location translated into English.
 - issueDate: Point 4a date.

@@ -1,0 +1,87 @@
+# DOCUMENTACIÓN TÉCNICA: REGLAS LATINO Y EUROPEAS DE EXTRACCIÓN/TRADUCCIÓN DE LICENCIAS
+====================================================================================================
+
+## 1. CONTEXTO
+- **Países Cubiertos**: Chile, México (todos los estados: CDMX, Edomex, Jalisco, Nuevo León, Puebla, Veracruz, etc.), Argentina, Uruguay, Colombia, Perú, Francia, Unión Europea e Internacionales.
+- **Idioma de Entrada**: Español, Francés, u otros idiomas de origen.
+- **Idioma de Salida Requerido**: Inglés Técnico Oficial (UK / International English).
+- **Propósito**: Automatización de extracción OCR y traducción estructurada de licencias de conducir para la generación de documentos oficiales en plantillas Word (.docx).
+
+---
+
+## 2. ESTRUCTURA DE CAMPOS Y ETIQUETAS WORD (JSON / TEMPLATES)
+
+| Campo (`key` / etiqueta) | Tipo | Descripción | Regla Latino / Tratamiento |
+| :--- | :--- | :--- | :--- |
+| `surname` / `{{surname}}` | `string` | Apellidos de la persona | Conservar original. Si no hay: `"-"` |
+| `firstName` / `{{firstName}}` | `string` | Únicamente el primer nombre | Conservar original. Si no hay: `"-"` |
+| `middleName` / `{{middleName}}` | `string` | Segundo y demás nombres | Conservar original. Si no hay: `"-"` |
+| `firstNames` / `{{firstNames}}` | `string` | Todos los nombres juntos | Conservar original. Si no hay: `"-"` |
+| `fullName` / `{{fullName}}` | `string` | Nombre completo (Apellidos + Nombres) | Conservar original. Si no hay: `"-"` |
+| `gender` / `{{gender}}` | `string` | Género / Sexo | `"Male"` o `"Female"`. Si la licencia no lo indica: `"-"` |
+| `organs` / `{{organs}}` | `string` | Donador de Órganos | `"Yes"` o `"No"` si lo indica. Si no lo indica: se borra (vacío `""`) |
+| `address` / `{{address}}` | `string` | Dirección / Domicilio | Dirección completa si lo indica. Si no lo indica: se borra (vacío `""`) |
+| `nationality` / `{{nationality}}` | `string` | Nacionalidad en inglés | Traducida al inglés si lo indica. Si no lo indica: se borra (vacío `""`) |
+| `licenseNumber` / `{{licenseNumber}}` | `string` | Número de licencia / Folio / DNI / RUT | Número identificador. Si no hay: `"-"` |
+| `dateOfBirth` / `{{dateOfBirth}}` | `string` | Fecha de nacimiento | Formato `"DD Month YYYY"`. Si no hay: `"-"` |
+| `placeOfBirth` / `{{placeOfBirth}}` | `string` | Lugar de nacimiento en inglés | Traducido al inglés. Si no hay: `"-"` |
+| `issueDate` / `{{issueDate}}` | `string` | Fecha de expedición | Formato `"DD Month YYYY"`. Si no hay: `"-"` |
+| `expiryDate` / `{{expiryDate}}` | `string` | Fecha de vencimiento / vigencia | Formato `"DD Month YYYY"` o `"Permanent"`. Si no hay: `"-"` |
+| `authority` / `{{authority}}` | `string` | Autoridad emisora + País | Traducida al inglés con `", País"` al final. Si no hay: `"-"` |
+| `class` / `{{class}}` | `string` | Categoría / Clase de licencia | `"Class B"`, `"Type A - Automovilista"`, etc. Si no hay: `"-"` |
+| `curp` / `{{curp}}` | `string` | CURP / RFC / DNI / RUT / Cédula | Código de identificación nacional. Si no hay: `"-"` |
+| `blood` / `{{blood}}` | `string` | Tipo de sangre / Grupo y factor | `"O+"`, `"A-"`, etc. Si no hay: `"-"` |
+| `barcode` / `{{barcode}}` | `string` | Código de barras / alfanumérico | Cadena de control. Si no hay: `"-"` |
+| `codes` / `{{codes}}` | `string` | Códigos de restricción | `"01 - Corrective lenses"`, etc. Si no hay: `"-"` |
+| `categoriesDates` / `{{categoriesDates}}` | `string` | Fechas por categoría | Periodos de validez. Si no hay: `"-"` |
+| `explicacion` / `{{explicacion}}` | `string` | Traducción y descripción técnica de categorías | Explicación técnica de la categoría según el país. Si no hay: `"-"` |
+| `{%license_front}` | `image` | Foto del frente de la licencia | Anclaje de imagen Word (~312x195px) |
+| `{%license_back}` | `image` | Foto del reverso de la licencia | Anclaje de imagen Word (~312x195px) |
+| `today` / `{{today}}` | `string` | Fecha actual formateada | `"DD Month YYYY"` |
+
+---
+
+## 3. REGLAS ESPECÍFICAS ("REGLAS LATINO")
+
+### 3.1. Campo `{{explicacion}}`
+- Si la licencia describe la categoría en el texto, se traduce directamente al inglés.
+- Si la licencia solo indica la letra/código (ej. "Clase B" en Chile, "Tipo A Automovilista" en México, "B1" en Colombia, "B.1" en Argentina, etc.), la IA busca y redacta la descripción técnica corta oficial en inglés de esa categoría según la normativa de tránsito del país correspondiente.
+- Ejemplo: `"Class B: Motor vehicles with 3 or more wheels for passenger transport (up to 9 seats) or cargo transport with gross vehicle weight not exceeding 3,500 kg."`
+
+### 3.2. Campo `{{gender}}`
+- Se traduce a `"Male"` o `"Female"`.
+- Si la licencia NO indica el sexo/género, se coloca obligatoriamente un guion `"-"`.
+
+### 3.3. Campo `{{organs}}`
+- Se coloca `"Yes"` o `"No"` si la licencia indica la condición de donante de órganos.
+- Si la licencia NO indica nada sobre donación de órganos, se borra (se deja en blanco `""` en el documento Word).
+
+### 3.4. Campo `{{address}}`
+- Se incluye la dirección/domicilio si la licencia lo indica.
+- Si la licencia NO incluye dirección, se borra (se deja en blanco `""` en el documento Word).
+
+### 3.5. Campo `{{nationality}}`
+- Se coloca la nacionalidad traducida al inglés (ej. `"Mexican"`, `"Chilean"`, `"Colombian"`, `"Argentine"`, `"French"`).
+- Si la licencia NO indica nacionalidad, se borra (se deja en blanco `""` en el documento Word).
+
+### 3.6. Regla General de Campos sin Datos
+- **Todos los demás campos** que no tengan datos deben tener un guion `"-"`, nunca dejarse en blanco ni con valores "N/A" o "null".
+- Las únicas excepciones que se borran completamente son: `organs`, `address`, y `nationality`.
+
+---
+
+## 4. SISTEMA PROMPT OPTIMIZADO
+
+```text
+Analyze the two driver's license images (Front and Back). Apply Reglas Latino:
+- Dates in "DD Month YYYY" (or "Permanent" for indefinite validity).
+- Names: keep original proper names. firstName = first only, middleName = remaining names (or "-").
+- Authority: translated to English + ", Country".
+- explicacion: translate categories; if only codes shown, provide short technical English description for that country.
+- gender: "Male" / "Female" or "-".
+- organs: "Yes" / "No" if present, else "".
+- address: address text if present, else "".
+- nationality: English nationality if present, else "".
+- All other missing fields: "-".
+Return valid JSON.
+```
