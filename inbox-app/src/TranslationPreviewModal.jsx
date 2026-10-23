@@ -140,6 +140,11 @@ export default function TranslationPreviewModal({
                           (normalized.country && /indonesia/i.test(normalized.country)) ||
                           /indonesia|indonesian/i.test(folderLower);
 
+      const isSweden = (normalized.nationality && /swed|suec|sverige|svensk/i.test(normalized.nationality)) ||
+                       (normalized.authority && /transportstyrelsen|sweden|sverige|krekort|korkort/i.test(normalized.authority)) ||
+                       (normalized.country && /sweden|suecia|swedish|sverige/i.test(normalized.country)) ||
+                       /sweden|suecia|swedish|sverige/i.test(folderLower);
+
       // Default Nationality
       if (!normalized.nationality || normalized.nationality.trim() === '' || normalized.nationality === '-') {
         if (isChina) normalized.nationality = 'Chinese';
@@ -230,6 +235,7 @@ export default function TranslationPreviewModal({
         else if (isNorway) autoTemplate = 'norway.docx';
         else if (isDenmark) autoTemplate = 'denmark.docx';
         else if (isIndonesia) autoTemplate = 'indonesia.docx';
+        else if (isSweden) autoTemplate = 'swedish.docx';
         else autoTemplate = 'alemania.docx';
       }
       setSelectedTemplate(autoTemplate);
@@ -377,6 +383,27 @@ export default function TranslationPreviewModal({
         } else if (normalized.codes !== undefined) {
           normalized.code = normalized.codes;
           normalized.reverse = normalized.codes;
+        }
+      }
+
+      if (isSweden || autoTemplate === 'swedish.docx') {
+        const sweden4d = normalized.code ||
+                         normalized.codes ||
+                         normalized.point4d ||
+                         normalized.sec4d ||
+                         normalized.personal ||
+                         normalized.personalNumber ||
+                         normalized.personal_number ||
+                         normalized.personalId ||
+                         normalized.reference ||
+                         normalized.referenceNumber ||
+                         normalized.reference_number ||
+                         normalized.administrativeNumber;
+        if (sweden4d && sweden4d !== '-' && String(sweden4d).trim() !== '') {
+          const clean4d = String(sweden4d).trim();
+          normalized.code = clean4d;
+          normalized.codes = clean4d;
+          normalized.point4d = clean4d;
         }
       }
       
@@ -562,7 +589,9 @@ export default function TranslationPreviewModal({
       const arrayBuffer = await getEffectiveTemplateBuffer();
       const isJapan = selectedTemplate === 'japon.docx' || (formData.nationality && /japan|japon/i.test(formData.nationality)) || (formData.authority && /japan|japon|public safety commission/i.test(formData.authority));
       const isGerman = selectedTemplate === 'alemania.docx' || (formData.nationality && /german|alemania|deutsch/i.test(formData.nationality)) || (formData.authority && /germany|alemania|deutschland/i.test(formData.authority));
+      const isSweden = selectedTemplate === 'swedish.docx' || (formData.nationality && /swed|suec|sverige|svensk/i.test(formData.nationality)) || (formData.authority && /transportstyrelsen/i.test(formData.authority));
       const cleanGermanCodes = isGerman ? getCleanGermanCodes(formData) : '';
+      const swedenCodeVal = isSweden ? (formData.code || formData.codes || formData.point4d || formData.personal || '-') : (formData.code || formData.codes);
       const effectiveDocCountry = formData.country || folderName || formData.nationality || selectedTemplate;
       const cleanData = {
         ...formData,
@@ -570,8 +599,8 @@ export default function TranslationPreviewModal({
         templateName: selectedTemplate,
         class: isJapan ? formatJapanLicenseClasses(formData.class) : formData.class,
         categoriesDates: formatCategoriesDates(formData.categoriesDates),
-        codes: isGerman ? (cleanGermanCodes !== '-' ? cleanGermanCodes : formData.codes) : (isJapan ? getCleanJapanCondition(formData) : (formData.codes || formData.code)),
-        code: formData.code || formData.codes,
+        codes: isGerman ? (cleanGermanCodes !== '-' ? cleanGermanCodes : formData.codes) : (isJapan ? getCleanJapanCondition(formData) : (isSweden ? swedenCodeVal : (formData.codes || formData.code))),
+        code: isSweden ? swedenCodeVal : (formData.code || formData.codes),
         blood: formData.blood || formData.Blood,
         Blood: formData.Blood || formData.blood,
         address: formData.address || formData.alamat || '',
@@ -595,7 +624,9 @@ export default function TranslationPreviewModal({
       const arrayBuffer = await getEffectiveTemplateBuffer();
       const isJapan = selectedTemplate === 'japon.docx' || (formData.nationality && /japan|japon/i.test(formData.nationality)) || (formData.authority && /japan|japon|public safety commission/i.test(formData.authority));
       const isGerman = selectedTemplate === 'alemania.docx' || (formData.nationality && /german|alemania|deutsch/i.test(formData.nationality)) || (formData.authority && /germany|alemania|deutschland/i.test(formData.authority));
+      const isSweden = selectedTemplate === 'swedish.docx' || (formData.nationality && /swed|suec|sverige|svensk/i.test(formData.nationality)) || (formData.authority && /transportstyrelsen/i.test(formData.authority));
       const cleanGermanCodes = isGerman ? getCleanGermanCodes(formData) : '';
+      const swedenCodeVal = isSweden ? (formData.code || formData.codes || formData.point4d || formData.personal || '-') : (formData.code || formData.codes);
       const effectiveDocCountry = formData.country || folderName || formData.nationality || selectedTemplate;
       const cleanData = {
         ...formData,
@@ -603,8 +634,8 @@ export default function TranslationPreviewModal({
         templateName: selectedTemplate,
         class: isJapan ? formatJapanLicenseClasses(formData.class) : formData.class,
         categoriesDates: formatCategoriesDates(formData.categoriesDates),
-        codes: isGerman ? (cleanGermanCodes !== '-' ? cleanGermanCodes : formData.codes) : (isJapan ? getCleanJapanCondition(formData) : (formData.codes || formData.code)),
-        code: formData.code || formData.codes,
+        codes: isGerman ? (cleanGermanCodes !== '-' ? cleanGermanCodes : formData.codes) : (isJapan ? getCleanJapanCondition(formData) : (isSweden ? swedenCodeVal : (formData.codes || formData.code))),
+        code: isSweden ? swedenCodeVal : (formData.code || formData.codes),
         blood: formData.blood || formData.Blood,
         Blood: formData.Blood || formData.blood,
         address: formData.address || formData.alamat || '',
@@ -929,7 +960,9 @@ export default function TranslationPreviewModal({
 
           <div style={{ marginBottom: '24px' }}>
             <label style={{ display: 'block', fontSize: '14px', fontWeight: 'bold', marginBottom: '4px', color: '#374151' }}>
-              Series / Códigos Reverso / Code ({"{{code}}"} / {"{{codes}}"})
+              {(selectedTemplate === 'swedish.docx' || (formData.nationality && /swed|suec|sverige|svensk/i.test(formData.nationality)))
+                ? 'Suecia: Número de Referencia / Sec 4d ({{code}})' 
+                : 'Series / Códigos Reverso / Code ({{code}} / {{codes}})'}
             </label>
             <input 
               type="text" 
@@ -937,7 +970,7 @@ export default function TranslationPreviewModal({
               value={formData.codes || formData.code || ''} 
               onChange={handleChange} 
               style={inputStyle} 
-              placeholder="Códigos reverso (ej. Sup. Izq en Francia/Holanda, Sup. Der en Indonesia)" 
+              placeholder={(selectedTemplate === 'swedish.docx' || (formData.nationality && /swed|suec|sverige|svensk/i.test(formData.nationality))) ? "Número al frente de la licencia en la sección 4d (ej. 19900101-1234)" : "Códigos reverso (ej. Sup. Izq en Francia/Holanda, Sup. Der en Indonesia)"} 
             />
           </div>
 

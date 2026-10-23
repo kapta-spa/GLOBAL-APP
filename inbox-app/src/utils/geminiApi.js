@@ -1111,6 +1111,43 @@ export const extractLicenseData = async (apiKey, base64Images, country = '', onC
       }
     }
 
+    // Sweden document detection & Section 4d (code / Reference number) synchronization
+    const isSwedenDoc = matchedKey === 'swedish' ||
+                        matchedKey === 'sweden' ||
+                        matchedKey === 'suecia' ||
+                        getNormalizedCountryKey(extractedData.country || '') === 'swedish' ||
+                        /swed|suec|sverige|svensk/i.test(extractedData.nationality || '') ||
+                        /transportstyrelsen|sverige|sweden/i.test(extractedData.authority || '') ||
+                        /sweden|suecia|swedish|sverige/i.test(country);
+
+    if (isSwedenDoc) {
+      if (!extractedData.nationality || extractedData.nationality === '-' || extractedData.nationality.trim() === '') {
+        extractedData.nationality = 'Swedish';
+      }
+      if (extractedData.authority && !/sweden/i.test(extractedData.authority)) {
+        extractedData.authority = `${extractedData.authority.trim().replace(/,\s*$/, '')}, Sweden`;
+      }
+      // Section 4d is the reference/administrative number on the FRONT of Swedish license
+      const rawSweden4d = extractedData.code ||
+                          extractedData.codes ||
+                          extractedData.point4d ||
+                          extractedData.sec4d ||
+                          extractedData.personal ||
+                          extractedData.personalNumber ||
+                          extractedData.personal_number ||
+                          extractedData.personalId ||
+                          extractedData.reference ||
+                          extractedData.referenceNumber ||
+                          extractedData.reference_number ||
+                          extractedData.administrativeNumber;
+      if (rawSweden4d && rawSweden4d !== '-' && String(rawSweden4d).trim() !== '') {
+        const clean4d = String(rawSweden4d).trim();
+        extractedData.code = clean4d;
+        extractedData.codes = clean4d;
+        extractedData.point4d = clean4d;
+      }
+    }
+
     // Format license classes
     if (extractedData.class) {
       extractedData.class = formatLicenseClasses(extractedData.class, isChinaDoc, isJapanDoc);

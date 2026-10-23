@@ -197,6 +197,26 @@ export const generateWordDocument = async (templateArrayBuffer, data, imagesBase
                          /indonesia/i.test(data.country || '') ||
                          /indonesian/i.test(data.nationality || '') ||
                          /indonesia|korlantas|polri/i.test(data.authority || '');
+  const isSwedenDoc = Boolean(data.templateName && (data.templateName.includes('swedish') || data.templateName.includes('sweden') || data.templateName.includes('suecia'))) ||
+                      /sweden|suecia|swedish|sverige/i.test(folderName) ||
+                      /sweden|suecia|swedish|sverige/i.test(data.country || '') ||
+                      /swedish|svensk/i.test(data.nationality || '') ||
+                      /transportstyrelsen|sweden/i.test(data.authority || '');
+
+  const swedishSection4d = isSwedenDoc ? val(
+    data.code ||
+    data.codes ||
+    data.point4d ||
+    data.sec4d ||
+    data.personal ||
+    data.personalNumber ||
+    data.personal_number ||
+    data.personalId ||
+    data.reference ||
+    data.referenceNumber ||
+    data.reference_number ||
+    data.administrativeNumber
+  ) : null;
 
   let authorityVal = val(data.authority);
   if (isItalyDoc && authorityVal && authorityVal !== '-') {
@@ -376,8 +396,12 @@ export const generateWordDocument = async (templateArrayBuffer, data, imagesBase
     class: classVal,
     Class: classVal,
     classDescriptions: val(classDesc),
-    code: val(data.code || data.codes || codesVal),
-    codes: codesVal,
+    code: isSwedenDoc 
+      ? (swedishSection4d && swedishSection4d !== '-' ? swedishSection4d : val(data.code || data.codes || codesVal))
+      : val(data.code || data.codes || codesVal),
+    codes: isSwedenDoc 
+      ? (swedishSection4d && swedishSection4d !== '-' ? swedishSection4d : codesVal)
+      : codesVal,
     explicacionCodigos: explicacionCodigosVal,
     explicacion: explicacionCodigosVal,
     conditions: explicacionCodigosVal,
